@@ -1,0 +1,69 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  background: #323233;
+  border-bottom: 1px solid #1e1e1e;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.app-logo {
+  font-size: 16px;
+  color: #4fc1ff;
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8e8e8;
+  letter-spacing: 0.01em;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 80px;
+  justify-content: flex-end;
+}
+
+.toolbar-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #d4d4d4;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.12s;
+}
+.toolbar-btn:hover:not(:disabled) { background: #3c3c3c; border-color: #777; }
+.toolbar-btn:disabled { opacity: 0.4; cursor: default; }
+
+.toolbar-btn-primary {
+  background: #0e639c;
+  border-color: #0e639c;
+  color: #fff;
+}
+.toolbar-btn-primary:hover:not(:disabled) { background: #1177bb; border-color: #1177bb; }
+
+.dirty-badge {
+  color: #f6c349;
+  font-size: 14px;
+}

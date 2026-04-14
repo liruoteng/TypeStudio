@@ -1,0 +1,112 @@
+.file-tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #252526;
+  overflow: hidden;
+  user-select: none;
+}
+
+.file-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.file-tree-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #bbb;
+}
+
+.open-folder-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+.open-folder-btn:hover { opacity: 1; background: #3c3c3c; }
+
+.file-tree-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.file-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 12px;
+  gap: 12px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.open-folder-text-btn {
+  padding: 6px 14px;
+  background: #0e639c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.open-folder-text-btn:hover { background: #1177bb; }
+
+/* Tree rows */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cccccc;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tree-row:hover { background: #2a2d2e; }
+.tree-row.active { background: #094771; color: #fff; }
+
+.tree-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Directory */
+.dir-arrow {
+  font-size: 8px;
+  color: #aaa;
+  transition: transform 0.15s;
+  transform: rotate(0deg);
+  flex-shrink: 0;
+}
+.dir-arrow.open { transform: rotate(90deg); }
+
+.loading-dot {
+  font-size: 11px;
+  color: #888;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+/* Icons */
+.file-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+.typst-icon { color: #4fc1ff; font-weight: 700; font-size: 11px; }
+.bib-icon { color: #dcdcaa; font-weight: 700; font-size: 11px; }
+.dir-icon { color: #e8b84b; }
+.generic-icon { color: #888; }

@@ -1,0 +1,29 @@
+.editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #1e1e1e;
+  color: #6b7280;
+}
+
+.editor-empty-message {
+  text-align: center;
+}
+
+.editor-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+  color: #4fc1ff;
+}
+
+.editor-empty-message p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.editor-empty-hint {
+  font-size: 12px !important;
+  opacity: 0.6;
+}

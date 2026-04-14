@@ -1,0 +1,32 @@
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  background: #007acc;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lsp-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.9;
+}
+.lsp-connected { color: #b5f5b5; }
+.lsp-connecting { color: #ffe28a; }
+.lsp-disconnected { color: rgba(255,255,255,0.5); }
+
+.status-errors { color: #f87171; }
+.status-warnings { color: #fbbf24; }
+.status-lang, .status-encoding { opacity: 0.85; }
