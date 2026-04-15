@@ -15,6 +15,7 @@ export interface FileEntry {
 }
 
 export type AppTheme = "dark" | "claude";
+export type CompileStatus = "idle" | "success" | "error";
 
 interface EditorState {
   // Theme
@@ -29,9 +30,12 @@ interface EditorState {
   previewPages: string[];       // SVG strings, one per page
   previewLoading: boolean;
   previewError: string | null;
+  previewZoom: number;          // 1.0 = 100%
+  compileStatus: CompileStatus;
   setPreview: (pages: string[]) => void;
   setPreviewLoading: (v: boolean) => void;
   setPreviewError: (err: string | null) => void;
+  setPreviewZoom: (zoom: number) => void;
 
   // Workspace
   workspacePath: string | null;
@@ -60,9 +64,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   previewPages: [],
   previewLoading: false,
   previewError: null,
-  setPreview: (pages) => set({ previewPages: pages, previewError: null }),
+  previewZoom: 1,
+  compileStatus: "idle",
+  setPreview: (pages) => set({ previewPages: pages, previewError: null, compileStatus: "success" }),
   setPreviewLoading: (v) => set({ previewLoading: v }),
-  setPreviewError: (err) => set({ previewError: err, previewLoading: false }),
+  setPreviewError: (err) => set({ previewError: err, previewLoading: false, compileStatus: "error" }),
+  setPreviewZoom: (zoom) => set({ previewZoom: Math.min(4, Math.max(0.25, zoom)) }),
 
   workspacePath: null,
   setWorkspacePath: (path) => set({ workspacePath: path }),

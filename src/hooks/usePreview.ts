@@ -3,17 +3,12 @@
  *
  *  1. Immediately on an explicit save (saveEvent changes).
  *  2. Adaptively-debounced on every content change — writes the current buffer
- *     to disk silently then compiles. The debounce delay is calculated from the
- *     previous compile duration: debounce = lastCompileMs * DEBOUNCE_FACTOR,
- *     capped at DEBOUNCE_MAX_MS. Short documents compile in <50 ms so the delay
- *     is imperceptible (≈instant); long documents self-tune to a comfortable lag.
+ *     to disk silently then compiles. The debounce delay is derived from the
+ *     previous compile duration so short documents feel instant while long ones
+ *     self-tune to avoid queuing up redundant compiles.
  *
- * IMPORTANT: the content-watching path uses Zustand's imperative `subscribe`
- * (not a reactive selector hook) so that the host component (App) is never
- * re-rendered on keystrokes. A reactive `useEditorStore((s) => s.activeTab())`
- * inside the hook returns a new object on every keystroke, which previously
- * caused App → PreviewPanel to re-render and string-compare megabyte SVGs on
- * every character typed.
+ * The content-watching path uses Zustand's imperative `store.subscribe` so it
+ * NEVER causes the host component (App) to re-render on keystrokes.
  */
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -29,25 +24,21 @@ export interface SaveEvent {
   n: number; // increments on every save so the same path re-triggers
 }
 
-// Adaptive debounce: next delay = lastCompileMs * FACTOR, capped at MAX.
-// Examples at factor 0.3:
-//   50 ms compile  →  15 ms debounce  (effectively instant)
-//  500 ms compile  → 150 ms debounce  (barely perceptible)
-//    2 s compile   → 600 ms debounce  (user finishes typing before recompile)
-//    5 s compile   →   2 s debounce   (capped)
+// Adaptive debounce: delay = lastCompileMs * FACTOR, clamped to [MIN, MAX].
 const DEBOUNCE_FACTOR = 0.3;
-const DEBOUNCE_MAX_MS = 2000;
+const DEBOUNCE_MIN_MS = 150;   // never fire faster than this
+const DEBOUNCE_MAX_MS = 2000;  // never wait longer than this
 
 export function usePreview(saveEvent: SaveEvent | null) {
   const setPreview = useEditorStore((s) => s.setPreview);
   const setPreviewLoading = useEditorStore((s) => s.setPreviewLoading);
   const setPreviewError = useEditorStore((s) => s.setPreviewError);
 
-  // Tracks the duration of the last successful compile to drive adaptive debounce.
-  const lastCompileMsRef = useRef<number>(0);
+  // Tracks the last compile duration to drive adaptive debounce.
+  const lastCompileMsRef = useRef<number>(500); // start with a sensible default
 
-  // Stable compile helper via ref — always has the latest store callbacks
-  // without needing to be listed as an effect dependency.
+  // Stable compile helper — always captures the latest store callbacks via ref
+  // so the subscribe closure never becomes stale.
   const compileRef = useRef<((path: string) => Promise<void>) | null>(null);
   compileRef.current = async (path: string) => {
     setPreviewLoading(true);
@@ -63,7 +54,7 @@ export function usePreview(saveEvent: SaveEvent | null) {
     }
   };
 
-  // ── 1. Explicit save: compile immediately ──────────────────────────────────
+  // ── 1. Explicit save → compile immediately ────────────────────────────────
   useEffect(() => {
     if (!saveEvent || !saveEvent.path.endsWith(".typ")) return;
 
@@ -78,41 +69,51 @@ export function usePreview(saveEvent: SaveEvent | null) {
     return () => { cancelled = true; };
   }, [saveEvent?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 2. Content change: debounced write → compile ───────────────────────────
-  // Uses Zustand's imperative subscribe so this hook does NOT cause App to
-  // re-render on every keystroke. Only fires side-effects when path or content
-  // actually changes.
+  // ── 2. Content change → debounced write + compile ─────────────────────────
+  // Uses store.subscribe (imperative, no React re-renders) so keystrokes are
+  // never slowed by this hook. Reads directly from state.tabs /
+  // state.activeTabPath — avoids calling state.activeTab() which goes through
+  // an internal get() and can behave unexpectedly in subscribe callbacks.
   useEffect(() => {
-    const timerRef = { id: undefined as ReturnType<typeof setTimeout> | undefined };
+    const timer = { id: undefined as ReturnType<typeof setTimeout> | undefined };
     let lastPath = "";
     let lastContent = "";
 
     const unsubscribe = useEditorStore.subscribe((state) => {
-      const tab = state.activeTab();
-      if (!tab || !tab.path.endsWith(".typ")) return;
-      // Skip if nothing relevant changed (e.g. loading/error state updates)
-      if (tab.path === lastPath && tab.content === lastContent) return;
+      const { tabs, activeTabPath } = state;
+      if (!activeTabPath) return;
 
+      // Find the active tab directly — avoids calling state.activeTab()
+      const tab = tabs.find((t) => t.path === activeTabPath);
+      if (!tab || !tab.path.endsWith(".typ")) return;
+
+      // Skip if nothing meaningful changed (e.g. previewLoading toggled)
+      if (tab.path === lastPath && tab.content === lastContent) return;
       lastPath = tab.path;
       lastContent = tab.content;
 
-      // Reset debounce timer using the adaptive delay from the last compile.
-      clearTimeout(timerRef.id);
+      // Reset debounce — adaptive delay based on how long the last compile took
+      clearTimeout(timer.id);
       const { path, content } = tab;
-      const delay = Math.min(lastCompileMsRef.current * DEBOUNCE_FACTOR, DEBOUNCE_MAX_MS);
-      timerRef.id = setTimeout(async () => {
+      const delay = Math.min(
+        Math.max(lastCompileMsRef.current * DEBOUNCE_FACTOR, DEBOUNCE_MIN_MS),
+        DEBOUNCE_MAX_MS,
+      );
+      timer.id = setTimeout(async () => {
         try {
+          // Write the buffer to disk so tinymist reads the latest content.
+          // We intentionally skip markTabClean — dirty state tracks explicit saves.
           await invoke("write_file", { path, contents: content });
           await compileRef.current?.(path);
         } catch {
-          // Silently ignore (read-only FS, etc.)
+          // Silently ignore write failures (read-only FS, etc.)
         }
       }, delay);
     });
 
     return () => {
       unsubscribe();
-      clearTimeout(timerRef.id);
+      clearTimeout(timer.id);
     };
-  }, []); // Run once — subscribe lives for the component lifetime
+  }, []); // Run once — the subscribe lives for the component lifetime
 }

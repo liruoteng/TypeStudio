@@ -150,15 +150,18 @@
   height: 35px;
   display: flex;
   align-items: center;
-  padding: 0 8px 0 12px;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  padding: 0 6px;
+  gap: 4px;
   color: var(--text-header);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
+}
+
+.preview-header-label {
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  font-size: 11px;
 }
 
 .preview-page-count {
@@ -166,31 +169,100 @@
   opacity: 0.6;
   margin-left: 4px;
   letter-spacing: normal;
+  font-size: 11px;
 }
 
-.preview-refresh-btn {
-  margin-left: auto;
+/* Shared style for small icon buttons in the preview header (zoom +/-) */
+.preview-icon-btn {
   background: none;
-  border: 1px solid var(--border-medium);
-  border-radius: 4px;
+  border: none;
+  border-radius: 3px;
   color: var(--text-secondary);
-  font-size: 14px;
-  width: 24px;
-  height: 24px;
+  font-size: 12px;
+  width: 22px;
+  height: 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
 }
-.preview-refresh-btn:hover:not(:disabled) {
+.preview-icon-btn:hover:not(:disabled) {
   background: var(--bg-btn-hover);
   color: var(--text);
 }
-.preview-refresh-btn:disabled {
+.preview-icon-btn:disabled {
   opacity: 0.3;
   cursor: default;
+}
+
+/* Recompile / play button — flat colored icon showing compile status */
+.preview-run-btn {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  font-size: 15px;
+  width: 28px;
+  height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s;
+}
+.preview-run-btn:hover:not(:disabled) { opacity: 0.65; }
+.preview-run-btn:disabled { cursor: default; opacity: 0.35; }
+
+/* Status colors */
+.preview-run-btn--idle    { color: var(--text-muted); }
+.preview-run-btn--loading { color: var(--text-muted); }
+.preview-run-btn--success { color: #4caf50; }
+.preview-run-btn--error   { color: #ef4444; }
+
+/* Spin animation for the loading indicator */
+.preview-run-btn .spin {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Thin separator between run btn and zoom controls */
+.preview-zoom-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+/* Zoom cluster */
+.preview-zoom-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.preview-zoom-pct {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  min-width: 36px;
+  height: 22px;
+  cursor: pointer;
+  padding: 0 3px;
+  text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+.preview-zoom-pct:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text);
 }
 
 .preview-area {

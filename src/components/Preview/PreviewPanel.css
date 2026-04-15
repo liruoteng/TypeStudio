@@ -4,7 +4,7 @@
   min-height: 0;
   background: var(--bg-preview);
   overflow-y: scroll;
-  overflow-x: hidden;
+  overflow-x: auto;  /* allow horizontal scroll when pages are wider than panel (zoom > 100%) */
   position: relative;
 }
 
@@ -90,11 +90,24 @@
 }
 
 /* ── Page list ───────────────────────────────────────────────────────────── */
-.preview-pages {
+/* Inner zoomable wrapper — separate from the scroll container so the
+   scrollbar stays at native size while only the pages scale. */
+.preview-pages-content {
+  display: flex;
   flex-direction: column;
-  align-items: center;
+  /* flex-start so that when pages are wider than the panel (zoom > 1) the
+     left edge stays at the scroll origin (scrollLeft = 0) and is always
+     reachable. align-items: center would push the overflow equally left and
+     right, making the left half inaccessible since scrollLeft can't go
+     negative. Pages are still visually centred via margin: auto (see below). */
+  align-items: flex-start;
   padding: 20px 16px 32px;
   gap: 20px;
+  /* min-width: 100% keeps the container at least as wide as the panel so
+     auto margins on pages produce centering when zoom < 1. When zoom > 1,
+     pages overflow to the right and the panel's overflow-x: auto scrollbar
+     appears. */
+  min-width: 100%;
 }
 
 .preview-page {
@@ -102,9 +115,16 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 2px;
   background: #ffffff;
-  width: 100%;
-  max-width: 700px;
   flex-shrink: 0;
+  /* Scale page width with zoom.
+     min(100%, 700px) = natural width at zoom 1 (fills panel up to 700 px).
+     Multiplying by --preview-zoom makes pages grow beyond the panel at
+     zoom > 1 (triggering horizontal scroll) and shrink at zoom < 1. */
+  width: calc(min(100%, 700px) * var(--preview-zoom, 1));
+  /* Centre the page when it fits; when it overflows the container the auto
+     margins collapse to 0 and the left edge stays at the padding boundary. */
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .preview-page-inner {

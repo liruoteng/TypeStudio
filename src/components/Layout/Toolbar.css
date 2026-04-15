@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 80px;
+  margin-left: auto;
   justify-content: flex-end;
 }
 
@@ -80,9 +80,13 @@
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
-.toolbar-btn-theme:hover {
+.toolbar-btn-theme:hover:not(:disabled) {
   background: var(--bg-btn-hover);
   color: var(--text);
+}
+.toolbar-btn-theme:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .dirty-badge {

@@ -65,27 +65,25 @@ export default function App() {
     [previewWidth]
   );
 
-  // ── Open folder (delegate to same dialog as FileTree) ────────────────────
-  const handleOpenFolder = useCallback(async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false });
-      if (typeof selected === "string") {
-        useEditorStore.getState().setWorkspacePath(selected);
-      }
-    } catch (e) {
-      console.error("open dialog error", e);
-    }
-  }, []);
-
-  // ── Export PDF ────────────────────────────────────────────────────────────
+  // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
     if (!tab?.path.endsWith(".typ")) return;
     try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      // Suggest a default filename derived from the source file
+      const defaultName = tab.path.split("/").pop()?.replace(/\.typ$/, ".pdf") ?? "output.pdf";
+      const destPath = await save({
+        defaultPath: defaultName,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (!destPath) return; // user cancelled
+
       await invoke("write_file", { path: tab.path, contents: tab.content });
       markTabClean(tab.path);
-      await invoke<string>("export_pdf", { path: tab.path });
+      const outputPath = await invoke<string>("export_pdf", { path: tab.path, destPath });
+      const { openPath } = await import("@tauri-apps/plugin-opener");
+      await openPath(outputPath);
     } catch (e) {
       console.error("export PDF error", e);
     }
@@ -107,7 +105,7 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
-      <Toolbar onOpenFolder={handleOpenFolder} onExportPdf={handleExportPdf} />
+      <Toolbar onExportPdf={handleExportPdf} />
       <div className="app-body" ref={containerRef}>
         <div className="sidebar" style={{ width: sidebarWidth }}>
           <FileTree />
@@ -147,15 +145,26 @@ export default function App() {
   );
 }
 
-/** Preview column header showing page count and a refresh button. */
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN  = 0.25;
+const ZOOM_MAX  = 4;
+
+/** Preview column header: recompile button, page count, and zoom controls. */
 const PreviewHeader = memo(function PreviewHeader() {
   // Subscribe only to primitives — never to the full Tab object — so this
   // component does NOT re-render on every keystroke. Content/path are read
   // imperatively from the store snapshot inside handleRefresh.
-  const pageCount = useEditorStore((s) => s.previewPages.length);
-  const loading = useEditorStore((s) => s.previewLoading);
+  const pageCount     = useEditorStore((s) => s.previewPages.length);
+  const loading       = useEditorStore((s) => s.previewLoading);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  const isTypst = activeTabPath?.endsWith(".typ") ?? false;
+  const zoom          = useEditorStore((s) => s.previewZoom);
+  const setZoom       = useEditorStore((s) => s.setPreviewZoom);
+  const compileStatus = useEditorStore((s) => s.compileStatus);
+  const isTypst       = activeTabPath?.endsWith(".typ") ?? false;
+
+  const zoomOut = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomIn  = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomReset = useCallback(() => setZoom(1), [setZoom]);
 
   const handleRefresh = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
@@ -174,22 +183,52 @@ const PreviewHeader = memo(function PreviewHeader() {
     }
   }, []);
 
+  const runStatus = loading ? "loading" : compileStatus;
+
   return (
     <div className="preview-header">
-      <span>PREVIEW</span>
+      <span className="preview-header-label">PREVIEW</span>
       {pageCount > 0 && (
         <span className="preview-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"}
         </span>
       )}
-      <button
-        className="preview-refresh-btn"
-        onClick={handleRefresh}
-        disabled={loading || !isTypst}
-        title="Recompile (also triggered on Save)"
-      >
-        {loading ? "⟳" : "↺"}
-      </button>
+
+      {/* Zoom + recompile cluster, pushed to the right */}
+      <div className="preview-zoom-controls">
+        <button
+          className={`preview-run-btn preview-run-btn--${runStatus}`}
+          onClick={handleRefresh}
+          disabled={loading || !isTypst}
+          title="Recompile (Cmd+S also triggers this)"
+        >
+          {loading ? <span className="spin">⟳</span> : "▶"}
+        </button>
+        <span className="preview-zoom-sep" />
+        <button
+          className="preview-icon-btn"
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN}
+          title="Zoom out"
+        >
+          −
+        </button>
+        <button
+          className="preview-zoom-pct"
+          onClick={zoomReset}
+          title="Reset zoom to 100%"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          className="preview-icon-btn"
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          title="Zoom in"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 });
