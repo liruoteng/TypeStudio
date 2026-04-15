@@ -3,8 +3,8 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #1e1e1e;
-  color: #6b7280;
+  background: var(--bg-base);
+  color: var(--text-muted);
 }
 
 .editor-empty-message {
@@ -15,7 +15,7 @@
   font-size: 48px;
   margin-bottom: 16px;
   opacity: 0.3;
-  color: #4fc1ff;
+  color: var(--accent-bright);
 }
 
 .editor-empty-message p {

@@ -14,10 +14,24 @@ export interface FileEntry {
   is_dir: boolean;
 }
 
+export type AppTheme = "dark" | "claude";
+
 interface EditorState {
+  // Theme
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
+
   // LSP
   lspStatus: LspStatus;
   setLspStatus: (status: LspStatus) => void;
+
+  // Preview
+  previewPages: string[];       // SVG strings, one per page
+  previewLoading: boolean;
+  previewError: string | null;
+  setPreview: (pages: string[]) => void;
+  setPreviewLoading: (v: boolean) => void;
+  setPreviewError: (err: string | null) => void;
 
   // Workspace
   workspacePath: string | null;
@@ -37,8 +51,18 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
+  theme: "dark",
+  setTheme: (theme) => set({ theme }),
+
   lspStatus: "disconnected",
   setLspStatus: (status) => set({ lspStatus: status }),
+
+  previewPages: [],
+  previewLoading: false,
+  previewError: null,
+  setPreview: (pages) => set({ previewPages: pages, previewError: null }),
+  setPreviewLoading: (v) => set({ previewLoading: v }),
+  setPreviewError: (err) => set({ previewError: err, previewLoading: false }),
 
   workspacePath: null,
   setWorkspacePath: (path) => set({ workspacePath: path }),

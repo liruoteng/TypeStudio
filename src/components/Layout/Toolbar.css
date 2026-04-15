@@ -2,8 +2,8 @@
   display: flex;
   align-items: center;
   height: 38px;
-  background: #323233;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-dim);
   padding: 0 12px;
   gap: 8px;
   flex-shrink: 0;
@@ -18,13 +18,13 @@
 
 .app-logo {
   font-size: 16px;
-  color: #4fc1ff;
+  color: var(--accent-bright);
 }
 
 .app-name {
   font-size: 14px;
   font-weight: 600;
-  color: #e8e8e8;
+  color: var(--text);
   letter-spacing: 0.01em;
 }
 
@@ -46,24 +46,46 @@
 .toolbar-btn {
   padding: 4px 12px;
   background: transparent;
-  border: 1px solid #555;
+  border: 1px solid var(--border-btn);
   border-radius: 4px;
-  color: #d4d4d4;
+  color: var(--text);
   cursor: pointer;
   font-size: 12px;
   transition: background 0.12s;
 }
-.toolbar-btn:hover:not(:disabled) { background: #3c3c3c; border-color: #777; }
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-btn-hover);
+  border-color: var(--text-muted);
+}
 .toolbar-btn:disabled { opacity: 0.4; cursor: default; }
 
 .toolbar-btn-primary {
-  background: #0e639c;
-  border-color: #0e639c;
-  color: #fff;
+  background: var(--accent-btn);
+  border-color: var(--accent-btn);
+  color: var(--status-text);
 }
-.toolbar-btn-primary:hover:not(:disabled) { background: #1177bb; border-color: #1177bb; }
+.toolbar-btn-primary:hover:not(:disabled) {
+  background: var(--accent-btn-hover);
+  border-color: var(--accent-btn-hover);
+}
+
+.toolbar-btn-theme {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 4px;
+  border: 1px solid var(--border-btn);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.toolbar-btn-theme:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text);
+}
 
 .dirty-badge {
-  color: #f6c349;
+  color: var(--dirty);
   font-size: 14px;
 }

@@ -184,4 +184,45 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
       "editor.background": "#1E1E1E",
     },
   });
+
+  // Claude light theme tokens for Typst (warm, claude.ai-inspired)
+  monaco.editor.defineTheme("typst-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "markup.heading", foreground: "6B4FAE", fontStyle: "bold" },
+      { token: "keyword", foreground: "A0328C" },
+      { token: "keyword.control", foreground: "D97559" },
+      { token: "support.function", foreground: "8B6914" },
+      { token: "string", foreground: "B5471C" },
+      { token: "string.math", foreground: "4E8B4E" },
+      { token: "string.raw", foreground: "B5471C" },
+      { token: "number", foreground: "4E8B4E" },
+      { token: "comment", foreground: "7A7672", fontStyle: "italic" },
+      { token: "comment.block", foreground: "7A7672", fontStyle: "italic" },
+      { token: "operator", foreground: "3A3A3A" },
+      { token: "entity.name.tag", foreground: "1A7A6E" },
+      { token: "markup.bold", foreground: "8B6914", fontStyle: "bold" },
+      { token: "markup.italic", foreground: "8B6914", fontStyle: "italic" },
+      { token: "variable.math", foreground: "1D6BB3" },
+    ],
+    colors: {
+      "editor.background": "#FAF9F6",
+      "editor.foreground": "#1C1C1C",
+      "editorLineNumber.foreground": "#ABA59A",
+      "editorLineNumber.activeForeground": "#4A4846",
+      "editor.selectionBackground": "#D6CEBD",
+      "editor.lineHighlightBackground": "#F0EDE4",
+      "editorCursor.foreground": "#D97559",
+      "editor.findMatchBackground": "#F0C4A8",
+      "editor.findMatchHighlightBackground": "#F5DDD0",
+      "editorWidget.background": "#F0EDE4",
+      "editorWidget.border": "#D4CFBF",
+      "editorSuggestWidget.background": "#F0EDE4",
+      "editorSuggestWidget.border": "#D4CFBF",
+      "editorSuggestWidget.selectedBackground": "#D6CEBD",
+      "scrollbarSlider.background": "#C4BFAF66",
+      "scrollbarSlider.hoverBackground": "#C4BFAF99",
+    },
+  });
 }

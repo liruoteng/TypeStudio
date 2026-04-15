@@ -3,10 +3,10 @@
   align-items: center;
   justify-content: space-between;
   height: 22px;
-  background: #007acc;
+  background: var(--status-bg);
   padding: 0 10px;
   font-size: 11px;
-  color: #fff;
+  color: var(--status-text);
   flex-shrink: 0;
 }
 

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import Editor, { OnMount, OnChange, useMonaco } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { registerTypstLanguage } from "./typst-language";
@@ -12,7 +12,6 @@ interface MonacoEditorProps {
 
 /** Convert a file path to an LSP URI. */
 function pathToUri(path: string): string {
-  // On macOS/Linux paths start with '/', on Windows they may start with a drive letter.
   return path.startsWith("/") ? `file://${path}` : `file:///${path}`;
 }
 
@@ -20,55 +19,91 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
   const monacoInstance = useMonaco();
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  const activeTab = useEditorStore((s) => s.activeTab());
+  // Subscribe only to the active path (a string), NOT to the full Tab object.
+  // The full Tab includes `content`, which changes on every keystroke via
+  // updateTabContent. Subscribing to the full Tab causes MonacoEditor to
+  // re-render on each keystroke, which feeds the new `value` prop into
+  // @monaco-editor/react, which calls model.pushEditOperations() — very slow.
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const updateTabContent = useEditorStore((s) => s.updateTabContent);
+  const appTheme = useEditorStore((s) => s.theme);
+  const monacoTheme = appTheme === "claude" ? "typst-light" : "typst-dark";
+
+  // The value passed to Monaco: only updated when the path changes (tab switch),
+  // never on content edits. Monaco manages its own model content while typing.
+  const [editorFile, setEditorFile] = useState<{ path: string; content: string } | null>(() => {
+    const tab = useEditorStore.getState().activeTab();
+    return tab ? { path: tab.path, content: tab.content } : null;
+  });
 
   const lspClient = useLspClient(monacoInstance);
-
-  // Notify LSP when the active file changes
   const prevTabPath = useRef<string | null>(null);
   const changeVersions = useRef<Map<string, number>>(new Map());
+  // Debounce LSP didChange notifications: serializing the full document text on
+  // every keystroke is expensive for large files. 200 ms keeps diagnostics fresh
+  // without adding to the keystroke critical path.
+  const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // When the active tab path changes (tab switch), load the new file's content
+  // from the store snapshot and refresh Monaco's value + notify LSP.
   useEffect(() => {
-    if (!lspClient || !activeTab) return;
-    if (activeTab.path === prevTabPath.current) return;
-    prevTabPath.current = activeTab.path;
-    lspClient.notifyOpen(pathToUri(activeTab.path), activeTab.content);
-  }, [lspClient, activeTab?.path]);
+    const tab = useEditorStore.getState().activeTab();
+    setEditorFile(tab ? { path: tab.path, content: tab.content } : null);
+
+    if (lspClient && tab && tab.path !== prevTabPath.current) {
+      prevTabPath.current = tab.path;
+      lspClient.notifyOpen(pathToUri(tab.path), tab.content);
+    }
+  }, [activeTabPath, lspClient]);
+
+  // Switch Monaco theme live when the app theme changes
+  useEffect(() => {
+    if (monacoInstance) {
+      monacoInstance.editor.setTheme(monacoTheme);
+    }
+  }, [monacoTheme, monacoInstance]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
 
     registerTypstLanguage(monaco);
-    monaco.editor.setTheme("typst-dark");
+    monaco.editor.setTheme(useEditorStore.getState().theme === "claude" ? "typst-light" : "typst-dark");
 
-    // Cmd/Ctrl+S to save
+    // Read path and content directly from Monaco / store snapshot at save time
+    // so this closure doesn't need to close over any reactive state.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      const tab = useEditorStore.getState().activeTab();
-      if (tab && onSave) {
-        onSave(tab.path, tab.content);
-        lspClient?.notifySave(pathToUri(tab.path));
+      const path = useEditorStore.getState().activeTabPath;
+      const content = editor.getValue();
+      if (path && onSave) {
+        onSave(path, content);
+        lspClient?.notifySave(pathToUri(path));
       }
     });
   };
 
   const handleChange: OnChange = useCallback(
     (value) => {
-      if (!activeTab || value === undefined) return;
-      updateTabContent(activeTab.path, value);
+      if (!activeTabPath || value === undefined) return;
 
-      // Notify LSP of content change
+      // Keep the store updated so the preview debounce and dirty indicator work.
+      updateTabContent(activeTabPath, value);
+
+      // Notify LSP of content change — debounced to avoid serializing the full
+      // document text on every keystroke, which stalls the event loop for large files.
       if (lspClient) {
-        const uri = pathToUri(activeTab.path);
+        const uri = pathToUri(activeTabPath);
         const version = (changeVersions.current.get(uri) ?? 1) + 1;
         changeVersions.current.set(uri, version);
-        lspClient.notifyChange(uri, value, version);
+        clearTimeout(lspChangeTimer.current);
+        lspChangeTimer.current = setTimeout(() => {
+          lspClient.notifyChange(uri, value, version);
+        }, 200);
       }
     },
-    [activeTab, updateTabContent, lspClient]
+    [activeTabPath, updateTabContent, lspClient]
   );
 
-  if (!activeTab) {
+  if (!editorFile) {
     return (
       <div className="editor-empty">
         <div className="editor-empty-message">
@@ -84,9 +119,9 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
     <Editor
       height="100%"
       language="typst"
-      theme="typst-dark"
-      value={activeTab.content}
-      path={activeTab.path}
+      theme={monacoTheme}
+      value={editorFile.content}
+      path={editorFile.path}
       onChange={handleChange}
       onMount={handleMount}
       options={{

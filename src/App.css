@@ -1,6 +1,100 @@
 /* ── Reset & base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Theme: Dark (default) ─────────────────────────────────────────────────── */
+:root {
+  --bg-base:         #1e1e1e;
+  --bg-surface:      #252526;
+  --bg-elevated:     #2d2d2d;
+  --bg-toolbar:      #323233;
+  --bg-hover:        #2a2d2e;
+  --bg-active-item:  #094771;
+  --bg-active-tab:   #1e1e1e;
+  --bg-preview:      #3c3c3c;
+  --bg-btn-hover:    #3c3c3c;
+
+  --border-dim:      #1e1e1e;
+  --border:          #333333;
+  --border-medium:   #444444;
+  --border-btn:      #555555;
+
+  --text:            #d4d4d4;
+  --text-secondary:  #bbbbbb;
+  --text-muted:      #888888;
+  --text-dim:        #666666;
+  --text-tab:        #969696;
+  --text-header:     #bbbbbb;
+  --text-tree:       #cccccc;
+
+  --accent:          #007acc;
+  --accent-bright:   #4fc1ff;
+  --accent-btn:      #0e639c;
+  --accent-btn-hover:#1177bb;
+  --accent-tab-bar:  #007acc;
+
+  --status-bg:       #007acc;
+  --status-text:     #ffffff;
+
+  --dirty:           #f6c349;
+
+  --icon-typst:      #4fc1ff;
+  --icon-bib:        #dcdcaa;
+  --icon-dir:        #e8b84b;
+
+  --spinner-track:   #555555;
+  --spinner-color:   #4fc1ff;
+  --reload-gradient: linear-gradient(90deg, #007acc, #4fc1ff, #007acc);
+
+  --scrollbar-thumb: #555555;
+}
+
+/* ── Theme: Claude (warm light) ───────────────────────────────────────────── */
+[data-theme="claude"] {
+  --bg-base:         #faf9f6;
+  --bg-surface:      #f0ede4;
+  --bg-elevated:     #e8e4da;
+  --bg-toolbar:      #ffffff;
+  --bg-hover:        #e4dfd3;
+  --bg-active-item:  #d6cebd;
+  --bg-active-tab:   #faf9f6;
+  --bg-preview:      #e8e4da;
+  --bg-btn-hover:    #ede9df;
+
+  --border-dim:      #e8e4da;
+  --border:          #d4cfbf;
+  --border-medium:   #c4bfaf;
+  --border-btn:      #aba59a;
+
+  --text:            #1c1c1c;
+  --text-secondary:  #4a4846;
+  --text-muted:      #7a7672;
+  --text-dim:        #9a9692;
+  --text-tab:        #6a6662;
+  --text-header:     #5a5652;
+  --text-tree:       #2c2a28;
+
+  --accent:          #d97559;
+  --accent-bright:   #e8856a;
+  --accent-btn:      #d97559;
+  --accent-btn-hover:#c4634a;
+  --accent-tab-bar:  #d97559;
+
+  --status-bg:       #d97559;
+  --status-text:     #ffffff;
+
+  --dirty:           #d97559;
+
+  --icon-typst:      #d97559;
+  --icon-bib:        #8b6914;
+  --icon-dir:        #c4820a;
+
+  --spinner-track:   #d4cfbf;
+  --spinner-color:   #d97559;
+  --reload-gradient: linear-gradient(90deg, #d97559, #e8856a, #d97559);
+
+  --scrollbar-thumb: #c4bfaf;
+}
+
 /* ── App shell ─────────────────────────────────────────────────────────────── */
 .app {
   display: flex;
@@ -8,8 +102,8 @@
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--bg-base);
+  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -48,39 +142,93 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #252526;
-  border-left: 1px solid #333;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
 }
 
 .preview-header {
   height: 35px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 8px 0 12px;
+  gap: 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: #bbb;
-  background: #2d2d2d;
-  border-bottom: 1px solid #1e1e1e;
+  color: var(--text-header);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
+}
+
+.preview-page-count {
+  font-weight: 400;
+  opacity: 0.6;
+  margin-left: 4px;
+  letter-spacing: normal;
+}
+
+.preview-refresh-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.preview-refresh-btn:hover:not(:disabled) {
+  background: var(--bg-btn-hover);
+  color: var(--text);
+}
+.preview-refresh-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .preview-area {
   flex: 1;
   overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Collapsed preview strip ──────────────────────────────────────────────── */
+.preview-collapsed-strip {
+  flex-shrink: 0;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.preview-collapsed-strip:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* ── Resize handles ───────────────────────────────────────────────────────── */
 .resize-handle {
   flex-shrink: 0;
-  background: #333;
+  background: var(--border);
   transition: background 0.15s;
   z-index: 10;
 }
 .resize-handle:hover,
 .resize-handle:active {
-  background: #007acc;
+  background: var(--accent);
 }
 .resize-handle-v {
   width: 3px;
