@@ -78,39 +78,13 @@ export default function App() {
     [previewWidth]
   );
 
-  // ── Import: convert MD/DOCX/PDF → Typst, open in new tab ────────────────
-  const handleImport = useCallback(async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const srcPath = await open({
-        multiple: false,
-        filters: [
-          { name: "Documents", extensions: ["md", "markdown", "docx", "pdf"] },
-        ],
-      });
-      if (!srcPath || typeof srcPath !== "string") return;
-
-      const typstContent = await invoke<string>("convert_to_typst", { path: srcPath });
-
-      // Derive output .typ path next to the source file
-      const lastDot = srcPath.lastIndexOf(".");
-      const base = lastDot >= 0 ? srcPath.slice(0, lastDot) : srcPath;
-      let destPath = base + ".typ";
-
-      // If the file already exists, append a suffix to avoid overwriting
-      try {
-        await invoke("read_file", { path: destPath });
-        destPath = base + "-converted.typ";
-      } catch {
-        // File doesn't exist — use the plain path
-      }
-
-      await invoke("write_file", { path: destPath, contents: typstContent });
-      const name = destPath.split("/").pop() ?? "converted.typ";
-      useEditorStore.getState().openTab(destPath, name, typstContent);
-    } catch (e) {
-      alert(`Import failed: ${e}`);
-    }
+  // ── Hidden .typ path for a .md file ──────────────────────────────────────
+  const mdHiddenTypPath = useCallback((mdPath: string): string => {
+    const lastSlash = mdPath.lastIndexOf("/");
+    const dir = mdPath.slice(0, lastSlash + 1);
+    const basename = mdPath.slice(lastSlash + 1);
+    const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
+    return `${dir}.${noExt}.typ`;
   }, []);
 
   // ── Export PDF — pick destination, save, compile, then open ─────────────
@@ -156,19 +130,26 @@ export default function App() {
     try {
       await invoke("write_file", { path, contents: content });
       markTabClean(path);
-      // Increment the event counter so usePreview re-runs even for same path
-      setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
+      if (path.endsWith(".md") || path.endsWith(".markdown")) {
+        // Re-convert and update the hidden .typ, then compile that
+        const typstContent = await invoke<string>("convert_to_typst", { path });
+        const typPath = mdHiddenTypPath(path);
+        await invoke("write_file", { path: typPath, contents: typstContent });
+        setSaveEvent((prev) => ({ path: typPath, n: (prev?.n ?? 0) + 1 }));
+      } else {
+        setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
+      }
     } catch (e) {
       console.error("save error", e);
     }
-  }, [markTabClean]);
+  }, [markTabClean, mdHiddenTypPath]);
 
   const previewOpen = previewWidth > 0;
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} onImport={handleImport} />
+        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
         {showHistory && activeTabPath && (
           <HistoryPanel
             filePath={activeTabPath}
@@ -252,7 +233,8 @@ const PreviewHeader = memo(function PreviewHeader({
   const zoom          = useEditorStore((s) => s.previewZoom);
   const setZoom       = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
-  const isTypst       = activeTabPath?.endsWith(".typ") ?? false;
+  const isMd          = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
+  const isTypst       = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
   const zoomOut = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
   const zoomIn  = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
@@ -260,13 +242,25 @@ const PreviewHeader = memo(function PreviewHeader({
 
   const handleRefresh = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
-    if (!tab?.path.endsWith(".typ")) return;
+    if (!tab) return;
+    const tabIsMd = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
+    if (!tab.path.endsWith(".typ") && !tabIsMd) return;
     try {
       await invoke("write_file", { path: tab.path, contents: tab.content });
       useEditorStore.getState().markTabClean(tab.path);
       const { setPreviewLoading, setPreview, setPreviewError } = useEditorStore.getState();
       setPreviewLoading(true);
-      invoke<{ pages: string[]; warnings: string }>("compile_to_svg", { path: tab.path })
+      let compilePath = tab.path;
+      if (tabIsMd) {
+        const typstContent = await invoke<string>("convert_to_typst", { path: tab.path });
+        const lastSlash = tab.path.lastIndexOf("/");
+        const dir = tab.path.slice(0, lastSlash + 1);
+        const basename = tab.path.slice(lastSlash + 1);
+        const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
+        compilePath = `${dir}.${noExt}.typ`;
+        await invoke("write_file", { path: compilePath, contents: typstContent });
+      }
+      invoke<{ pages: string[]; warnings: string }>("compile_to_svg", { path: compilePath })
         .then((r) => setPreview(r.pages))
         .catch((e: unknown) => setPreviewError(String(e)))
         .finally(() => setPreviewLoading(false));

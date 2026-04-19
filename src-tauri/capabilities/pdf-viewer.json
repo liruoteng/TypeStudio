@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pdf-viewer",
+  "description": "Capability for PDF viewer popup windows",
+  "windows": ["pdf-*"],
+  "permissions": [
+    "core:default",
+    "fs:default"
+  ]
+}

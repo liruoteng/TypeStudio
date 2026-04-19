@@ -14,6 +14,14 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore } from "../stores/editorStore";
 
+function mdHiddenTypPath(mdPath: string): string {
+  const lastSlash = mdPath.lastIndexOf("/");
+  const dir = mdPath.slice(0, lastSlash + 1);
+  const basename = mdPath.slice(lastSlash + 1);
+  const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
+  return `${dir}.${noExt}.typ`;
+}
+
 interface CompileResult {
   pages: string[];
   warnings: string;
@@ -96,7 +104,8 @@ export function usePreview(saveEvent: SaveEvent | null) {
 
       // Find the active tab directly — avoids calling state.activeTab()
       const tab = tabs.find((t) => t.path === activeTabPath);
-      if (!tab || !tab.path.endsWith(".typ")) return;
+      const isMd = tab?.path.endsWith(".md") || tab?.path.endsWith(".markdown");
+      if (!tab || (!tab.path.endsWith(".typ") && !isMd)) return;
 
       // Skip if nothing meaningful changed (e.g. previewLoading toggled)
       if (tab.path === lastPath && tab.content === lastContent) return;
@@ -112,10 +121,19 @@ export function usePreview(saveEvent: SaveEvent | null) {
       );
       timer.id = setTimeout(async () => {
         try {
-          // Write the buffer to disk so tinymist reads the latest content.
-          // We intentionally skip markTabClean — dirty state tracks explicit saves.
-          await invoke("write_file", { path, contents: content });
-          await compileRef.current?.(path);
+          if (isMd) {
+            // Write md, re-convert, write hidden .typ, then compile it.
+            await invoke("write_file", { path, contents: content });
+            const typstContent = await invoke<string>("convert_to_typst", { path });
+            const typPath = mdHiddenTypPath(path);
+            await invoke("write_file", { path: typPath, contents: typstContent });
+            await compileRef.current?.(typPath);
+          } else {
+            // Write the buffer to disk so tinymist reads the latest content.
+            // We intentionally skip markTabClean — dirty state tracks explicit saves.
+            await invoke("write_file", { path, contents: content });
+            await compileRef.current?.(path);
+          }
         } catch {
           // Silently ignore write failures (read-only FS, etc.)
         }

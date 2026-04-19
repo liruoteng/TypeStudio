@@ -166,6 +166,14 @@ interface FileNodeProps {
   onRefreshParent?: () => void;
 }
 
+function mdHiddenTypPath(mdPath: string): string {
+  const lastSlash = mdPath.lastIndexOf("/");
+  const dir = mdPath.slice(0, lastSlash + 1);
+  const basename = mdPath.slice(lastSlash + 1);
+  const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
+  return `${dir}.${noExt}.typ`;
+}
+
 function FileNode({ path, name, depth, onRefreshParent }: FileNodeProps) {
   const openTab = useEditorStore((s) => s.openTab);
   const closeTab = useEditorStore((s) => s.closeTab);
@@ -175,8 +183,27 @@ function FileNode({ path, name, depth, onRefreshParent }: FileNodeProps) {
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const openFile = useCallback(async () => {
+    if (path.endsWith(".pdf")) {
+      // Open PDF in a dedicated viewer window
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      const base = window.location.origin + window.location.pathname;
+      const url = `${base}?pdfPath=${encodeURIComponent(path)}`;
+      new WebviewWindow(`pdf-${Date.now()}`, {
+        url,
+        title: name,
+        width: 900,
+        height: 720,
+        minWidth: 500,
+        minHeight: 400,
+      });
+      return;
+    }
     try {
       const content = await invoke<string>("read_file", { path });
+      if (path.endsWith(".md") || path.endsWith(".markdown")) {
+        const typstContent = await invoke<string>("convert_to_typst", { path });
+        await invoke("write_file", { path: mdHiddenTypPath(path), contents: typstContent });
+      }
       openTab(path, name, content);
     } catch (e) {
       console.error("read_file error", e);
