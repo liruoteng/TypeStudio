@@ -18,11 +18,11 @@ export function TabBar() {
           onClick={() => setActiveTab(tab.path)}
         >
           <span className="tab-name">{tab.name}</span>
-          {tab.isDirty && <span className="tab-dirty">●</span>}
           <button
             className="tab-close"
             onClick={(e) => {
               e.stopPropagation();
+              if (tab.isDirty && !confirm(`Close "${tab.name}" without saving?`)) return;
               closeTab(tab.path);
             }}
             title="Close tab"

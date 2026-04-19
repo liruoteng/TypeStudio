@@ -43,6 +43,7 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
   // every keystroke is expensive for large files. 200 ms keeps diagnostics fresh
   // without adding to the keystroke critical path.
   const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // When the active tab path changes (tab switch), load the new file's content
   // from the store snapshot and refresh Monaco's value + notify LSP.
@@ -88,6 +89,12 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
       // Keep the store updated so the preview debounce and dirty indicator work.
       updateTabContent(activeTabPath, value);
 
+      // Auto-save 1.5 s after the last keystroke
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(() => {
+        if (onSave) onSave(activeTabPath, value);
+      }, 1500);
+
       // Notify LSP of content change — debounced to avoid serializing the full
       // document text on every keystroke, which stalls the event loop for large files.
       if (lspClient) {
@@ -100,7 +107,7 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
         }, 200);
       }
     },
-    [activeTabPath, updateTabContent, lspClient]
+    [activeTabPath, updateTabContent, lspClient, onSave]
   );
 
   if (!editorFile) {
