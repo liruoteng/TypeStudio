@@ -24,3 +24,8 @@ tokio = { version = "1", features = ["full"] }
 # WebSocket server
 tokio-tungstenite = { version = "0.26", features = [] }
 futures-util = "0.3"
+# In-process Typst compiler (incremental via comemo)
+typst = "0.13"
+typst-svg = "0.13"
+typst-assets = { version = "0.13", features = ["fonts"] }
+comemo = "0.4"

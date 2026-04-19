@@ -25,8 +25,10 @@ export interface SaveEvent {
 }
 
 // Adaptive debounce: delay = lastCompileMs * FACTOR, clamped to [MIN, MAX].
+// A low MIN means fast-compiling (small) documents get near-instant preview;
+// the adaptive factor naturally scales up the delay for heavier documents.
 const DEBOUNCE_FACTOR = 0.3;
-const DEBOUNCE_MIN_MS = 150;   // never fire faster than this
+const DEBOUNCE_MIN_MS = 20;    // never fire faster than this
 const DEBOUNCE_MAX_MS = 2000;  // never wait longer than this
 
 export function usePreview(saveEvent: SaveEvent | null) {

@@ -1,8 +1,9 @@
 mod lsp_bridge;
+mod typst_world;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -11,6 +12,9 @@ use tauri::Manager;
 
 pub struct AppState {
     pub tinymist_path: Mutex<String>,
+    /// Persistent in-process Typst compiler world. Kept alive between compiles
+    /// so comemo can reuse memoized intermediate results (incremental compilation).
+    pub typst_world: Mutex<Option<typst_world::TypstWorld>>,
 }
 
 // ── File system commands ───────────────────────────────────────────────────
@@ -112,102 +116,67 @@ fn run_tinymist_compile(
 pub struct CompileResult {
     /// SVG strings for each page (index 0 = page 1)
     pub pages: Vec<String>,
-    /// Non-fatal warnings/info from the compiler, if any
+    /// Non-fatal warnings from the compiler, if any
     pub warnings: String,
 }
 
-/// Compile a .typ file to SVG pages. Returns one SVG string per page.
+/// Compile a .typ file to SVG pages using the in-process typst compiler.
+///
+/// The world is kept alive in managed state so comemo reuses memoized
+/// intermediate results — only changed parts of the document are recompiled.
 #[tauri::command]
 fn compile_to_svg(
     path: String,
     state: tauri::State<AppState>,
 ) -> Result<CompileResult, String> {
-    let tinymist = resolve_tinymist(&state);
+    let main_path = Path::new(&path);
+    let content = fs::read_to_string(main_path).map_err(|e| e.to_string())?;
 
-    // Temp directory unique per compile run (PID + nanosecond timestamp)
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    let tmp_dir = std::env::temp_dir()
-        .join(format!("type-studio-{}-{}", std::process::id(), nonce));
-    fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    let mut guard = state.typst_world.lock().unwrap();
 
-    // Output pattern: page-001.svg, page-002.svg, …
-    let output_pattern = tmp_dir.join("page-{0p}.svg");
-    let output_str = output_pattern.to_string_lossy().to_string();
-
-    // Use the file's parent as the project root
-    let root = Path::new(&path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string());
-
-    // Run the compiler; capture warnings even on success.
-    // IMPORTANT: CWD must be set to the file's parent so tinymist resolves
-    // relative paths (imports, images, fonts) from the correct location.
-    let mut cmd = Command::new(&tinymist);
-    cmd.arg("compile")
-        .arg("--format")
-        .arg("svg")
-        .arg(&path)
-        .arg(&output_str);
-    if let Some(ref r) = root {
-        cmd.current_dir(r);
+    // (Re)initialize the world when first called or when the workspace root changes.
+    let needs_init = match guard.as_ref() {
+        None => true,
+        Some(w) => w.root() != main_path.parent().unwrap_or_else(|| Path::new("/")),
+    };
+    if needs_init {
+        *guard = Some(typst_world::TypstWorld::new(main_path)?);
     }
 
-    let out = cmd.output().map_err(|e| format!("Failed to run tinymist: {e}"))?;
-    let warnings = String::from_utf8_lossy(&out.stderr).to_string();
+    guard.as_mut().unwrap().set_source(main_path, &content)?;
 
-    if !out.status.success() {
-        // Clean up temp dir before returning error
-        let _ = fs::remove_dir_all(&tmp_dir);
-        return Err(format!("{warnings}\n{}", String::from_utf8_lossy(&out.stdout)).trim().to_string());
-    }
+    // Compile — borrow ends before we drop the guard.
+    let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
+    drop(guard);
 
-    // Collect page SVGs in order
-    let pages = collect_svg_pages(&tmp_dir)?;
+    // Evict stale memo-cache entries to prevent unbounded memory growth.
+    comemo::evict(30);
 
-    // Clean up
-    let _ = fs::remove_dir_all(&tmp_dir);
+    let warnings_str = warned
+        .warnings
+        .iter()
+        .map(|w| w.message.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    Ok(CompileResult { pages, warnings })
-}
-
-/// Read all page-NNN.svg files from the temp directory, sorted by page number.
-fn collect_svg_pages(dir: &PathBuf) -> Result<Vec<String>, String> {
-    let mut entries: Vec<(u32, String)> = fs::read_dir(dir)
-        .map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            // Matches "page-001.svg", "page-1.svg", etc.
-            if name.starts_with("page-") && name.ends_with(".svg") {
-                let num_str = name
-                    .strip_prefix("page-")?
-                    .strip_suffix(".svg")?
-                    .trim_start_matches('0');
-                let n: u32 = num_str.parse().ok().unwrap_or(1);
-                let content = fs::read_to_string(e.path()).ok()?;
-                Some((n, content))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if entries.is_empty() {
-        // Single-page fallback: tinymist may write without the {p} suffix when
-        // the document only has one page.
-        let single = dir.join("page-.svg");
-        if single.exists() {
-            let content = fs::read_to_string(&single).map_err(|e| e.to_string())?;
-            return Ok(vec![content]);
+    match warned.output {
+        Ok(document) => {
+            let pages = document
+                .pages
+                .iter()
+                .map(|page| typst_svg::svg(page))
+                .collect();
+            Ok(CompileResult { pages, warnings: warnings_str })
         }
-        return Err("Compilation produced no SVG output".to_string());
+        Err(errors) => {
+            let msg = errors
+                .iter()
+                .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(msg)
+        }
     }
-
-    entries.sort_by_key(|(n, _)| *n);
-    Ok(entries.into_iter().map(|(_, svg)| svg).collect())
 }
 
 // ── export_pdf ─────────────────────────────────────────────────────────────
@@ -281,6 +250,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
             tinymist_path: Mutex::new(String::new()),
+            typst_world: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             read_file,
