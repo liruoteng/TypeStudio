@@ -63,6 +63,29 @@ function usePinchZoom(ref: React.RefObject<HTMLDivElement | null>) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+// Memoized so React skips re-rendering pages whose SVG content hasn't changed.
+const PageView = memo(function PageView({
+  svg,
+  index,
+  onDoubleClick,
+}: {
+  svg: string;
+  index: number;
+  onDoubleClick: (i: number) => void;
+}) {
+  return (
+    <div
+      className="preview-page"
+      onDoubleClick={() => onDoubleClick(index)}
+      title="Double-click to jump to this section in editor"
+    >
+      {/* SVG comes from the local Typst compiler — no remote content injected */}
+      <div className="preview-page-inner" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="preview-page-number">{index + 1}</div>
+    </div>
+  );
+});
+
 // ── PreviewPanel ──────────────────────────────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel() {
@@ -76,14 +99,16 @@ export const PreviewPanel = memo(function PreviewPanel() {
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Double-click a page → scroll editor to estimated corresponding line
-  const handlePageDoubleClick = (pageIndex: number) => {
-    const lineCount = useEditorStore.getState().activeTab()?.content.split("\n").length ?? 0;
+  // Double-click a page → scroll editor to estimated corresponding line.
+  // useCallback + reading pages.length imperatively keeps PageView memo stable.
+  const handlePageDoubleClick = useCallback((pageIndex: number) => {
+    const state = useEditorStore.getState();
+    const lineCount = state.activeTab()?.content.split("\n").length ?? 0;
     if (lineCount === 0) return;
-    const totalPages = pages.length;
+    const totalPages = state.previewPages.length;
     const estimatedLine = Math.max(1, Math.round((pageIndex / Math.max(1, totalPages)) * lineCount) + 1);
     setScrollToLine(estimatedLine);
-  };
+  }, [setScrollToLine]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -144,23 +169,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
           style={{ "--preview-zoom": zoom } as React.CSSProperties}
         >
           {pages.map((svg, i) => (
-            <div
-              key={i}
-              className="preview-page"
-              onDoubleClick={() => handlePageDoubleClick(i)}
-              title="Double-click to jump to this section in editor"
-            >
-              {/*
-                dangerouslySetInnerHTML is safe here — SVG content comes from
-                tinymist, which compiles user-authored Typst files locally.
-                No remote content or user-controlled HTML is injected.
-              */}
-              <div
-                className="preview-page-inner"
-                dangerouslySetInnerHTML={{ __html: svg }}
-              />
-              <div className="preview-page-number">{i + 1}</div>
-            </div>
+            <PageView key={i} svg={svg} index={i} onDoubleClick={handlePageDoubleClick} />
           ))}
         </div>
       </div>

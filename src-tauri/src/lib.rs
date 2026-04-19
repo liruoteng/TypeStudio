@@ -254,13 +254,19 @@ pub struct CompileResult {
 ///
 /// The world is kept alive in managed state so comemo reuses memoized
 /// intermediate results — only changed parts of the document are recompiled.
+/// `content` can be passed directly from the editor buffer to avoid a disk read+write
+/// round-trip for live preview. When `None`, the file is read from disk.
 #[tauri::command]
 fn compile_to_svg(
     path: String,
+    content: Option<String>,
     state: tauri::State<AppState>,
 ) -> Result<CompileResult, String> {
     let main_path = Path::new(&path);
-    let content = fs::read_to_string(main_path).map_err(|e| e.to_string())?;
+    let content = match content {
+        Some(c) => c,
+        None => fs::read_to_string(main_path).map_err(|e| e.to_string())?,
+    };
 
     let mut guard = state.typst_world.lock().unwrap();
 

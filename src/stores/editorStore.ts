@@ -69,8 +69,11 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
-  theme: "dark",
-  setTheme: (theme) => set({ theme }),
+  theme: (localStorage.getItem("app-theme") as AppTheme | null) ?? "dark",
+  setTheme: (theme) => {
+    localStorage.setItem("app-theme", theme);
+    set({ theme });
+  },
 
   lspStatus: "disconnected",
   setLspStatus: (status) => set({ lspStatus: status }),

@@ -6,6 +6,7 @@ interface StatusBarProps {
   lspStatus?: "connecting" | "connected" | "disconnected";
   errorCount?: number;
   warningCount?: number;
+  onShowHistory?: () => void;
 }
 
 function getLanguageLabel(path: string): string {
@@ -40,8 +41,10 @@ export function StatusBar({
   lspStatus = "disconnected",
   errorCount = 0,
   warningCount = 0,
+  onShowHistory,
 }: StatusBarProps) {
   const activeTab    = useEditorStore((s) => s.activeTab());
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const fontSize     = useEditorStore((s) => s.editorFontSize);
   const setFontSize  = useEditorStore((s) => s.setEditorFontSize);
   const lastEditTime = useEditorStore((s) => s.lastEditTime);
@@ -75,39 +78,15 @@ export function StatusBar({
   return (
     <div className="status-bar">
       <div className="status-left">
-        <span
-          className={`lsp-indicator lsp-${lspStatus}`}
-          title={`Tinymist LSP: ${lspStatus}`}
+        {/* History/version button */}
+        <button
+          className="status-history-btn"
+          onClick={onShowHistory}
+          disabled={!activeTabPath}
+          title="File history"
         >
-          ◉ Tinymist: {lspStatus}
-        </span>
-        {errorCount > 0 && (
-          <span className="status-errors">✗ {errorCount}</span>
-        )}
-        {warningCount > 0 && (
-          <span className="status-warnings">⚠ {warningCount}</span>
-        )}
-      </div>
-
-      <div className="status-right">
-        {lastCompileMs !== null && (
-          <span className="status-compile-time" title="Last compile duration">
-            ⚡ {lastCompileMs < 1000
-              ? `${Math.round(lastCompileMs)}ms`
-              : `${(lastCompileMs / 1000).toFixed(1)}s`}
-          </span>
-        )}
-        {editTimeLabel && (
-          <span className="status-edit-time" title="Last edit time">
-            ✎ {editTimeLabel}
-          </span>
-        )}
-        {language && (
-          <span className="status-lang">{language}</span>
-        )}
-        {activeTab && (
-          <span className="status-encoding">UTF-8</span>
-        )}
+          ⏱
+        </button>
 
         {/* Font size widget */}
         <div className="font-size-widget">
@@ -149,6 +128,40 @@ export function StatusBar({
             +
           </button>
         </div>
+
+        <span
+          className={`lsp-indicator lsp-${lspStatus}`}
+          title={`Tinymist LSP: ${lspStatus}`}
+        >
+          ◉ Tinymist: {lspStatus}
+        </span>
+        {errorCount > 0 && (
+          <span className="status-errors">✗ {errorCount}</span>
+        )}
+        {warningCount > 0 && (
+          <span className="status-warnings">⚠ {warningCount}</span>
+        )}
+      </div>
+
+      <div className="status-right">
+        {editTimeLabel && (
+          <span className="status-edit-time" title="Last edit time">
+            ✎ {editTimeLabel}
+          </span>
+        )}
+        {language && (
+          <span className="status-lang">{language}</span>
+        )}
+        {activeTab && (
+          <span className="status-encoding">UTF-8</span>
+        )}
+        {lastCompileMs !== null && (
+          <span className="status-compile-time" title="Last compile duration">
+            ⚡ {lastCompileMs < 1000
+              ? `${Math.round(lastCompileMs)}ms`
+              : `${(lastCompileMs / 1000).toFixed(1)}s`}
+          </span>
+        )}
       </div>
     </div>
   );

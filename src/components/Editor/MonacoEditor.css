@@ -27,3 +27,19 @@
   font-size: 12px !important;
   opacity: 0.6;
 }
+
+.editor-empty-new-btn {
+  margin-top: 16px;
+  padding: 6px 16px;
+  font-size: 13px;
+  background: var(--accent-bright, #7c6af7);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.editor-empty-new-btn:hover {
+  opacity: 1;
+}

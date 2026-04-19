@@ -13,14 +13,26 @@ function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
   return <span className="file-icon generic-icon">·</span>;
 }
 
+interface PendingCreate {
+  type: "file" | "folder";
+  targetDir: string;
+  name: string;
+  onChangeName: (name: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 interface DirNodeProps {
   path: string;
   name: string;
   depth: number;
   onRefreshParent?: () => void;
+  onSelectDir?: (path: string) => void;
+  selectedDirPath?: string | null;
+  pendingCreate?: PendingCreate | null;
 }
 
-function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
+function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirPath, pendingCreate }: DirNodeProps) {
   const [open, setOpen] = useState(depth === 0);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,6 +56,10 @@ function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
   useEffect(() => {
     if (open) load();
   }, [open, load, refreshKey]);
+
+  useEffect(() => {
+    if (pendingCreate?.targetDir === path) setOpen(true);
+  }, [pendingCreate, path]);
 
   const startRename = useCallback(() => {
     setRenamingTo(name);
@@ -114,9 +130,9 @@ function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
         </div>
       ) : (
         <div
-          className="tree-row dir-row"
+          className={`tree-row dir-row${selectedDirPath === path ? " active" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => { setOpen((o) => !o); onSelectDir?.(path); }}
           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
         >
           <span className={`dir-arrow ${open ? "open" : ""}`}>▶</span>
@@ -134,6 +150,9 @@ function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
                 name={entry.name}
                 depth={depth + 1}
                 onRefreshParent={() => setRefreshKey((k) => k + 1)}
+                onSelectDir={onSelectDir}
+                selectedDirPath={selectedDirPath}
+                pendingCreate={pendingCreate}
               />
             ) : (
               <FileNode
@@ -144,6 +163,9 @@ function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
                 onRefreshParent={() => setRefreshKey((k) => k + 1)}
               />
             )
+          )}
+          {pendingCreate?.targetDir === path && (
+            <InlineCreateInput pendingCreate={pendingCreate} depth={depth + 1} />
           )}
         </div>
       )}
@@ -304,13 +326,34 @@ function FileNode({ path, name, depth, onRefreshParent }: FileNodeProps) {
   );
 }
 
+function InlineCreateInput({ pendingCreate, depth }: { pendingCreate: PendingCreate; depth: number }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  return (
+    <div className="new-item-row" style={{ paddingLeft: `${depth * 12 + 8}px` }}>
+      <FileIcon name={pendingCreate.type === "folder" ? "/" : pendingCreate.name || "file"} isDir={pendingCreate.type === "folder"} />
+      <input
+        ref={inputRef}
+        className="new-item-input"
+        value={pendingCreate.name}
+        onChange={(e) => pendingCreate.onChangeName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") pendingCreate.onConfirm();
+          if (e.key === "Escape") pendingCreate.onCancel();
+        }}
+        onBlur={pendingCreate.onCancel}
+        placeholder={pendingCreate.type === "file" ? "filename.typ" : "folder name"}
+      />
+    </div>
+  );
+}
+
 export function FileTree() {
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const setWorkspacePath = useEditorStore((s) => s.setWorkspacePath);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [creating, setCreating] = useState<null | "file" | "folder">(null);
-  const [newItemName, setNewItemName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [creating, setCreating] = useState<null | { type: "file" | "folder"; name: string }>(null);
+  const [selectedDirPath, setSelectedDirPath] = useState<string | null>(null);
 
   const handleOpenFolder = async () => {
     try {
@@ -325,23 +368,19 @@ export function FileTree() {
   };
 
   const startCreating = (type: "file" | "folder") => {
-    setCreating(type);
-    setNewItemName("");
-    setTimeout(() => inputRef.current?.focus(), 0);
+    setCreating({ type, name: "" });
   };
 
   const handleRefresh = () => setRefreshKey((k) => k + 1);
 
   const handleCreateConfirm = async () => {
-    const name = newItemName.trim();
-    if (!name || !workspacePath) {
-      setCreating(null);
-      return;
-    }
-    const sep = workspacePath.endsWith("/") ? "" : "/";
-    const fullPath = `${workspacePath}${sep}${name}`;
+    const name = creating?.name.trim();
+    if (!name || !workspacePath) { setCreating(null); return; }
+    const targetDir = selectedDirPath ?? workspacePath;
+    const sep = targetDir.endsWith("/") ? "" : "/";
+    const fullPath = `${targetDir}${sep}${name}`;
     try {
-      if (creating === "file") {
+      if (creating!.type === "file") {
         await invoke("create_file", { path: fullPath });
       } else {
         await invoke("create_dir", { path: fullPath });
@@ -350,19 +389,10 @@ export function FileTree() {
       console.error("create error", e);
     }
     setCreating(null);
-    setNewItemName("");
     setRefreshKey((k) => k + 1);
   };
 
-  const handleCreateCancel = () => {
-    setCreating(null);
-    setNewItemName("");
-  };
-
-  const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleCreateConfirm();
-    if (e.key === "Escape") handleCreateCancel();
-  };
+  const handleCreateCancel = () => setCreating(null);
 
   return (
     <div className="file-tree">
@@ -408,26 +438,22 @@ export function FileTree() {
         </div>
       </div>
       <div className="file-tree-body">
-        {creating && workspacePath && (
-          <div className="new-item-row">
-            <FileIcon name={creating === "folder" ? "/" : newItemName || "file"} isDir={creating === "folder"} />
-            <input
-              ref={inputRef}
-              className="new-item-input"
-              value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              onBlur={handleCreateCancel}
-              placeholder={creating === "file" ? "filename.typ" : "folder name"}
-            />
-          </div>
-        )}
         {workspacePath ? (
           <DirNode
             key={refreshKey}
             path={workspacePath}
             name={workspacePath.split("/").pop() ?? workspacePath}
             depth={0}
+            onSelectDir={setSelectedDirPath}
+            selectedDirPath={selectedDirPath}
+            pendingCreate={creating ? {
+              type: creating.type,
+              targetDir: selectedDirPath ?? workspacePath,
+              name: creating.name,
+              onChangeName: (n) => setCreating((c) => c ? { ...c, name: n } : null),
+              onConfirm: handleCreateConfirm,
+              onCancel: handleCreateCancel,
+            } : null}
           />
         ) : (
           <div className="file-tree-empty">

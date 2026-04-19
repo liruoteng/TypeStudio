@@ -10,6 +10,9 @@ import "./MonacoEditor.css";
 interface MonacoEditorProps {
   onSave?: (path: string, content: string) => void;
   onSnapshot?: (path: string) => void;
+  onNewFile?: () => void;
+  /** Called 800 ms after the last keystroke with in-memory content for live preview. */
+  onPreviewTrigger?: (path: string, content: string) => void;
   /** When seq increments, restore content imperatively into the editor. */
   externalContent?: { content: string; seq: number };
 }
@@ -61,7 +64,7 @@ function snippetOffsetToPosition(snippet: string, start: Monaco.IPosition, offse
   return { lineNumber: line, column: col };
 }
 
-export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEditorProps) {
+export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, externalContent }: MonacoEditorProps) {
   const monacoInstance = useMonaco();
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
@@ -91,8 +94,11 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
   const changeVersions = useRef<Map<string, number>>(new Map());
   const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onSnapshotRef = useRef(onSnapshot);
+  const onPreviewTriggerRef = useRef(onPreviewTrigger);
   useEffect(() => { onSnapshotRef.current = onSnapshot; }, [onSnapshot]);
+  useEffect(() => { onPreviewTriggerRef.current = onPreviewTrigger; }, [onPreviewTrigger]);
 
   // Slash menu state
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
@@ -221,6 +227,15 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
       updateTabContent(activeTabPath, value);
       setLastEditTime(Date.now());
 
+      // Live preview: compile from in-memory content 150 ms after the last keystroke.
+      // 150 ms is below human perception threshold, so preview feels instant.
+      if (activeTabPath.endsWith(".typ")) {
+        clearTimeout(previewTimer.current);
+        previewTimer.current = setTimeout(() => {
+          onPreviewTriggerRef.current?.(activeTabPath, value);
+        }, 50);
+      }
+
       // Auto-save 1.5 s after the last keystroke
       clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = setTimeout(() => {
@@ -297,6 +312,11 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
           <div className="editor-empty-icon">✦</div>
           <p>Open a file to start editing</p>
           <p className="editor-empty-hint">Use the file explorer or click "Open Folder"</p>
+          {onNewFile && (
+            <button className="editor-empty-new-btn" onClick={onNewFile}>
+              + New File
+            </button>
+          )}
         </div>
       </div>
     );
@@ -315,7 +335,7 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
         options={{
           fontSize: editorFontSize,
           fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-          fontLigatures: true,
+          fontLigatures: false,
           lineNumbers: "on",
           minimap: { enabled: true },
           scrollBeyondLastLine: false,
@@ -327,7 +347,8 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
           bracketPairColorization: { enabled: true },
           padding: { top: 8, bottom: 8 },
           suggest: { showSnippets: true },
-          quickSuggestions: { other: true, comments: false, strings: false },
+          quickSuggestions: false,
+          suggestOnTriggerCharacters: false,
         }}
       />
       {slashMenu && (

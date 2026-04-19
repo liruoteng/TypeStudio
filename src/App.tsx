@@ -87,6 +87,26 @@ export default function App() {
     return `${dir}.${noExt}.typ`;
   }, []);
 
+  // ── New File — pick save path, create empty file, open it ────────────────
+  const handleNewFile = useCallback(async () => {
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const destPath = await save({
+        defaultPath: "untitled.typ",
+        filters: [
+          { name: "Typst", extensions: ["typ"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+      });
+      if (!destPath) return;
+      await invoke("create_file", { path: destPath });
+      const name = destPath.split("/").pop() ?? destPath;
+      useEditorStore.getState().openTab(destPath, name, "");
+    } catch (e) {
+      console.error("new file error", e);
+    }
+  }, []);
+
   // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
@@ -144,12 +164,24 @@ export default function App() {
     }
   }, [markTabClean, mdHiddenTypPath]);
 
+  // ── Live preview: compile from in-memory content (no disk write needed) ─────
+  const handlePreviewTrigger = useCallback((path: string, content: string) => {
+    const { setPreviewLoading, setPreview, setPreviewError, setLastCompileMs } =
+      useEditorStore.getState();
+    setPreviewLoading(true);
+    const t0 = performance.now();
+    invoke<{ pages: string[]; warnings: string }>("compile_to_svg", { path, content })
+      .then((r) => { setLastCompileMs(performance.now() - t0); setPreview(r.pages); })
+      .catch((e: unknown) => setPreviewError(String(e)))
+      .finally(() => setPreviewLoading(false));
+  }, []);
+
   const previewOpen = previewWidth > 0;
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
+        <Toolbar onExportPdf={handleExportPdf} />
         {showHistory && activeTabPath && (
           <HistoryPanel
             filePath={activeTabPath}
@@ -182,6 +214,8 @@ export default function App() {
             <MonacoEditor
               onSave={handleSave}
               onSnapshot={handleSnapshot}
+              onNewFile={handleNewFile}
+              onPreviewTrigger={handlePreviewTrigger}
               externalContent={restoreState ?? undefined}
             />
           </div>
@@ -207,7 +241,7 @@ export default function App() {
         )}
       </div>
 
-      <StatusBar lspStatus={lspStatus} />
+      <StatusBar lspStatus={lspStatus} onShowHistory={() => setShowHistory((v) => !v)} />
     </div>
   );
 }
