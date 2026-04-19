@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { TabBar } from "./components/Layout/TabBar";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { Toolbar } from "./components/Layout/Toolbar";
 import { FileTree } from "./components/FileExplorer/FileTree";
@@ -161,7 +160,6 @@ export default function App() {
         )}
 
         <div className="editor-column">
-          <TabBar />
           <div className="editor-area">
             <MonacoEditor
               onSave={handleSave}

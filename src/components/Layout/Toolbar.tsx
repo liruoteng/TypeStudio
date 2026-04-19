@@ -1,5 +1,6 @@
 import { useEditorStore } from "../../stores/editorStore";
 import type { AppTheme } from "../../stores/editorStore";
+import { TabBar } from "./TabBar";
 import "./Toolbar.css";
 
 const THEME_ICON:  Record<AppTheme, string> = { dark: "☀", claude: "☾" };
@@ -30,6 +31,10 @@ export function Toolbar({ onExportPdf, onShowHistory }: ToolbarProps) {
       <div className="toolbar-left">
         <span className="app-logo">✦</span>
         <span className="app-name">Type Studio</span>
+        <span className="toolbar-divider" />
+      </div>
+      <div className="toolbar-center">
+        <TabBar />
       </div>
       <div className="toolbar-right">
         {isDirty && <span className="dirty-badge" title="Unsaved changes">●</span>}

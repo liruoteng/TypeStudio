@@ -1,19 +1,28 @@
 .toolbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   height: 38px;
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border-dim);
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0;
+  gap: 0;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 160px;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-dim);
+  margin-left: 2px;
 }
 
 .app-logo {
@@ -22,25 +31,27 @@
 }
 
 .app-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .toolbar-center {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 12px;
+  flex-shrink: 0;
 }
 
 .toolbar-btn {
