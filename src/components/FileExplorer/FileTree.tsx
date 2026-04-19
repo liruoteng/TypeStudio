@@ -6,10 +6,34 @@ import "./FileTree.css";
 
 function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
   if (isDir) return <span className="file-icon dir-icon">▶</span>;
-  if (name.endsWith(".typ")) return <span className="file-icon typst-icon">T</span>;
-  if (name.endsWith(".bib")) return <span className="file-icon bib-icon">B</span>;
-  if (name.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i))
-    return <span className="file-icon img-icon">🖼</span>;
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "typ") return <span className="file-icon typst-icon">T</span>;
+  if (ext === "bib") return <span className="file-icon bib-icon">B</span>;
+  if (ext === "pdf") return <span className="file-icon pdf-icon">P</span>;
+  if (["md", "mdx", "markdown"].includes(ext)) return <span className="file-icon md-icon">M</span>;
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "avif"].includes(ext)) return <span className="file-icon img-icon">⬛</span>;
+  if (["js", "mjs", "cjs"].includes(ext)) return <span className="file-icon js-icon">JS</span>;
+  if (["ts", "mts", "cts"].includes(ext)) return <span className="file-icon ts-icon">TS</span>;
+  if (["jsx", "tsx"].includes(ext)) return <span className="file-icon jsx-icon">⚛</span>;
+  if (ext === "rs") return <span className="file-icon rs-icon">Rs</span>;
+  if (ext === "py") return <span className="file-icon py-icon">Py</span>;
+  if (["json", "jsonc"].includes(ext)) return <span className="file-icon json-icon">{"{}"}</span>;
+  if (["yaml", "yml"].includes(ext)) return <span className="file-icon yaml-icon">Y</span>;
+  if (["toml", "ini"].includes(ext)) return <span className="file-icon toml-icon">⚙</span>;
+  if (["html", "htm"].includes(ext)) return <span className="file-icon html-icon">H</span>;
+  if (["css", "scss", "less"].includes(ext)) return <span className="file-icon css-icon">#</span>;
+  if (["sh", "bash", "zsh"].includes(ext)) return <span className="file-icon sh-icon">$</span>;
+  if (ext === "sql") return <span className="file-icon sql-icon">db</span>;
+  if (["go"].includes(ext)) return <span className="file-icon go-icon">Go</span>;
+  if (ext === "java") return <span className="file-icon java-icon">Jv</span>;
+  if (["c", "h"].includes(ext)) return <span className="file-icon c-icon">C</span>;
+  if (["cpp", "hpp", "cc"].includes(ext)) return <span className="file-icon cpp-icon">C+</span>;
+  if (ext === "lua") return <span className="file-icon lua-icon">Lu</span>;
+  if (ext === "rb") return <span className="file-icon rb-icon">Rb</span>;
+  if (ext === "swift") return <span className="file-icon swift-icon">Sw</span>;
+  if (ext === "kt") return <span className="file-icon kt-icon">Kt</span>;
+  if (ext === "txt") return <span className="file-icon txt-icon">≡</span>;
+  if (["zip", "tar", "gz", "bz2", "7z", "rar"].includes(ext)) return <span className="file-icon zip-icon">⊞</span>;
   return <span className="file-icon generic-icon">·</span>;
 }
 
@@ -30,9 +54,10 @@ interface DirNodeProps {
   onSelectDir?: (path: string) => void;
   selectedDirPath?: string | null;
   pendingCreate?: PendingCreate | null;
+  refreshTarget?: { path: string; n: number } | null;
 }
 
-function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirPath, pendingCreate }: DirNodeProps) {
+function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirPath, pendingCreate, refreshTarget }: DirNodeProps) {
   const [open, setOpen] = useState(depth === 0);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +85,11 @@ function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirP
   useEffect(() => {
     if (pendingCreate?.targetDir === path) setOpen(true);
   }, [pendingCreate, path]);
+
+  useEffect(() => {
+    if (refreshTarget?.path === path && open) load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTarget?.path, refreshTarget?.n]);
 
   const startRename = useCallback(() => {
     setRenamingTo(name);
@@ -153,6 +183,7 @@ function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirP
                 onSelectDir={onSelectDir}
                 selectedDirPath={selectedDirPath}
                 pendingCreate={pendingCreate}
+                refreshTarget={refreshTarget}
               />
             ) : (
               <FileNode
@@ -206,18 +237,13 @@ function FileNode({ path, name, depth, onRefreshParent }: FileNodeProps) {
 
   const openFile = useCallback(async () => {
     if (path.endsWith(".pdf")) {
-      // Open PDF in a dedicated viewer window
-      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-      const base = window.location.origin + window.location.pathname;
-      const url = `${base}?pdfPath=${encodeURIComponent(path)}`;
-      new WebviewWindow(`pdf-${Date.now()}`, {
-        url,
-        title: name,
-        width: 900,
-        height: 720,
-        minWidth: 500,
-        minHeight: 400,
-      });
+      try {
+        const { openPath } = await import("@tauri-apps/plugin-opener");
+        await openPath(path);
+      } catch (e) {
+        console.error("openPath error:", e);
+        alert(`Failed to open PDF: ${e}`);
+      }
       return;
     }
     try {
@@ -352,8 +378,23 @@ export function FileTree() {
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const setWorkspacePath = useEditorStore((s) => s.setWorkspacePath);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshTarget, setRefreshTarget] = useState<{ path: string; n: number } | null>(null);
   const [creating, setCreating] = useState<null | { type: "file" | "folder"; name: string }>(null);
   const [selectedDirPath, setSelectedDirPath] = useState<string | null>(null);
+
+  // Auto-sync: watch workspace for external file system changes
+  useEffect(() => {
+    if (!workspacePath) return;
+    let stopFn: (() => void) | null = null;
+    import("@tauri-apps/plugin-fs").then(({ watch }) => {
+      watch(
+        workspacePath,
+        () => setRefreshKey((k) => k + 1),
+        { recursive: true }
+      ).then((stop) => { stopFn = stop; });
+    });
+    return () => { stopFn?.(); };
+  }, [workspacePath]);
 
   const handleOpenFolder = async () => {
     try {
@@ -389,7 +430,7 @@ export function FileTree() {
       console.error("create error", e);
     }
     setCreating(null);
-    setRefreshKey((k) => k + 1);
+    setRefreshTarget((prev) => ({ path: targetDir, n: (prev?.n ?? 0) + 1 }));
   };
 
   const handleCreateCancel = () => setCreating(null);
@@ -446,6 +487,7 @@ export function FileTree() {
             depth={0}
             onSelectDir={setSelectedDirPath}
             selectedDirPath={selectedDirPath}
+            refreshTarget={refreshTarget}
             pendingCreate={creating ? {
               type: creating.type,
               targetDir: selectedDirPath ?? workspacePath,

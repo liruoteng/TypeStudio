@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, memo } from "react";
+import { useState, useRef, useCallback, memo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { TabBar } from "./components/Layout/TabBar";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { Toolbar } from "./components/Layout/Toolbar";
@@ -30,6 +31,26 @@ export default function App() {
   // Track save events so usePreview re-compiles on every save of a .typ file
   const [saveEvent, setSaveEvent] = useState<SaveEvent | null>(null);
   usePreview(saveEvent);
+
+  // ── Subscribe to compile actor events ─────────────────────────────────────
+  useEffect(() => {
+    const t0Ref = { current: performance.now() };
+    const unlisten1 = listen<{ total_pages: number; updates: { index: number; svg: string }[] }>("preview-result", (e) => {
+      const { applyPreviewUpdate, setLastCompileMs, setPreviewLoading } = useEditorStore.getState();
+      setLastCompileMs(performance.now() - t0Ref.current);
+      applyPreviewUpdate(e.payload.total_pages, e.payload.updates);
+      setPreviewLoading(false);
+      t0Ref.current = performance.now();
+    });
+    const unlisten2 = listen<{ message: string }>("preview-error", (e) => {
+      const { setPreviewError } = useEditorStore.getState();
+      setPreviewError(e.payload.message);
+    });
+    return () => {
+      unlisten1.then((f) => f());
+      unlisten2.then((f) => f());
+    };
+  }, []);
 
   // History panel
   const [showHistory, setShowHistory] = useState(false);
@@ -87,24 +108,9 @@ export default function App() {
     return `${dir}.${noExt}.typ`;
   }, []);
 
-  // ── New File — pick save path, create empty file, open it ────────────────
-  const handleNewFile = useCallback(async () => {
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const destPath = await save({
-        defaultPath: "untitled.typ",
-        filters: [
-          { name: "Typst", extensions: ["typ"] },
-          { name: "All Files", extensions: ["*"] },
-        ],
-      });
-      if (!destPath) return;
-      await invoke("create_file", { path: destPath });
-      const name = destPath.split("/").pop() ?? destPath;
-      useEditorStore.getState().openTab(destPath, name, "");
-    } catch (e) {
-      console.error("new file error", e);
-    }
+  // ── New File — open a temporary untitled tab immediately ─────────────────
+  const handleNewFile = useCallback(() => {
+    useEditorStore.getState().openTempTab();
   }, []);
 
   // ── Export PDF — pick destination, save, compile, then open ─────────────
@@ -133,6 +139,7 @@ export default function App() {
 
   // ── Snapshot: called on Cmd+S after the file is written ──────────────────
   const handleSnapshot = useCallback(async (path: string) => {
+    if (path.startsWith("__temp__")) return;
     try {
       await invoke("save_snapshot", { path });
     } catch (e) {
@@ -147,6 +154,32 @@ export default function App() {
 
   // ── Save: write file → mark clean → trigger preview compile ──────────────
   const handleSave = useCallback(async (path: string, content: string) => {
+    // Temp file: show save dialog, write to real location, swap tabs
+    if (path.startsWith("__temp__")) {
+      try {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const destPath = await save({
+          defaultPath: "untitled.typ",
+          filters: [
+            { name: "Typst", extensions: ["typ"] },
+            { name: "All Files", extensions: ["*"] },
+          ],
+        });
+        if (!destPath) return;
+        await invoke("create_file", { path: destPath });
+        await invoke("write_file", { path: destPath, contents: content });
+        const name = destPath.split("/").pop() ?? destPath;
+        const store = useEditorStore.getState();
+        store.closeTab(path);
+        store.openTab(destPath, name, content);
+        if (destPath.endsWith(".typ")) {
+          setSaveEvent((prev) => ({ path: destPath, n: (prev?.n ?? 0) + 1 }));
+        }
+      } catch (e) {
+        console.error("save new file error", e);
+      }
+      return;
+    }
     try {
       await invoke("write_file", { path, contents: content });
       markTabClean(path);
@@ -164,19 +197,38 @@ export default function App() {
     }
   }, [markTabClean, mdHiddenTypPath]);
 
-  // ── Live preview: compile from in-memory content (no disk write needed) ─────
+  // ── Live preview: fire-and-forget to compile actor, results via events ──────
   const handlePreviewTrigger = useCallback((path: string, content: string) => {
-    const { setPreviewLoading, setPreview, setPreviewError, setLastCompileMs } =
-      useEditorStore.getState();
-    setPreviewLoading(true);
-    const t0 = performance.now();
-    invoke<{ pages: string[]; warnings: string }>("compile_to_svg", { path, content })
-      .then((r) => { setLastCompileMs(performance.now() - t0); setPreview(r.pages); })
-      .catch((e: unknown) => setPreviewError(String(e)))
-      .finally(() => setPreviewLoading(false));
+    if (path.startsWith("__temp__")) return;
+    useEditorStore.getState().setPreviewLoading(true);
+    invoke("update_preview_source", { path, content }).catch(console.error);
   }, []);
 
   const previewOpen = previewWidth > 0;
+
+  // ── Recompile when switching to a .typ/.md file with preview open ─────────
+  const prevActiveTabRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeTabPath && activeTabPath !== prevActiveTabRef.current && previewOpen) {
+      const tab = useEditorStore.getState().activeTab();
+      if (tab && !tab.isTemp && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
+        handlePreviewTrigger(tab.path, tab.content);
+      }
+    }
+    prevActiveTabRef.current = activeTabPath;
+  }, [activeTabPath, previewOpen, handlePreviewTrigger]);
+
+  // ── Recompile when preview panel is unfolded ──────────────────────────────
+  const prevPreviewWidthRef = useRef(previewWidth);
+  useEffect(() => {
+    if (previewWidth > 0 && prevPreviewWidthRef.current === 0) {
+      const tab = useEditorStore.getState().activeTab();
+      if (tab && !tab.isTemp && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
+        handlePreviewTrigger(tab.path, tab.content);
+      }
+    }
+    prevPreviewWidthRef.current = previewWidth;
+  }, [previewWidth, handlePreviewTrigger]);
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
@@ -282,7 +334,7 @@ const PreviewHeader = memo(function PreviewHeader({
     try {
       await invoke("write_file", { path: tab.path, contents: tab.content });
       useEditorStore.getState().markTabClean(tab.path);
-      const { setPreviewLoading, setPreview, setPreviewError } = useEditorStore.getState();
+      const { setPreviewLoading, setPreviewError } = useEditorStore.getState();
       setPreviewLoading(true);
       let compilePath = tab.path;
       if (tabIsMd) {
@@ -294,10 +346,8 @@ const PreviewHeader = memo(function PreviewHeader({
         compilePath = `${dir}.${noExt}.typ`;
         await invoke("write_file", { path: compilePath, contents: typstContent });
       }
-      invoke<{ pages: string[]; warnings: string }>("compile_to_svg", { path: compilePath })
-        .then((r) => setPreview(r.pages))
-        .catch((e: unknown) => setPreviewError(String(e)))
-        .finally(() => setPreviewLoading(false));
+      invoke("trigger_preview_compile", { path: compilePath })
+        .catch((e: unknown) => { setPreviewError(String(e)); setPreviewLoading(false); });
     } catch (e) {
       console.error("refresh error", e);
     }

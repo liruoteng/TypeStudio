@@ -16,12 +16,16 @@ export function TabBar() {
     setCtxMenu({ x: e.clientX, y: e.clientY, path });
   }, []);
 
+  const shouldConfirmClose = (t: { name: string; isDirty: boolean; isTemp?: boolean; content: string }) => {
+    if (t.isTemp && t.content !== "") return confirm(`"${t.name}" has not been saved to a file. Close without saving?`);
+    if (t.isDirty) return confirm(`Close "${t.name}" without saving?`);
+    return true;
+  };
+
   const closeAllTabs = useCallback(() => {
     const { tabs: current } = useEditorStore.getState();
     for (const t of current) {
-      if (!t.isDirty || confirm(`Close "${t.name}" without saving?`)) {
-        useEditorStore.getState().closeTab(t.path);
-      }
+      if (shouldConfirmClose(t)) useEditorStore.getState().closeTab(t.path);
     }
   }, []);
 
@@ -29,9 +33,7 @@ export function TabBar() {
     const { tabs: current } = useEditorStore.getState();
     for (const t of current) {
       if (t.path === keepPath) continue;
-      if (!t.isDirty || confirm(`Close "${t.name}" without saving?`)) {
-        useEditorStore.getState().closeTab(t.path);
-      }
+      if (shouldConfirmClose(t)) useEditorStore.getState().closeTab(t.path);
     }
   }, []);
 
@@ -52,7 +54,11 @@ export function TabBar() {
               className="tab-close"
               onClick={(e) => {
                 e.stopPropagation();
-                if (tab.isDirty && !confirm(`Close "${tab.name}" without saving?`)) return;
+                if (tab.isTemp && tab.content !== "") {
+                  if (!confirm(`"${tab.name}" has not been saved to a file. Close without saving?`)) return;
+                } else if (tab.isDirty && !confirm(`Close "${tab.name}" without saving?`)) {
+                  return;
+                }
                 closeTab(tab.path);
               }}
               title="Close tab"
@@ -73,7 +79,7 @@ export function TabBar() {
               label: "Close Tab",
               action: () => {
                 const tab = tabs.find((t) => t.path === ctxMenu.path);
-                if (tab?.isDirty && !confirm(`Close "${tab.name}" without saving?`)) return;
+                if (tab && !shouldConfirmClose(tab)) return;
                 closeTab(ctxMenu.path);
               },
             },

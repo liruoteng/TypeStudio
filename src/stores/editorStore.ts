@@ -6,6 +6,7 @@ export interface Tab {
   name: string;
   content: string;
   isDirty: boolean;
+  isTemp?: boolean;
 }
 
 export interface FileEntry {
@@ -33,6 +34,7 @@ interface EditorState {
   previewZoom: number;          // 1.0 = 100%
   compileStatus: CompileStatus;
   setPreview: (pages: string[]) => void;
+  applyPreviewUpdate: (totalPages: number, updates: { index: number; svg: string }[]) => void;
   setPreviewLoading: (v: boolean) => void;
   setPreviewError: (err: string | null) => void;
   setPreviewZoom: (zoom: number) => void;
@@ -45,6 +47,7 @@ interface EditorState {
   tabs: Tab[];
   activeTabPath: string | null;
   openTab: (path: string, name: string, content: string) => void;
+  openTempTab: () => void;
   closeTab: (path: string) => void;
   setActiveTab: (path: string) => void;
   updateTabContent: (path: string, content: string) => void;
@@ -84,6 +87,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   previewZoom: 1,
   compileStatus: "idle",
   setPreview: (pages) => set({ previewPages: pages, previewError: null, compileStatus: "success" }),
+
+  applyPreviewUpdate: (totalPages, updates) =>
+    set((s) => {
+      // Resize array if page count changed; reuse existing strings otherwise
+      // so per-page Zustand selectors only fire for pages that actually changed.
+      const prev = s.previewPages;
+      const pages =
+        prev.length === totalPages
+          ? prev.slice()
+          : [
+              ...prev.slice(0, totalPages),
+              ...Array<string>(Math.max(0, totalPages - prev.length)).fill(""),
+            ];
+      for (const { index, svg } of updates) {
+        if (index < totalPages) pages[index] = svg;
+      }
+      return { previewPages: pages, previewError: null, compileStatus: "success" };
+    }),
+
   setPreviewLoading: (v) => set({ previewLoading: v }),
   setPreviewError: (err) => set({ previewError: err, previewLoading: false, compileStatus: "error" }),
   setPreviewZoom: (zoom) => set({ previewZoom: Math.min(4, Math.max(0.25, zoom)) }),
@@ -103,6 +125,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, { path, name, content, isDirty: false }],
       activeTabPath: path,
+    }));
+  },
+
+  openTempTab: () => {
+    const tempPath = "__temp__/untitled.typ";
+    const existing = get().tabs.find((t) => t.path === tempPath);
+    if (existing) {
+      set({ activeTabPath: tempPath });
+      return;
+    }
+    set((s) => ({
+      tabs: [...s.tabs, { path: tempPath, name: "untitled.typ", content: "", isDirty: false, isTemp: true }],
+      activeTabPath: tempPath,
     }));
   },
 

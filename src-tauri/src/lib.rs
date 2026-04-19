@@ -6,16 +6,24 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Mutex;
-use tauri::Manager;
+use std::sync::{Arc, Mutex};
+use tauri::{Emitter, Manager};
 
 // ── Managed state ──────────────────────────────────────────────────────────
 
+#[derive(Clone)]
+pub struct CompileRequest {
+    pub path: String,
+    pub content: String,
+}
+
 pub struct AppState {
     pub tinymist_path: Mutex<String>,
-    /// Persistent in-process Typst compiler world. Kept alive between compiles
-    /// so comemo can reuse memoized intermediate results (incremental compilation).
-    pub typst_world: Mutex<Option<typst_world::TypstWorld>>,
+    /// Sender half of the watch channel for the compile actor.
+    /// Sending here immediately makes the latest content available to the actor.
+    pub compile_tx: tokio::sync::watch::Sender<Option<CompileRequest>>,
+    /// Persistent in-process Typst compiler world — shared with the compile actor.
+    pub typst_world: Arc<Mutex<Option<typst_world::TypstWorld>>>,
 }
 
 // ── File system commands ───────────────────────────────────────────────────
@@ -240,79 +248,119 @@ fn run_tinymist_compile(
     }
 }
 
-// ── compile_to_svg ─────────────────────────────────────────────────────────
+// ── Compile actor ──────────────────────────────────────────────────────────
+//
+// A single background task owns the Typst world and compiles continuously.
+// The watch channel ensures that only the *latest* content is compiled —
+// any intermediate values sent while the actor is busy are silently dropped.
+// Results are pushed to the frontend as "preview-result" events.
 
-#[derive(Serialize)]
-pub struct CompileResult {
-    /// SVG strings for each page (index 0 = page 1)
-    pub pages: Vec<String>,
-    /// Non-fatal warnings from the compiler, if any
-    pub warnings: String,
+#[derive(Clone, Serialize)]
+pub struct PageUpdate {
+    pub index: usize,
+    pub svg: String,
 }
 
-/// Compile a .typ file to SVG pages using the in-process typst compiler.
-///
-/// The world is kept alive in managed state so comemo reuses memoized
-/// intermediate results — only changed parts of the document are recompiled.
-/// `content` can be passed directly from the editor buffer to avoid a disk read+write
-/// round-trip for live preview. When `None`, the file is read from disk.
+/// Incremental result: only pages that changed since the last compile.
+#[derive(Clone, Serialize)]
+pub struct PreviewResult {
+    pub total_pages: usize,
+    pub updates: Vec<PageUpdate>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct PreviewError {
+    pub message: String,
+}
+
+fn hash_svg(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    let mut h = DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+async fn compile_actor(
+    mut rx: tokio::sync::watch::Receiver<Option<CompileRequest>>,
+    world_arc: Arc<Mutex<Option<typst_world::TypstWorld>>>,
+    app_handle: tauri::AppHandle,
+) {
+    // Hashes of the last successfully compiled pages — used for incremental diffs.
+    let mut prev_hashes: Vec<u64> = Vec::new();
+
+    loop {
+        if rx.changed().await.is_err() { break; }
+        let req = rx.borrow_and_update().clone();
+        let Some(req) = req else { continue };
+
+        let world = Arc::clone(&world_arc);
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let main_path = Path::new(&req.path);
+            let mut guard = world.lock().unwrap();
+
+            let needs_init = match guard.as_ref() {
+                None => true,
+                Some(w) => w.root() != main_path.parent().unwrap_or_else(|| Path::new("/")),
+            };
+            if needs_init {
+                *guard = Some(typst_world::TypstWorld::new(main_path)?);
+            }
+            guard.as_mut().unwrap().set_source(main_path, &req.content)?;
+
+            let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
+            drop(guard);
+            comemo::evict(30);
+
+            match warned.output {
+                Ok(doc) => Ok(doc.pages.iter().map(|p| typst_svg::svg(p)).collect::<Vec<_>>()),
+                Err(errors) => Err(errors
+                    .iter()
+                    .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")),
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(pages)) => {
+                let hashes: Vec<u64> = pages.iter().map(|s| hash_svg(s)).collect();
+                // Only send pages whose hash changed (or that are new).
+                let updates: Vec<PageUpdate> = pages
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(i, _)| hashes.get(*i) != prev_hashes.get(*i))
+                    .map(|(index, svg)| PageUpdate { index, svg })
+                    .collect();
+                prev_hashes = hashes;
+                let _ = app_handle.emit("preview-result", PreviewResult {
+                    total_pages: prev_hashes.len(),
+                    updates,
+                });
+            }
+            Ok(Err(msg)) => { let _ = app_handle.emit("preview-error", PreviewError { message: msg }); }
+            Err(e) => { let _ = app_handle.emit("preview-error", PreviewError { message: e.to_string() }); }
+        }
+    }
+}
+
+/// Fire-and-forget: send latest content to the compile actor.
+/// Returns immediately; the result arrives via the "preview-result" event.
 #[tauri::command]
-fn compile_to_svg(
+fn update_preview_source(
     path: String,
-    content: Option<String>,
+    content: String,
     state: tauri::State<AppState>,
-) -> Result<CompileResult, String> {
-    let main_path = Path::new(&path);
-    let content = match content {
-        Some(c) => c,
-        None => fs::read_to_string(main_path).map_err(|e| e.to_string())?,
-    };
+) -> Result<(), String> {
+    state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
+}
 
-    let mut guard = state.typst_world.lock().unwrap();
-
-    // (Re)initialize the world when first called or when the workspace root changes.
-    let needs_init = match guard.as_ref() {
-        None => true,
-        Some(w) => w.root() != main_path.parent().unwrap_or_else(|| Path::new("/")),
-    };
-    if needs_init {
-        *guard = Some(typst_world::TypstWorld::new(main_path)?);
-    }
-
-    guard.as_mut().unwrap().set_source(main_path, &content)?;
-
-    // Compile — borrow ends before we drop the guard.
-    let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
-    drop(guard);
-
-    // Evict stale memo-cache entries to prevent unbounded memory growth.
-    comemo::evict(30);
-
-    let warnings_str = warned
-        .warnings
-        .iter()
-        .map(|w| w.message.to_string())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    match warned.output {
-        Ok(document) => {
-            let pages = document
-                .pages
-                .iter()
-                .map(|page| typst_svg::svg(page))
-                .collect();
-            Ok(CompileResult { pages, warnings: warnings_str })
-        }
-        Err(errors) => {
-            let msg = errors
-                .iter()
-                .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
-                .collect::<Vec<_>>()
-                .join("\n");
-            Err(msg)
-        }
-    }
+/// Compile from disk (used by save/refresh paths that don't pass content).
+#[tauri::command]
+fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Result<(), String> {
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
 }
 
 // ── export_pdf ─────────────────────────────────────────────────────────────
@@ -380,13 +428,17 @@ fn find_tinymist_path(resource_dir: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let world_arc = Arc::new(Mutex::new(None));
+    let (compile_tx, compile_rx) = tokio::sync::watch::channel::<Option<CompileRequest>>(None);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
             tinymist_path: Mutex::new(String::new()),
-            typst_world: Mutex::new(None),
+            compile_tx,
+            typst_world: Arc::clone(&world_arc),
         })
         .invoke_handler(tauri::generate_handler![
             read_file,
@@ -395,7 +447,8 @@ pub fn run() {
             create_file,
             create_dir,
             list_dir,
-            compile_to_svg,
+            update_preview_source,
+            trigger_preview_compile,
             export_pdf,
             save_snapshot,
             list_snapshots,
@@ -404,7 +457,7 @@ pub fn run() {
             reveal_in_finder,
             convert_to_typst,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let resource_dir = app
                 .path()
                 .resource_dir()
@@ -415,8 +468,10 @@ pub fn run() {
             let tinymist_path = find_tinymist_path(&resource_dir);
             eprintln!("[setup] Using tinymist at: {tinymist_path}");
 
-            // Store path in managed state for commands to use
             *app.state::<AppState>().tinymist_path.lock().unwrap() = tinymist_path.clone();
+
+            // Spawn compile actor
+            tauri::async_runtime::spawn(compile_actor(compile_rx, world_arc, app.handle().clone()));
 
             // Spawn LSP bridge
             tauri::async_runtime::spawn(lsp_bridge::run_lsp_bridge(tinymist_path));
