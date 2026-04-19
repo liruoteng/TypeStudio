@@ -4,15 +4,25 @@ import type * as Monaco from "monaco-editor";
 import { registerTypstLanguage } from "./typst-language";
 import { useEditorStore } from "../../stores/editorStore";
 import { useLspClient } from "../../hooks/useLspClient";
+import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import "./MonacoEditor.css";
 
 interface MonacoEditorProps {
   onSave?: (path: string, content: string) => void;
 }
 
-/** Convert a file path to an LSP URI. */
 function pathToUri(path: string): string {
   return path.startsWith("/") ? `file://${path}` : `file:///${path}`;
+}
+
+/** Walk `snippet` by `offset` chars from `start`, respecting newlines. */
+function snippetOffsetToPosition(snippet: string, start: Monaco.IPosition, offset: number): Monaco.IPosition {
+  let line = start.lineNumber;
+  let col = start.column;
+  for (let i = 0; i < offset; i++) {
+    if (snippet[i] === "\n") { line++; col = 1; } else { col++; }
+  }
+  return { lineNumber: line, column: col };
 }
 
 export function MonacoEditor({ onSave }: MonacoEditorProps) {
@@ -39,17 +49,23 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
   const lspClient = useLspClient(monacoInstance);
   const prevTabPath = useRef<string | null>(null);
   const changeVersions = useRef<Map<string, number>>(new Map());
-  // Debounce LSP didChange notifications: serializing the full document text on
-  // every keystroke is expensive for large files. 200 ms keeps diagnostics fresh
-  // without adding to the keystroke critical path.
   const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Slash menu state
+  const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
+  const slashStartPos = useRef<Monaco.IPosition | null>(null);
+  const isInsertingRef = useRef(false);
 
   // When the active tab path changes (tab switch), load the new file's content
   // from the store snapshot and refresh Monaco's value + notify LSP.
   useEffect(() => {
     const tab = useEditorStore.getState().activeTab();
     setEditorFile(tab ? { path: tab.path, content: tab.content } : null);
+
+    // Close slash menu on tab switch
+    setSlashMenu(null);
+    slashStartPos.current = null;
 
     if (lspClient && tab && tab.path !== prevTabPath.current) {
       prevTabPath.current = tab.path;
@@ -78,6 +94,58 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
       if (path && onSave) {
         onSave(path, content);
         lspClient?.notifySave(pathToUri(path));
+      }
+    });
+
+    // Slash command menu: trigger when '/' is typed at the start of a line
+    // (preceded only by optional whitespace), update filter as user continues typing.
+    editor.onDidChangeModelContent((e) => {
+      if (isInsertingRef.current) return;
+
+      const model = editor.getModel();
+      if (!model) return;
+
+      for (const change of e.changes) {
+        if (change.text === "/") {
+          const lineContent = model.getLineContent(change.range.startLineNumber);
+          const beforeSlash = lineContent.substring(0, change.range.startColumn - 1);
+          if (beforeSlash.trim() === "") {
+            const slashPos: Monaco.IPosition = {
+              lineNumber: change.range.startLineNumber,
+              column: change.range.startColumn,
+            };
+            slashStartPos.current = slashPos;
+            const pixelPos = editor.getScrolledVisiblePosition(slashPos);
+            const editorDom = editor.getDomNode();
+            if (pixelPos && editorDom) {
+              const rect = editorDom.getBoundingClientRect();
+              setSlashMenu({
+                x: rect.left + pixelPos.left,
+                y: rect.top + pixelPos.top + pixelPos.height + 4,
+                filter: "",
+              });
+            }
+            return;
+          }
+        }
+      }
+
+      // Update filter if the slash menu is open
+      if (!slashStartPos.current) return;
+      const cursor = editor.getPosition();
+      const slashStart = slashStartPos.current;
+      if (!cursor || cursor.lineNumber !== slashStart.lineNumber || cursor.column <= slashStart.column) {
+        setSlashMenu(null);
+        slashStartPos.current = null;
+        return;
+      }
+      const lineContent = model.getLineContent(cursor.lineNumber);
+      const filter = lineContent.substring(slashStart.column, cursor.column - 1);
+      if (filter.includes(" ")) {
+        setSlashMenu(null);
+        slashStartPos.current = null;
+      } else {
+        setSlashMenu((prev) => (prev ? { ...prev, filter } : null));
       }
     });
   };
@@ -110,6 +178,54 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
     [activeTabPath, updateTabContent, lspClient, onSave]
   );
 
+  const handleSlashSelect = useCallback((command: SlashCommand) => {
+    const editor = editorRef.current;
+    if (!editor || !slashStartPos.current) return;
+    const slashPos = slashStartPos.current;
+    const cursor = editor.getPosition();
+    if (!cursor) return;
+
+    isInsertingRef.current = true;
+    editor.executeEdits("slash-menu", [
+      {
+        range: {
+          startLineNumber: slashPos.lineNumber,
+          startColumn: slashPos.column,
+          endLineNumber: cursor.lineNumber,
+          endColumn: cursor.column,
+        },
+        text: command.snippet,
+      },
+    ]);
+    isInsertingRef.current = false;
+
+    // Place cursor / selection at the logical edit point within the snippet.
+    const offset = command.cursorOffset ?? command.snippet.length;
+    const anchorPos = snippetOffsetToPosition(command.snippet, slashPos, offset);
+    const selectLen = command.selectLength ?? 0;
+    if (selectLen > 0) {
+      const activePos = snippetOffsetToPosition(command.snippet, slashPos, offset + selectLen);
+      editor.setSelection({
+        startLineNumber: anchorPos.lineNumber,
+        startColumn: anchorPos.column,
+        endLineNumber: activePos.lineNumber,
+        endColumn: activePos.column,
+      });
+    } else {
+      editor.setPosition(anchorPos);
+    }
+
+    setSlashMenu(null);
+    slashStartPos.current = null;
+    editor.focus();
+  }, []);
+
+  const handleSlashClose = useCallback(() => {
+    setSlashMenu(null);
+    slashStartPos.current = null;
+    editorRef.current?.focus();
+  }, []);
+
   if (!editorFile) {
     return (
       <div className="editor-empty">
@@ -123,31 +239,42 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
   }
 
   return (
-    <Editor
-      height="100%"
-      language="typst"
-      theme={monacoTheme}
-      value={editorFile.content}
-      path={editorFile.path}
-      onChange={handleChange}
-      onMount={handleMount}
-      options={{
-        fontSize: 14,
-        fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-        fontLigatures: true,
-        lineNumbers: "on",
-        minimap: { enabled: true },
-        scrollBeyondLastLine: false,
-        wordWrap: "on",
-        tabSize: 2,
-        renderWhitespace: "selection",
-        smoothScrolling: true,
-        cursorBlinking: "smooth",
-        bracketPairColorization: { enabled: true },
-        padding: { top: 8, bottom: 8 },
-        suggest: { showSnippets: true },
-        quickSuggestions: { other: true, comments: false, strings: false },
-      }}
-    />
+    <>
+      <Editor
+        height="100%"
+        language="typst"
+        theme={monacoTheme}
+        value={editorFile.content}
+        path={editorFile.path}
+        onChange={handleChange}
+        onMount={handleMount}
+        options={{
+          fontSize: 14,
+          fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+          fontLigatures: true,
+          lineNumbers: "on",
+          minimap: { enabled: true },
+          scrollBeyondLastLine: false,
+          wordWrap: "on",
+          tabSize: 2,
+          renderWhitespace: "selection",
+          smoothScrolling: true,
+          cursorBlinking: "smooth",
+          bracketPairColorization: { enabled: true },
+          padding: { top: 8, bottom: 8 },
+          suggest: { showSnippets: true },
+          quickSuggestions: { other: true, comments: false, strings: false },
+        }}
+      />
+      {slashMenu && (
+        <SlashMenu
+          x={slashMenu.x}
+          y={slashMenu.y}
+          filter={slashMenu.filter}
+          onSelect={handleSlashSelect}
+          onClose={handleSlashClose}
+        />
+      )}
+    </>
   );
 }
