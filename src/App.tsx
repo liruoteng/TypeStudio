@@ -78,6 +78,41 @@ export default function App() {
     [previewWidth]
   );
 
+  // ── Import: convert MD/DOCX/PDF → Typst, open in new tab ────────────────
+  const handleImport = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const srcPath = await open({
+        multiple: false,
+        filters: [
+          { name: "Documents", extensions: ["md", "markdown", "docx", "pdf"] },
+        ],
+      });
+      if (!srcPath || typeof srcPath !== "string") return;
+
+      const typstContent = await invoke<string>("convert_to_typst", { path: srcPath });
+
+      // Derive output .typ path next to the source file
+      const lastDot = srcPath.lastIndexOf(".");
+      const base = lastDot >= 0 ? srcPath.slice(0, lastDot) : srcPath;
+      let destPath = base + ".typ";
+
+      // If the file already exists, append a suffix to avoid overwriting
+      try {
+        await invoke("read_file", { path: destPath });
+        destPath = base + "-converted.typ";
+      } catch {
+        // File doesn't exist — use the plain path
+      }
+
+      await invoke("write_file", { path: destPath, contents: typstContent });
+      const name = destPath.split("/").pop() ?? "converted.typ";
+      useEditorStore.getState().openTab(destPath, name, typstContent);
+    } catch (e) {
+      alert(`Import failed: ${e}`);
+    }
+  }, []);
+
   // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
@@ -133,7 +168,7 @@ export default function App() {
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
+        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} onImport={handleImport} />
         {showHistory && activeTabPath && (
           <HistoryPanel
             filePath={activeTabPath}

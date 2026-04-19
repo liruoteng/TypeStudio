@@ -1,3 +1,4 @@
+mod converter;
 mod lsp_bridge;
 mod typst_world;
 
@@ -165,6 +166,36 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+// ── File conversion ────────────────────────────────────────────────────────
+
+/// Convert a Markdown, DOCX, or PDF file to Typst source and return the text.
+/// Markdown: built-in converter (no external deps), or pandoc if available.
+/// DOCX: pandoc required.
+/// PDF: pdftotext (poppler) required.
+#[tauri::command]
+fn convert_to_typst(path: String) -> Result<String, String> {
+    let ext = Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "md" | "markdown" => {
+            // Prefer pandoc for richer output; fall back to built-in converter.
+            if let Ok(result) = converter::try_pandoc("markdown", &path) {
+                Ok(result)
+            } else {
+                let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                Ok(converter::markdown_to_typst(&content))
+            }
+        }
+        "docx" => converter::try_pandoc("docx", &path),
+        "pdf" => converter::try_pdf_to_typst(&path),
+        other => Err(format!("Unsupported format: .{other}")),
+    }
 }
 
 // ── Compilation helpers ────────────────────────────────────────────────────
@@ -359,6 +390,7 @@ pub fn run() {
             rename_path,
             delete_path,
             reveal_in_finder,
+            convert_to_typst,
         ])
         .setup(|app| {
             let resource_dir = app
