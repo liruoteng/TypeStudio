@@ -54,6 +54,10 @@ interface EditorState {
   editorFontSize: number;
   setEditorFontSize: (size: number) => void;
 
+  // Writing mode
+  writingMode: boolean;
+  setWritingMode: (v: boolean) => void;
+
   // Metrics
   lastEditTime: number | null;
   setLastEditTime: (t: number) => void;
@@ -133,6 +137,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   editorFontSize: 14,
   setEditorFontSize: (size) => set({ editorFontSize: Math.min(32, Math.max(8, size)) }),
+
+  writingMode: false,
+  setWritingMode: (v) => set({ writingMode: v }),
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),

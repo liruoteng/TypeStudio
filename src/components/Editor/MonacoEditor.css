@@ -27,3 +27,29 @@
   font-size: 12px !important;
   opacity: 0.6;
 }
+
+/* Writing mode inline decorations */
+.wm-h1 { font-size: 1.6em !important; font-weight: 700 !important; }
+.wm-h2 { font-size: 1.35em !important; font-weight: 600 !important; }
+.wm-h3 { font-size: 1.15em !important; font-weight: 600 !important; }
+.wm-bold { font-weight: 700 !important; }
+.wm-italic { font-style: italic !important; }
+.wm-code {
+  font-family: "JetBrains Mono", "Fira Code", monospace !important;
+  font-size: 0.9em !important;
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+/* Writing mode container: center the content column */
+.editor-writing-mode {
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg-base);
+}
+.editor-writing-mode > * {
+  max-width: 740px;
+  width: 100%;
+}
