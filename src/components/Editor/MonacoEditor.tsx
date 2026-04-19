@@ -18,6 +18,39 @@ function pathToUri(path: string): string {
   return path.startsWith("/") ? `file://${path}` : `file:///${path}`;
 }
 
+function getFileLanguage(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    typ: "typst",
+    js: "javascript", mjs: "javascript", cjs: "javascript",
+    ts: "typescript", mts: "typescript", cts: "typescript",
+    jsx: "javascript", tsx: "typescript",
+    json: "json", jsonc: "json",
+    html: "html", htm: "html",
+    css: "css", scss: "scss", less: "less",
+    md: "markdown", mdx: "markdown",
+    py: "python",
+    rs: "rust",
+    go: "go",
+    java: "java",
+    c: "c", h: "c",
+    cpp: "cpp", hpp: "cpp", cc: "cpp",
+    sh: "shell", bash: "shell", zsh: "shell",
+    yaml: "yaml", yml: "yaml",
+    xml: "xml",
+    sql: "sql",
+    lua: "lua",
+    rb: "ruby",
+    php: "php",
+    swift: "swift",
+    kt: "kotlin",
+    cs: "csharp",
+    r: "r",
+    toml: "ini",
+  };
+  return map[ext] ?? "plaintext";
+}
+
 /** Walk `snippet` by `offset` chars from `start`, respecting newlines. */
 function snippetOffsetToPosition(snippet: string, start: Monaco.IPosition, offset: number): Monaco.IPosition {
   let line = start.lineNumber;
@@ -256,7 +289,7 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
     <>
       <Editor
         height="100%"
-        language="typst"
+        language={getFileLanguage(editorFile.path)}
         theme={monacoTheme}
         value={editorFile.content}
         path={editorFile.path}

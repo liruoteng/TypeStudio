@@ -65,13 +65,24 @@ function usePinchZoom(ref: React.RefObject<HTMLDivElement | null>) {
 // ── PreviewPanel ──────────────────────────────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel() {
-  const pages   = useEditorStore((s) => s.previewPages);
-  const loading = useEditorStore((s) => s.previewLoading);
-  const error   = useEditorStore((s) => s.previewError);
-  const zoom    = useEditorStore((s) => s.previewZoom);
+  const pages          = useEditorStore((s) => s.previewPages);
+  const loading        = useEditorStore((s) => s.previewLoading);
+  const error          = useEditorStore((s) => s.previewError);
+  const zoom           = useEditorStore((s) => s.previewZoom);
+  const activeTabPath  = useEditorStore((s) => s.activeTabPath);
 
   const panelRef = useRef<HTMLDivElement>(null);
   usePinchZoom(panelRef);
+
+  if (activeTabPath && !activeTabPath.endsWith(".typ")) {
+    return (
+      <div ref={panelRef} className="preview-panel preview-empty">
+        <div className="preview-empty-icon">📄</div>
+        <p>Preview not available</p>
+        <p className="preview-empty-hint">Open a .typ file to see a preview</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (

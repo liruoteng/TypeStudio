@@ -121,6 +121,7 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
         [/[=+\-*/<>!]+/, "operator"],
 
         // Raw / code block
+        [/`{3}(\w+)/, { token: "string.raw", bracket: "@open", nextEmbedded: "$1", next: "@rawBlockEmbedded" }],
         [/`{3}/, { token: "string.raw", bracket: "@open", next: "@rawBlock" }],
         [/`[^`]*`/, "string.raw"],
 
@@ -152,6 +153,10 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
         [/"/, { token: "string.quote", bracket: "@close", next: "@pop" }],
       ],
 
+      rawBlockEmbedded: [
+        [/`{3}/, { token: "string.raw", bracket: "@close", nextEmbedded: "@pop", next: "@pop" }],
+        [/./, ""],
+      ],
       rawBlock: [
         [/`{3}/, { token: "string.raw", bracket: "@close", next: "@pop" }],
         [/./, "string.raw"],
