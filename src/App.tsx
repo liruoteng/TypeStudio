@@ -131,65 +131,66 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
-      <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
-        {showHistory && activeTabPath && (
-          <HistoryPanel
-            filePath={activeTabPath}
-            onRestore={handleRestore}
-            onClose={() => setShowHistory(false)}
-          />
-        )}
-      </div>
-      <div className="app-body" ref={containerRef}>
-        {sidebarWidth === 0 ? (
-          <div
-            className="sidebar-collapsed-strip"
-            title="Expand sidebar"
-            onClick={() => setSidebarWidth(MIN_SIDEBAR)}
-          >
-            ›
-          </div>
-        ) : (
-          <>
-            <div className="sidebar" style={{ width: sidebarWidth }}>
-              <FileTree />
-            </div>
-            <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
-          </>
-        )}
-
-        <div className="editor-column">
-          <div className="editor-area">
-            <MonacoEditor
-              onSave={handleSave}
-              onSnapshot={handleSnapshot}
-              externalContent={restoreState ?? undefined}
-            />
-          </div>
+      {sidebarWidth === 0 ? (
+        <div
+          className="sidebar-collapsed-strip"
+          title="Expand sidebar"
+          onClick={() => setSidebarWidth(MIN_SIDEBAR)}
+        >
+          ›
         </div>
+      ) : (
+        <>
+          <div className="sidebar" style={{ width: sidebarWidth }}>
+            <FileTree />
+          </div>
+          <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
+        </>
+      )}
 
-        <div className="resize-handle resize-handle-v" onMouseDown={startPreviewResize} />
-
-        {previewOpen ? (
-          <div className="preview-column" style={{ width: previewWidth }}>
-            <PreviewHeader showToc={showToc} onToggleToc={() => setShowToc((v) => !v)} />
-            <div className="preview-area">
-              {showToc ? <TableOfContents /> : <PreviewPanel />}
+      <div className="app-right">
+        <div style={{ position: "relative" }}>
+          <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
+          {showHistory && activeTabPath && (
+            <HistoryPanel
+              filePath={activeTabPath}
+              onRestore={handleRestore}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
+        </div>
+        <div className="app-body" ref={containerRef}>
+          <div className="editor-column">
+            <div className="editor-area">
+              <MonacoEditor
+                onSave={handleSave}
+                onSnapshot={handleSnapshot}
+                externalContent={restoreState ?? undefined}
+              />
             </div>
           </div>
-        ) : (
-          <div
-            className="preview-collapsed-strip"
-            title="Expand preview"
-            onClick={() => setPreviewWidth(PREVIEW_DEFAULT)}
-          >
-            ‹
-          </div>
-        )}
-      </div>
 
-      <StatusBar lspStatus={lspStatus} />
+          <div className="resize-handle resize-handle-v" onMouseDown={startPreviewResize} />
+
+          {previewOpen ? (
+            <div className="preview-column" style={{ width: previewWidth }}>
+              <PreviewHeader showToc={showToc} onToggleToc={() => setShowToc((v) => !v)} />
+              <div className="preview-area">
+                {showToc ? <TableOfContents /> : <PreviewPanel />}
+              </div>
+            </div>
+          ) : (
+            <div
+              className="preview-collapsed-strip"
+              title="Expand preview"
+              onClick={() => setPreviewWidth(PREVIEW_DEFAULT)}
+            >
+              ‹
+            </div>
+          )}
+        </div>
+        <StatusBar lspStatus={lspStatus} />
+      </div>
     </div>
   );
 }

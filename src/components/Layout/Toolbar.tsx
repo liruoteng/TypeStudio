@@ -28,11 +28,6 @@ export function Toolbar({ onExportPdf, onShowHistory }: ToolbarProps) {
 
   return (
     <div className="toolbar">
-      <div className="toolbar-left">
-        <span className="app-logo">✦</span>
-        <span className="app-name">Type Studio</span>
-        <span className="toolbar-divider" />
-      </div>
       <div className="toolbar-center">
         <TabBar />
       </div>
