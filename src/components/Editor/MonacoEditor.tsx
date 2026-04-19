@@ -9,6 +9,9 @@ import "./MonacoEditor.css";
 
 interface MonacoEditorProps {
   onSave?: (path: string, content: string) => void;
+  onSnapshot?: (path: string) => void;
+  /** When seq increments, restore content imperatively into the editor. */
+  externalContent?: { content: string; seq: number };
 }
 
 function pathToUri(path: string): string {
@@ -25,7 +28,7 @@ function snippetOffsetToPosition(snippet: string, start: Monaco.IPosition, offse
   return { lineNumber: line, column: col };
 }
 
-export function MonacoEditor({ onSave }: MonacoEditorProps) {
+export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEditorProps) {
   const monacoInstance = useMonaco();
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
@@ -51,6 +54,8 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
   const changeVersions = useRef<Map<string, number>>(new Map());
   const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onSnapshotRef = useRef(onSnapshot);
+  useEffect(() => { onSnapshotRef.current = onSnapshot; }, [onSnapshot]);
 
   // Slash menu state
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
@@ -80,6 +85,14 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
     }
   }, [monacoTheme, monacoInstance]);
 
+  // Imperatively restore content when a snapshot is loaded
+  useEffect(() => {
+    if (!externalContent || !editorRef.current) return;
+    editorRef.current.setValue(externalContent.content);
+    const path = useEditorStore.getState().activeTabPath;
+    if (path) useEditorStore.getState().updateTabContent(path, externalContent.content);
+  }, [externalContent?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
 
@@ -94,6 +107,7 @@ export function MonacoEditor({ onSave }: MonacoEditorProps) {
       if (path && onSave) {
         onSave(path, content);
         lspClient?.notifySave(pathToUri(path));
+        onSnapshotRef.current?.(path);
       }
     });
 

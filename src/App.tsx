@@ -6,6 +6,7 @@ import { Toolbar } from "./components/Layout/Toolbar";
 import { FileTree } from "./components/FileExplorer/FileTree";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
+import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
@@ -22,10 +23,15 @@ export default function App() {
   const markTabClean = useEditorStore((s) => s.markTabClean);
   const lspStatus = useEditorStore((s) => s.lspStatus);
   const theme = useEditorStore((s) => s.theme);
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
 
   // Track save events so usePreview re-compiles on every save of a .typ file
   const [saveEvent, setSaveEvent] = useState<SaveEvent | null>(null);
   usePreview(saveEvent);
+
+  // History panel
+  const [showHistory, setShowHistory] = useState(false);
+  const [restoreState, setRestoreState] = useState<{ content: string; seq: number } | null>(null);
 
   // ── Resizable sidebar ─────────────────────────────────────────────────────
   const startSidebarResize = useCallback(
@@ -89,6 +95,20 @@ export default function App() {
     }
   }, [markTabClean]);
 
+  // ── Snapshot: called on Cmd+S after the file is written ──────────────────
+  const handleSnapshot = useCallback(async (path: string) => {
+    try {
+      await invoke("save_snapshot", { path });
+    } catch (e) {
+      console.error("snapshot error", e);
+    }
+  }, []);
+
+  // ── Restore: load snapshot content into the editor ───────────────────────
+  const handleRestore = useCallback((content: string) => {
+    setRestoreState((prev) => ({ content, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
+
   // ── Save: write file → mark clean → trigger preview compile ──────────────
   const handleSave = useCallback(async (path: string, content: string) => {
     try {
@@ -105,7 +125,16 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
-      <Toolbar onExportPdf={handleExportPdf} />
+      <div style={{ position: "relative" }}>
+        <Toolbar onExportPdf={handleExportPdf} onShowHistory={() => setShowHistory((v) => !v)} />
+        {showHistory && activeTabPath && (
+          <HistoryPanel
+            filePath={activeTabPath}
+            onRestore={handleRestore}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
+      </div>
       <div className="app-body" ref={containerRef}>
         <div className="sidebar" style={{ width: sidebarWidth }}>
           <FileTree />
@@ -116,7 +145,11 @@ export default function App() {
         <div className="editor-column">
           <TabBar />
           <div className="editor-area">
-            <MonacoEditor onSave={handleSave} />
+            <MonacoEditor
+              onSave={handleSave}
+              onSnapshot={handleSnapshot}
+              externalContent={restoreState ?? undefined}
+            />
           </div>
         </div>
 

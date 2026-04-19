@@ -19,6 +19,12 @@ pub struct AppState {
 
 // ── File system commands ───────────────────────────────────────────────────
 
+#[derive(Serialize)]
+pub struct SnapshotEntry {
+    pub timestamp: u64,  // Unix seconds — JS formats this
+    pub path: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FileEntry {
     pub name: String,
@@ -70,6 +76,69 @@ fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
+    Ok(entries)
+}
+
+/// Copy the current file into `.history/{stem}/{unix_ts}.{ext}`, keeping ≤ 50 snapshots.
+#[tauri::command]
+fn save_snapshot(path: String) -> Result<(), String> {
+    let src = Path::new(&path);
+    if !src.exists() {
+        return Ok(());
+    }
+    let parent = src.parent().unwrap_or(Path::new("."));
+    let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let ext = src.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+
+    let history_dir = parent.join(".history").join(&stem);
+    fs::create_dir_all(&history_dir).map_err(|e| e.to_string())?;
+
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let filename = if ext.is_empty() { format!("{secs}") } else { format!("{secs}.{ext}") };
+    fs::copy(src, history_dir.join(&filename)).map_err(|e| e.to_string())?;
+
+    // Prune oldest snapshots beyond 50
+    let mut files: Vec<_> = fs::read_dir(&history_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .collect();
+    if files.len() > 50 {
+        files.sort_by_key(|e| e.file_name());
+        for f in &files[..files.len() - 50] {
+            let _ = fs::remove_file(f.path());
+        }
+    }
+    Ok(())
+}
+
+/// List snapshots for a file, newest first.
+#[tauri::command]
+fn list_snapshots(path: String) -> Result<Vec<SnapshotEntry>, String> {
+    let src = Path::new(&path);
+    let parent = src.parent().unwrap_or(Path::new("."));
+    let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let history_dir = parent.join(".history").join(&stem);
+
+    if !history_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut entries: Vec<SnapshotEntry> = fs::read_dir(&history_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let ts: u64 = name.split('.').next()?.parse().ok()?;
+            Some(SnapshotEntry { timestamp: ts, path: e.path().to_string_lossy().to_string() })
+        })
+        .collect();
+
+    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     Ok(entries)
 }
 
@@ -260,6 +329,8 @@ pub fn run() {
             list_dir,
             compile_to_svg,
             export_pdf,
+            save_snapshot,
+            list_snapshots,
         ])
         .setup(|app| {
             let resource_dir = app

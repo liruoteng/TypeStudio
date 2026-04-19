@@ -11,9 +11,10 @@ const NEXT_THEME:  Record<AppTheme, AppTheme> = { dark: "claude", claude: "dark"
 
 interface ToolbarProps {
   onExportPdf: () => void;
+  onShowHistory: () => void;
 }
 
-export function Toolbar({ onExportPdf }: ToolbarProps) {
+export function Toolbar({ onExportPdf, onShowHistory }: ToolbarProps) {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const isDirty = useEditorStore((s) => {
     const path = s.activeTabPath;
@@ -32,6 +33,14 @@ export function Toolbar({ onExportPdf }: ToolbarProps) {
       </div>
       <div className="toolbar-right">
         {isDirty && <span className="dirty-badge" title="Unsaved changes">●</span>}
+        <button
+          className="toolbar-btn-theme"
+          onClick={onShowHistory}
+          disabled={!activeTabPath}
+          title="File history"
+        >
+          ⏱
+        </button>
         <button
           className="toolbar-btn-theme"
           onClick={onExportPdf}
