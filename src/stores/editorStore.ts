@@ -50,6 +50,20 @@ interface EditorState {
   updateTabContent: (path: string, content: string) => void;
   markTabClean: (path: string) => void;
 
+  // Editor settings
+  editorFontSize: number;
+  setEditorFontSize: (size: number) => void;
+
+  // Metrics
+  lastEditTime: number | null;
+  setLastEditTime: (t: number) => void;
+  lastCompileMs: number | null;
+  setLastCompileMs: (ms: number) => void;
+
+  // Preview ↔ editor sync
+  scrollToLine: number | null;
+  setScrollToLine: (line: number | null) => void;
+
   // Active tab helpers
   activeTab: () => Tab | null;
 }
@@ -116,6 +130,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         t.path === path ? { ...t, isDirty: false } : t
       ),
     })),
+
+  editorFontSize: 14,
+  setEditorFontSize: (size) => set({ editorFontSize: Math.min(32, Math.max(8, size)) }),
+
+  lastEditTime: null,
+  setLastEditTime: (t) => set({ lastEditTime: t }),
+  lastCompileMs: null,
+  setLastCompileMs: (ms) => set({ lastCompileMs: ms }),
+
+  scrollToLine: null,
+  setScrollToLine: (line) => set({ scrollToLine: line }),
 
   activeTab: () => {
     const { tabs, activeTabPath } = get();

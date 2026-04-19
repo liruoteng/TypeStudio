@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore, FileEntry } from "../../stores/editorStore";
+import { ContextMenu, type ContextMenuItem } from "../Layout/ContextMenu";
 import "./FileTree.css";
 
 function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
@@ -16,12 +17,17 @@ interface DirNodeProps {
   path: string;
   name: string;
   depth: number;
+  onRefreshParent?: () => void;
 }
 
-function DirNode({ path, name, depth }: DirNodeProps) {
+function DirNode({ path, name, depth, onRefreshParent }: DirNodeProps) {
   const [open, setOpen] = useState(depth === 0);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renamingTo, setRenamingTo] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,19 +43,87 @@ function DirNode({ path, name, depth }: DirNodeProps) {
 
   useEffect(() => {
     if (open) load();
-  }, [open, load]);
+  }, [open, load, refreshKey]);
+
+  const startRename = useCallback(() => {
+    setRenamingTo(name);
+    setTimeout(() => {
+      renameInputRef.current?.select();
+    }, 0);
+  }, [name]);
+
+  const confirmRename = useCallback(async () => {
+    const newName = renamingTo?.trim();
+    if (!newName || newName === name) { setRenamingTo(null); return; }
+    const parent = path.substring(0, path.lastIndexOf("/"));
+    const newPath = `${parent}/${newName}`;
+    try {
+      await invoke("rename_path", { oldPath: path, newPath });
+      onRefreshParent?.();
+    } catch (e) {
+      console.error("rename error", e);
+    }
+    setRenamingTo(null);
+  }, [renamingTo, name, path, onRefreshParent]);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm(`Delete folder "${name}" and all its contents?`)) return;
+    try {
+      await invoke("delete_path", { path });
+      onRefreshParent?.();
+    } catch (e) {
+      console.error("delete error", e);
+    }
+  }, [name, path, onRefreshParent]);
+
+  const ctxItems: ContextMenuItem[] = [
+    {
+      label: "New File",
+      action: () => { /* trigger creating file inside this dir — handled by parent */ },
+    },
+    { separator: true },
+    { label: "Rename", action: startRename },
+    { label: "Delete Folder", action: handleDelete },
+    { separator: true },
+    {
+      label: "Reveal in Finder",
+      action: () => invoke("reveal_in_finder", { path }).catch(console.error),
+    },
+  ];
 
   return (
     <div className="dir-node">
-      <div
-        className="tree-row dir-row"
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className={`dir-arrow ${open ? "open" : ""}`}>▶</span>
-        <span className="tree-label">{name}</span>
-        {loading && <span className="loading-dot">…</span>}
-      </div>
+      {renamingTo !== null ? (
+        <div
+          className="tree-row dir-row"
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        >
+          <span className="dir-arrow">▶</span>
+          <input
+            ref={renameInputRef}
+            className="new-item-input"
+            value={renamingTo}
+            onChange={(e) => setRenamingTo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRename();
+              if (e.key === "Escape") setRenamingTo(null);
+            }}
+            onBlur={() => setRenamingTo(null)}
+            autoFocus
+          />
+        </div>
+      ) : (
+        <div
+          className="tree-row dir-row"
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          onClick={() => setOpen((o) => !o)}
+          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+        >
+          <span className={`dir-arrow ${open ? "open" : ""}`}>▶</span>
+          <span className="tree-label">{name}</span>
+          {loading && <span className="loading-dot">…</span>}
+        </div>
+      )}
       {open && (
         <div className="dir-children">
           {children.map((entry) =>
@@ -59,6 +133,7 @@ function DirNode({ path, name, depth }: DirNodeProps) {
                 path={entry.path}
                 name={entry.name}
                 depth={depth + 1}
+                onRefreshParent={() => setRefreshKey((k) => k + 1)}
               />
             ) : (
               <FileNode
@@ -66,37 +141,139 @@ function DirNode({ path, name, depth }: DirNodeProps) {
                 path={entry.path}
                 name={entry.name}
                 depth={depth + 1}
+                onRefreshParent={() => setRefreshKey((k) => k + 1)}
               />
             )
           )}
         </div>
       )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={ctxItems}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
     </div>
   );
 }
 
-function FileNode({ path, name, depth }: { path: string; name: string; depth: number }) {
-  const openTab = useEditorStore((s) => s.openTab);
-  const activeTabPath = useEditorStore((s) => s.activeTabPath);
+interface FileNodeProps {
+  path: string;
+  name: string;
+  depth: number;
+  onRefreshParent?: () => void;
+}
 
-  const handleClick = async () => {
+function FileNode({ path, name, depth, onRefreshParent }: FileNodeProps) {
+  const openTab = useEditorStore((s) => s.openTab);
+  const closeTab = useEditorStore((s) => s.closeTab);
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renamingTo, setRenamingTo] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const openFile = useCallback(async () => {
     try {
       const content = await invoke<string>("read_file", { path });
       openTab(path, name, content);
     } catch (e) {
       console.error("read_file error", e);
     }
-  };
+  }, [path, name, openTab]);
+
+  const startRename = useCallback(() => {
+    setRenamingTo(name);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  }, [name]);
+
+  const confirmRename = useCallback(async () => {
+    const newName = renamingTo?.trim();
+    if (!newName || newName === name) { setRenamingTo(null); return; }
+    const parent = path.substring(0, path.lastIndexOf("/"));
+    const newPath = `${parent}/${newName}`;
+    try {
+      await invoke("rename_path", { oldPath: path, newPath });
+      // Close the old tab if it was open; user can reopen the renamed file
+      closeTab(path);
+      onRefreshParent?.();
+    } catch (e) {
+      console.error("rename error", e);
+    }
+    setRenamingTo(null);
+  }, [renamingTo, name, path, closeTab, onRefreshParent]);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm(`Delete "${name}"?`)) return;
+    try {
+      await invoke("delete_path", { path });
+      closeTab(path);
+      onRefreshParent?.();
+    } catch (e) {
+      console.error("delete error", e);
+    }
+  }, [name, path, closeTab, onRefreshParent]);
+
+  const ctxItems: ContextMenuItem[] = [
+    { label: "Open", action: openFile },
+    { separator: true },
+    { label: "Rename", action: startRename },
+    { label: "Delete", action: handleDelete },
+    { separator: true },
+    {
+      label: "Reveal in Finder",
+      action: () => invoke("reveal_in_finder", { path }).catch(console.error),
+    },
+    {
+      label: "Copy Path",
+      action: () => navigator.clipboard.writeText(path),
+    },
+  ];
+
+  if (renamingTo !== null) {
+    return (
+      <div
+        className={`tree-row file-row ${activeTabPath === path ? "active" : ""}`}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      >
+        <FileIcon name={renamingTo || name} isDir={false} />
+        <input
+          ref={renameInputRef}
+          className="new-item-input"
+          value={renamingTo}
+          onChange={(e) => setRenamingTo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirmRename();
+            if (e.key === "Escape") setRenamingTo(null);
+          }}
+          onBlur={() => setRenamingTo(null)}
+          autoFocus
+        />
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={`tree-row file-row ${activeTabPath === path ? "active" : ""}`}
-      style={{ paddingLeft: `${depth * 12 + 8}px` }}
-      onClick={handleClick}
-    >
-      <FileIcon name={name} isDir={false} />
-      <span className="tree-label">{name}</span>
-    </div>
+    <>
+      <div
+        className={`tree-row file-row ${activeTabPath === path ? "active" : ""}`}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        onClick={openFile}
+        onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+      >
+        <FileIcon name={name} isDir={false} />
+        <span className="tree-label">{name}</span>
+      </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={ctxItems}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </>
   );
 }
 

@@ -35,6 +35,7 @@ export function usePreview(saveEvent: SaveEvent | null) {
   const setPreview = useEditorStore((s) => s.setPreview);
   const setPreviewLoading = useEditorStore((s) => s.setPreviewLoading);
   const setPreviewError = useEditorStore((s) => s.setPreviewError);
+  const setLastCompileMs = useEditorStore((s) => s.setLastCompileMs);
 
   // Tracks the last compile duration to drive adaptive debounce.
   const lastCompileMsRef = useRef<number>(500); // start with a sensible default
@@ -47,7 +48,9 @@ export function usePreview(saveEvent: SaveEvent | null) {
     const t0 = performance.now();
     try {
       const result = await invoke<CompileResult>("compile_to_svg", { path });
-      lastCompileMsRef.current = performance.now() - t0;
+      const elapsed = performance.now() - t0;
+      lastCompileMsRef.current = elapsed;
+      setLastCompileMs(elapsed);
       setPreview(result.pages);
     } catch (err) {
       setPreviewError(String(err));
@@ -62,9 +65,15 @@ export function usePreview(saveEvent: SaveEvent | null) {
 
     let cancelled = false;
     setPreviewLoading(true);
+    const t0 = performance.now();
 
     invoke<CompileResult>("compile_to_svg", { path: saveEvent.path })
-      .then((r) => { if (!cancelled) setPreview(r.pages); })
+      .then((r) => {
+        if (!cancelled) {
+          setLastCompileMs(performance.now() - t0);
+          setPreview(r.pages);
+        }
+      })
       .catch((e: unknown) => { if (!cancelled) setPreviewError(String(e)); })
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
 

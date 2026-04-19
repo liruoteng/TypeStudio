@@ -6,12 +6,14 @@ import { Toolbar } from "./components/Layout/Toolbar";
 import { FileTree } from "./components/FileExplorer/FileTree";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
+import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
 
 const MIN_SIDEBAR = 140;
+const SIDEBAR_COLLAPSE = 80;      // px — snap shut below this width
 const PREVIEW_SNAP_CLOSE = 80;   // px — snap shut below this width
 const PREVIEW_DEFAULT = 380;      // px — restored width when expanding
 
@@ -33,14 +35,19 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [restoreState, setRestoreState] = useState<{ content: string; seq: number } | null>(null);
 
+  // Table of Contents toggle
+  const [showToc, setShowToc] = useState(false);
+
   // ── Resizable sidebar ─────────────────────────────────────────────────────
   const startSidebarResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startW = sidebarWidth;
-      const onMove = (ev: MouseEvent) =>
-        setSidebarWidth(Math.max(MIN_SIDEBAR, startW + (ev.clientX - startX)));
+      const startW = sidebarWidth === 0 ? MIN_SIDEBAR : sidebarWidth;
+      const onMove = (ev: MouseEvent) => {
+        const next = startW + (ev.clientX - startX);
+        setSidebarWidth(next < SIDEBAR_COLLAPSE ? 0 : Math.max(next, MIN_SIDEBAR));
+      };
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
@@ -136,11 +143,22 @@ export default function App() {
         )}
       </div>
       <div className="app-body" ref={containerRef}>
-        <div className="sidebar" style={{ width: sidebarWidth }}>
-          <FileTree />
-        </div>
-
-        <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
+        {sidebarWidth === 0 ? (
+          <div
+            className="sidebar-collapsed-strip"
+            title="Expand sidebar"
+            onClick={() => setSidebarWidth(MIN_SIDEBAR)}
+          >
+            ›
+          </div>
+        ) : (
+          <>
+            <div className="sidebar" style={{ width: sidebarWidth }}>
+              <FileTree />
+            </div>
+            <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
+          </>
+        )}
 
         <div className="editor-column">
           <TabBar />
@@ -157,9 +175,9 @@ export default function App() {
 
         {previewOpen ? (
           <div className="preview-column" style={{ width: previewWidth }}>
-            <PreviewHeader />
+            <PreviewHeader showToc={showToc} onToggleToc={() => setShowToc((v) => !v)} />
             <div className="preview-area">
-              <PreviewPanel />
+              {showToc ? <TableOfContents /> : <PreviewPanel />}
             </div>
           </div>
         ) : (
@@ -182,8 +200,14 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4;
 
-/** Preview column header: recompile button, page count, and zoom controls. */
-const PreviewHeader = memo(function PreviewHeader() {
+/** Preview column header: recompile button, page count, zoom controls, and ToC toggle. */
+const PreviewHeader = memo(function PreviewHeader({
+  showToc,
+  onToggleToc,
+}: {
+  showToc: boolean;
+  onToggleToc: () => void;
+}) {
   // Subscribe only to primitives — never to the full Tab object — so this
   // component does NOT re-render on every keystroke. Content/path are read
   // imperatively from the store snapshot inside handleRefresh.
@@ -220,47 +244,59 @@ const PreviewHeader = memo(function PreviewHeader() {
 
   return (
     <div className="preview-header">
-      <span className="preview-header-label">PREVIEW</span>
-      {pageCount > 0 && (
+      <span className="preview-header-label">{showToc ? "OUTLINE" : "PREVIEW"}</span>
+      {!showToc && pageCount > 0 && (
         <span className="preview-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"}
         </span>
       )}
 
-      {/* Zoom + recompile cluster, pushed to the right */}
+      {/* ToC toggle + zoom + recompile cluster, pushed to the right */}
       <div className="preview-zoom-controls">
         <button
-          className={`preview-run-btn preview-run-btn--${runStatus}`}
-          onClick={handleRefresh}
-          disabled={loading || !isTypst}
-          title="Recompile (Cmd+S also triggers this)"
+          className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
+          onClick={onToggleToc}
+          title={showToc ? "Show preview" : "Show table of contents"}
         >
-          {loading ? <span className="spin">⟳</span> : "▶"}
+          ☰
         </button>
         <span className="preview-zoom-sep" />
-        <button
-          className="preview-icon-btn"
-          onClick={zoomOut}
-          disabled={zoom <= ZOOM_MIN}
-          title="Zoom out"
-        >
-          −
-        </button>
-        <button
-          className="preview-zoom-pct"
-          onClick={zoomReset}
-          title="Reset zoom to 100%"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
-        <button
-          className="preview-icon-btn"
-          onClick={zoomIn}
-          disabled={zoom >= ZOOM_MAX}
-          title="Zoom in"
-        >
-          +
-        </button>
+        {!showToc && (
+          <>
+            <button
+              className={`preview-run-btn preview-run-btn--${runStatus}`}
+              onClick={handleRefresh}
+              disabled={loading || !isTypst}
+              title="Recompile (Cmd+S also triggers this)"
+            >
+              {loading ? <span className="spin">⟳</span> : "▶"}
+            </button>
+            <span className="preview-zoom-sep" />
+            <button
+              className="preview-icon-btn"
+              onClick={zoomOut}
+              disabled={zoom <= ZOOM_MIN}
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button
+              className="preview-zoom-pct"
+              onClick={zoomReset}
+              title="Reset zoom to 100%"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              className="preview-icon-btn"
+              onClick={zoomIn}
+              disabled={zoom >= ZOOM_MAX}
+              title="Zoom in"
+            >
+              +
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

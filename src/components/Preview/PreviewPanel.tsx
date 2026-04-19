@@ -1,5 +1,6 @@
-import { memo, useRef, useEffect } from "react";
+import { memo, useRef, useEffect, useState, useCallback } from "react";
 import { useEditorStore } from "../../stores/editorStore";
+import { ContextMenu } from "../Layout/ContextMenu";
 import "./PreviewPanel.css";
 
 // ── Pinch-to-zoom constants ───────────────────────────────────────────────────
@@ -65,11 +66,29 @@ function usePinchZoom(ref: React.RefObject<HTMLDivElement | null>) {
 // ── PreviewPanel ──────────────────────────────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel() {
-  const pages          = useEditorStore((s) => s.previewPages);
-  const loading        = useEditorStore((s) => s.previewLoading);
-  const error          = useEditorStore((s) => s.previewError);
-  const zoom           = useEditorStore((s) => s.previewZoom);
-  const activeTabPath  = useEditorStore((s) => s.activeTabPath);
+  const pages           = useEditorStore((s) => s.previewPages);
+  const loading         = useEditorStore((s) => s.previewLoading);
+  const error           = useEditorStore((s) => s.previewError);
+  const zoom            = useEditorStore((s) => s.previewZoom);
+  const activeTabPath   = useEditorStore((s) => s.activeTabPath);
+  const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
+  const setZoom         = useEditorStore((s) => s.setPreviewZoom);
+
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // Double-click a page → scroll editor to estimated corresponding line
+  const handlePageDoubleClick = (pageIndex: number) => {
+    const lineCount = useEditorStore.getState().activeTab()?.content.split("\n").length ?? 0;
+    if (lineCount === 0) return;
+    const totalPages = pages.length;
+    const estimatedLine = Math.max(1, Math.round((pageIndex / Math.max(1, totalPages)) * lineCount) + 1);
+    setScrollToLine(estimatedLine);
+  };
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
 
   const panelRef = useRef<HTMLDivElement>(null);
   usePinchZoom(panelRef);
@@ -113,30 +132,61 @@ export const PreviewPanel = memo(function PreviewPanel() {
   }
 
   return (
-    <div
-      ref={panelRef}
-      className={`preview-panel${loading ? " preview-reloading" : ""}`}
-    >
-      {loading && <div className="preview-reload-indicator" />}
+    <>
       <div
-        className="preview-pages-content"
-        style={{ "--preview-zoom": zoom } as React.CSSProperties}
+        ref={panelRef}
+        className={`preview-panel${loading ? " preview-reloading" : ""}`}
+        onContextMenu={handleContextMenu}
       >
-        {pages.map((svg, i) => (
-          <div key={i} className="preview-page">
-            {/*
-              dangerouslySetInnerHTML is safe here — SVG content comes from
-              tinymist, which compiles user-authored Typst files locally.
-              No remote content or user-controlled HTML is injected.
-            */}
+        {loading && <div className="preview-reload-indicator" />}
+        <div
+          className="preview-pages-content"
+          style={{ "--preview-zoom": zoom } as React.CSSProperties}
+        >
+          {pages.map((svg, i) => (
             <div
-              className="preview-page-inner"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-            <div className="preview-page-number">{i + 1}</div>
-          </div>
-        ))}
+              key={i}
+              className="preview-page"
+              onDoubleClick={() => handlePageDoubleClick(i)}
+              title="Double-click to jump to this section in editor"
+            >
+              {/*
+                dangerouslySetInnerHTML is safe here — SVG content comes from
+                tinymist, which compiles user-authored Typst files locally.
+                No remote content or user-controlled HTML is injected.
+              */}
+              <div
+                className="preview-page-inner"
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+              <div className="preview-page-number">{i + 1}</div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            {
+              label: "Zoom In",
+              action: () => setZoom(+(zoom + 0.25).toFixed(2)),
+              disabled: zoom >= 4,
+            },
+            {
+              label: "Zoom Out",
+              action: () => setZoom(+(zoom - 0.25).toFixed(2)),
+              disabled: zoom <= 0.25,
+            },
+            {
+              label: "Reset Zoom",
+              action: () => setZoom(1),
+            },
+          ]}
+        />
+      )}
+    </>
   );
 });

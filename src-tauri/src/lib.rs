@@ -142,6 +142,31 @@ fn list_snapshots(path: String) -> Result<Vec<SnapshotEntry>, String> {
     Ok(entries)
 }
 
+#[tauri::command]
+fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_path(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if p.is_dir() {
+        fs::remove_dir_all(p).map_err(|e| e.to_string())
+    } else {
+        fs::remove_file(p).map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 // ── Compilation helpers ────────────────────────────────────────────────────
 
 /// Resolve the tinymist binary path from managed state.
@@ -331,6 +356,9 @@ pub fn run() {
             export_pdf,
             save_snapshot,
             list_snapshots,
+            rename_path,
+            delete_path,
+            reveal_in_finder,
         ])
         .setup(|app| {
             let resource_dir = app

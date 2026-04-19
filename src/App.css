@@ -197,6 +197,10 @@
   opacity: 0.3;
   cursor: default;
 }
+.preview-icon-btn--active {
+  color: var(--accent-bright);
+  background: var(--bg-btn-hover);
+}
 
 /* Recompile / play button — flat colored icon showing compile status */
 .preview-run-btn {
@@ -287,6 +291,26 @@
   transition: background 0.15s, color 0.15s;
 }
 .preview-collapsed-strip:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* ── Collapsed sidebar strip ─────────────────────────────────────────────── */
+.sidebar-collapsed-strip {
+  flex-shrink: 0;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-collapsed-strip:hover {
   background: var(--bg-elevated);
   color: var(--text);
 }

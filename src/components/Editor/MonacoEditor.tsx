@@ -70,10 +70,14 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
   // updateTabContent. Subscribing to the full Tab causes MonacoEditor to
   // re-render on each keystroke, which feeds the new `value` prop into
   // @monaco-editor/react, which calls model.pushEditOperations() — very slow.
-  const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const activeTabPath  = useEditorStore((s) => s.activeTabPath);
   const updateTabContent = useEditorStore((s) => s.updateTabContent);
-  const appTheme = useEditorStore((s) => s.theme);
-  const monacoTheme = appTheme === "claude" ? "typst-light" : "typst-dark";
+  const appTheme       = useEditorStore((s) => s.theme);
+  const monacoTheme    = appTheme === "claude" ? "typst-light" : "typst-dark";
+  const editorFontSize = useEditorStore((s) => s.editorFontSize);
+  const setLastEditTime = useEditorStore((s) => s.setLastEditTime);
+  const scrollToLine   = useEditorStore((s) => s.scrollToLine);
+  const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
 
   // The value passed to Monaco: only updated when the path changes (tab switch),
   // never on content edits. Monaco manages its own model content while typing.
@@ -117,6 +121,18 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
       monacoInstance.editor.setTheme(monacoTheme);
     }
   }, [monacoTheme, monacoInstance]);
+
+  // Update font size dynamically when store changes
+  useEffect(() => {
+    editorRef.current?.updateOptions({ fontSize: editorFontSize });
+  }, [editorFontSize]);
+
+  // Scroll editor to line when preview requests it
+  useEffect(() => {
+    if (scrollToLine === null || !editorRef.current) return;
+    editorRef.current.revealLineInCenter(scrollToLine);
+    setScrollToLine(null);
+  }, [scrollToLine, setScrollToLine]);
 
   // Imperatively restore content when a snapshot is loaded
   useEffect(() => {
@@ -203,6 +219,7 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
 
       // Keep the store updated so the preview debounce and dirty indicator work.
       updateTabContent(activeTabPath, value);
+      setLastEditTime(Date.now());
 
       // Auto-save 1.5 s after the last keystroke
       clearTimeout(autoSaveTimer.current);
@@ -222,7 +239,7 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
         }, 200);
       }
     },
-    [activeTabPath, updateTabContent, lspClient, onSave]
+    [activeTabPath, updateTabContent, lspClient, onSave, setLastEditTime]
   );
 
   const handleSlashSelect = useCallback((command: SlashCommand) => {
@@ -296,7 +313,7 @@ export function MonacoEditor({ onSave, onSnapshot, externalContent }: MonacoEdit
         onChange={handleChange}
         onMount={handleMount}
         options={{
-          fontSize: 14,
+          fontSize: editorFontSize,
           fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
           fontLigatures: true,
           lineNumbers: "on",
