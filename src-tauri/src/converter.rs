@@ -363,3 +363,261 @@ pub fn try_pdf_to_typst(src: &str) -> Result<String, String> {
             .join("\n")
     ))
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn convert(md: &str) -> String {
+        markdown_to_typst(md)
+    }
+
+    // ── Headings ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn atx_heading_h1() {
+        assert!(convert("# Hello\n").contains("= Hello"));
+    }
+
+    #[test]
+    fn atx_heading_h2() {
+        assert!(convert("## World\n").contains("== World"));
+    }
+
+    #[test]
+    fn atx_heading_h3() {
+        assert!(convert("### Deep\n").contains("=== Deep"));
+    }
+
+    #[test]
+    fn atx_heading_h4_to_h6() {
+        assert!(convert("#### H4\n").contains("==== H4"));
+        assert!(convert("##### H5\n").contains("===== H5"));
+        assert!(convert("###### H6\n").contains("====== H6"));
+    }
+
+    #[test]
+    fn atx_heading_not_h7() {
+        // 7 hashes is not a heading in CommonMark; treated as paragraph text
+        let out = convert("####### Not a heading\n");
+        assert!(!out.contains("======= Not a heading"));
+    }
+
+    #[test]
+    fn setext_heading_level1() {
+        let out = convert("Title\n=====\n");
+        assert!(out.contains("= Title"));
+    }
+
+    #[test]
+    fn setext_heading_level2() {
+        let out = convert("Subtitle\n--------\n");
+        assert!(out.contains("== Subtitle"));
+    }
+
+    // ── Inline formatting ─────────────────────────────────────────────────────
+
+    #[test]
+    fn bold_double_asterisk() {
+        assert!(convert("**bold**\n").contains("*bold*"));
+    }
+
+    #[test]
+    fn bold_double_underscore() {
+        assert!(convert("__bold__\n").contains("*bold*"));
+    }
+
+    #[test]
+    fn italic_single_asterisk() {
+        let out = convert("*italic*\n");
+        assert!(out.contains("_italic_"));
+    }
+
+    #[test]
+    fn italic_single_underscore() {
+        let out = convert("_italic_\n");
+        assert!(out.contains("_italic_"));
+    }
+
+    #[test]
+    fn inline_code() {
+        assert!(convert("`code`\n").contains("`code`"));
+    }
+
+    #[test]
+    fn link() {
+        let out = convert("[text](https://example.com)\n");
+        assert!(out.contains("#link(\"https://example.com\")[text]"));
+    }
+
+    #[test]
+    fn image() {
+        let out = convert("![alt text](image.png)\n");
+        assert!(out.contains("#image(\"image.png\", alt: \"alt text\")"));
+    }
+
+    #[test]
+    fn image_empty_alt() {
+        let out = convert("![](photo.jpg)\n");
+        assert!(out.contains("#image(\"photo.jpg\", alt: \"\")"));
+    }
+
+    // ── Block elements ────────────────────────────────────────────────────────
+
+    #[test]
+    fn fenced_code_block_with_lang() {
+        let md = "```rust\nfn main() {}\n```\n";
+        let out = convert(md);
+        assert!(out.contains("```rust"));
+        assert!(out.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn fenced_code_block_no_lang() {
+        let md = "```\nsome code\n```\n";
+        let out = convert(md);
+        assert!(out.contains("```\nsome code\n```"));
+    }
+
+    #[test]
+    fn tilde_fenced_code_block() {
+        let md = "~~~\nsome code\n~~~\n";
+        let out = convert(md);
+        assert!(out.contains("some code"));
+    }
+
+    #[test]
+    fn unclosed_code_block_flushed() {
+        let out = convert("```\nunfenced code");
+        assert!(out.contains("unfenced code"));
+    }
+
+    #[test]
+    fn unordered_list_dash() {
+        assert!(convert("- item\n").contains("- item"));
+    }
+
+    #[test]
+    fn unordered_list_asterisk() {
+        assert!(convert("* item\n").contains("- item"));
+    }
+
+    #[test]
+    fn unordered_list_plus() {
+        assert!(convert("+ item\n").contains("- item"));
+    }
+
+    #[test]
+    fn ordered_list() {
+        assert!(convert("1. first\n").contains("+ first"));
+        assert!(convert("2. second\n").contains("+ second"));
+        assert!(convert("10. tenth\n").contains("+ tenth"));
+    }
+
+    #[test]
+    fn ordered_list_parenthesis() {
+        assert!(convert("1) item\n").contains("+ item"));
+    }
+
+    #[test]
+    fn blockquote() {
+        let out = convert("> quoted text\n");
+        assert!(out.contains("#quote[quoted text]"));
+    }
+
+    #[test]
+    fn blockquote_no_space() {
+        let out = convert(">no space\n");
+        assert!(out.contains("#quote[no space]"));
+    }
+
+    #[test]
+    fn horizontal_rule_dashes() {
+        assert!(convert("---\n").contains("#line(length: 100%)"));
+    }
+
+    #[test]
+    fn horizontal_rule_asterisks() {
+        assert!(convert("***\n").contains("#line(length: 100%)"));
+    }
+
+    #[test]
+    fn horizontal_rule_underscores() {
+        assert!(convert("___\n").contains("#line(length: 100%)"));
+    }
+
+    #[test]
+    fn horizontal_rule_many_dashes() {
+        assert!(convert("--------\n").contains("#line(length: 100%)"));
+    }
+
+    #[test]
+    fn markdown_table() {
+        let md = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let out = convert(md);
+        assert!(out.contains("#table("));
+        assert!(out.contains("columns: 2"));
+        assert!(out.contains("[A]"));
+        assert!(out.contains("[B]"));
+        assert!(out.contains("[1]"));
+        assert!(out.contains("[2]"));
+    }
+
+    #[test]
+    fn blank_line_becomes_newline() {
+        let out = convert("a\n\nb\n");
+        assert!(out.contains('\n'));
+    }
+
+    #[test]
+    fn plain_paragraph() {
+        assert_eq!(convert("Hello world\n").trim(), "Hello world");
+    }
+
+    #[test]
+    fn empty_input() {
+        assert_eq!(convert(""), "");
+    }
+
+    // ── parse_heading edge cases ──────────────────────────────────────────────
+
+    #[test]
+    fn heading_no_space_not_matched() {
+        // `#text` (no space) is not a heading
+        let out = convert("#notaheading\n");
+        assert!(!out.starts_with('='));
+    }
+
+    #[test]
+    fn heading_extra_spaces_trimmed() {
+        let out = convert("#   Spaces   \n");
+        assert!(out.contains("= Spaces"));
+    }
+
+    // ── strip_ordered_list edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn not_ordered_list_no_dot() {
+        // "1text" — no dot or paren, so treated as paragraph
+        let out = convert("1text\n");
+        assert!(!out.starts_with('+'));
+    }
+
+    // ── inline: mixed formatting ──────────────────────────────────────────────
+
+    #[test]
+    fn bold_and_italic_combined() {
+        // **bold** _italic_ in same line
+        let out = convert("**bold** and _italic_\n");
+        assert!(out.contains("*bold*"));
+        assert!(out.contains("_italic_"));
+    }
+
+    #[test]
+    fn link_with_bold_label() {
+        let out = convert("[**bold**](url)\n");
+        assert!(out.contains("#link(\"url\")"));
+    }
+}

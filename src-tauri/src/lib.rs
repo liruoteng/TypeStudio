@@ -426,6 +426,179 @@ fn find_tinymist_path(resource_dir: &str) -> String {
         .unwrap_or_else(|| "tinymist".to_string())
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    // ── hash_svg ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn hash_svg_is_deterministic() {
+        let s = "<svg><rect width='100'/></svg>";
+        let h1 = hash_svg(s);
+        let h2 = hash_svg(s);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn hash_svg_differs_for_different_content() {
+        assert_ne!(hash_svg("<svg>a</svg>"), hash_svg("<svg>b</svg>"));
+    }
+
+    #[test]
+    fn hash_svg_empty_string() {
+        let h1 = hash_svg("");
+        let h2 = hash_svg("");
+        assert_eq!(h1, h2);
+    }
+
+    // ── save_snapshot / list_snapshots ────────────────────────────────────────
+
+    #[test]
+    fn save_snapshot_creates_history_entry() {
+        let dir = std::env::temp_dir().join("ts_snap_basic");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("doc.typ");
+        fs::write(&file, "content").unwrap();
+
+        save_snapshot(file.to_string_lossy().to_string()).unwrap();
+
+        let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
+        assert_eq!(snaps.len(), 1);
+        assert!(snaps[0].timestamp > 0);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_snapshots_empty_when_no_history() {
+        let dir = std::env::temp_dir().join("ts_snap_nohistory");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("nosnap.typ");
+        fs::write(&file, "").unwrap();
+
+        let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
+        assert!(snaps.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_snapshots_ordered_newest_first() {
+        let dir = std::env::temp_dir().join("ts_snap_order");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("order.typ");
+        fs::write(&file, "v1").unwrap();
+
+        let hist = dir.join(".history").join("order");
+        fs::create_dir_all(&hist).unwrap();
+        fs::write(hist.join("100.typ"), "older").unwrap();
+        fs::write(hist.join("200.typ"), "newer").unwrap();
+
+        let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
+        assert_eq!(snaps.len(), 2);
+        assert!(snaps[0].timestamp > snaps[1].timestamp, "newest should be first");
+        assert_eq!(snaps[0].timestamp, 200);
+        assert_eq!(snaps[1].timestamp, 100);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_snapshot_prunes_to_50() {
+        let dir = std::env::temp_dir().join("ts_snap_prune");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("prune.typ");
+        fs::write(&file, "latest").unwrap();
+
+        let hist = dir.join(".history").join("prune");
+        fs::create_dir_all(&hist).unwrap();
+        for i in 0u64..55 {
+            fs::write(hist.join(format!("{i}.typ")), format!("v{i}")).unwrap();
+        }
+
+        save_snapshot(file.to_string_lossy().to_string()).unwrap();
+
+        let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
+        assert_eq!(snaps.len(), 50);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_snapshot_no_op_for_nonexistent_file() {
+        let result = save_snapshot("/nonexistent/path/file.typ".to_string());
+        assert!(result.is_ok(), "should silently succeed for missing files");
+    }
+
+    // ── list_dir sorting ──────────────────────────────────────────────────────
+
+    #[test]
+    fn list_dir_sorts_dirs_before_files_then_alphabetically() {
+        let dir = std::env::temp_dir().join("ts_listdir_sort");
+        // Clean up any previous run
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        fs::write(dir.join("b.typ"), "").unwrap();
+        fs::write(dir.join("a.typ"), "").unwrap();
+        fs::create_dir_all(dir.join("zdir")).unwrap();
+        fs::create_dir_all(dir.join("adir")).unwrap();
+
+        let entries = list_dir(dir.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(entries.len(), 4);
+        // First two are directories
+        assert!(entries[0].is_dir);
+        assert!(entries[1].is_dir);
+        // Last two are files
+        assert!(!entries[2].is_dir);
+        assert!(!entries[3].is_dir);
+        // Directories sorted alphabetically
+        assert_eq!(entries[0].name, "adir");
+        assert_eq!(entries[1].name, "zdir");
+        // Files sorted alphabetically
+        assert_eq!(entries[2].name, "a.typ");
+        assert_eq!(entries[3].name, "b.typ");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_dir_excludes_hidden_files() {
+        let dir = std::env::temp_dir().join("ts_listdir_hidden");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        fs::write(dir.join("visible.typ"), "").unwrap();
+        fs::write(dir.join(".hidden"), "").unwrap();
+        fs::create_dir_all(dir.join(".hiddendir")).unwrap();
+
+        let entries = list_dir(dir.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "visible.typ");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── find_tinymist_path ────────────────────────────────────────────────────
+
+    #[test]
+    fn find_tinymist_path_falls_back_to_tinymist_string() {
+        // With a non-existent resource dir, should fall back to "tinymist"
+        let path = find_tinymist_path("/nonexistent/resource/dir");
+        assert!(path.ends_with("tinymist") || path.contains("tinymist"));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let world_arc = Arc::new(Mutex::new(None));

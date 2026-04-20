@@ -168,6 +168,110 @@ fn is_leap(y: i32) -> bool {
 
 // ── Font loading ───────────────────────────────────────────────────────────
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use typst::World;
+
+    /// Creates a temp dir, writes a .typ file with `content`, and returns a
+    /// ready TypstWorld together with the file path and dir path for cleanup.
+    fn make_temp_world(name: &str, content: &str) -> (TypstWorld, PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("main.typ");
+        fs::write(&file, content).unwrap();
+        let world = TypstWorld::new(&file).unwrap();
+        (world, file, dir)
+    }
+
+    // ── is_leap ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn leap_divisible_by_400() {
+        assert!(is_leap(2000));
+        assert!(is_leap(1600));
+    }
+
+    #[test]
+    fn leap_divisible_by_4_not_100() {
+        assert!(is_leap(2024));
+        assert!(is_leap(1996));
+    }
+
+    #[test]
+    fn not_leap_divisible_by_100_not_400() {
+        assert!(!is_leap(1900));
+        assert!(!is_leap(2100));
+    }
+
+    #[test]
+    fn not_leap_not_divisible_by_4() {
+        assert!(!is_leap(2023));
+        assert!(!is_leap(2019));
+    }
+
+    // ── date_from_unix ────────────────────────────────────────────────────────
+
+    #[test]
+    fn date_from_unix_epoch_is_1970_01_01() {
+        let d = date_from_unix(0).unwrap();
+        assert_eq!(d, Datetime::from_ymd(1970, 1, 1).unwrap());
+    }
+
+    #[test]
+    fn date_from_unix_one_day() {
+        let d = date_from_unix(86400).unwrap();
+        assert_eq!(d, Datetime::from_ymd(1970, 1, 2).unwrap());
+    }
+
+    #[test]
+    fn date_from_unix_year_2000() {
+        // 2000-01-01 = 10957 days since 1970-01-01
+        let secs = 10957i64 * 86400;
+        let d = date_from_unix(secs).unwrap();
+        assert_eq!(d, Datetime::from_ymd(2000, 1, 1).unwrap());
+    }
+
+    #[test]
+    fn date_from_unix_leap_day_2024() {
+        // 2024-02-29 = day 19782 since Unix epoch
+        let secs = 19782i64 * 86400;
+        let d = date_from_unix(secs).unwrap();
+        assert_eq!(d, Datetime::from_ymd(2024, 2, 29).unwrap());
+    }
+
+    // ── TypstWorld lifecycle ──────────────────────────────────────────────────
+
+    #[test]
+    fn world_new_sets_correct_root() {
+        let (world, _, dir) = make_temp_world("typst_world_root_test", "");
+        assert_eq!(world.root(), dir.as_path());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn world_set_source_updates_main_file() {
+        let (mut world, file, dir) = make_temp_world("typst_world_setsource_test", "original");
+        world.set_source(&file, "updated content").unwrap();
+        let src = world.source(world.main()).unwrap();
+        assert_eq!(src.text(), "updated content");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn world_source_reads_disk_file() {
+        // Verify source() reads from disk when the file hasn't been set in-memory.
+        let (world, _, dir) = make_temp_world("typst_world_disk_test", "disk content");
+        let src = world.source(world.main()).unwrap();
+        assert_eq!(src.text(), "disk content");
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
 fn load_fonts() -> (FontBook, Vec<Font>) {
     let mut book = FontBook::new();
     let mut fonts = Vec::new();
