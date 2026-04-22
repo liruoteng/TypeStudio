@@ -78,6 +78,19 @@ export function StatusBar({
   return (
     <div className="status-bar">
       <div className="status-left">
+        <span
+          className={`lsp-indicator lsp-${lspStatus}`}
+          title={`Tinymist LSP: ${lspStatus}`}
+        >
+          ◉ Tinymist: {lspStatus}
+        </span>
+        {errorCount > 0 && (
+          <span className="status-errors">✗ {errorCount}</span>
+        )}
+        {warningCount > 0 && (
+          <span className="status-warnings">⚠ {warningCount}</span>
+        )}
+
         {/* History/version button */}
         <button
           className="status-history-btn"
@@ -129,18 +142,6 @@ export function StatusBar({
           </button>
         </div>
 
-        <span
-          className={`lsp-indicator lsp-${lspStatus}`}
-          title={`Tinymist LSP: ${lspStatus}`}
-        >
-          ◉ Tinymist: {lspStatus}
-        </span>
-        {errorCount > 0 && (
-          <span className="status-errors">✗ {errorCount}</span>
-        )}
-        {warningCount > 0 && (
-          <span className="status-warnings">⚠ {warningCount}</span>
-        )}
       </div>
 
       <div className="status-right">

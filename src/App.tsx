@@ -47,11 +47,19 @@ export default function App() {
       const { setPreviewError } = useEditorStore.getState();
       setPreviewError(e.payload.message);
     });
+    const unlisten3 = listen("menu:toggle-sidecar-preview", () => {
+      const { useSidecarPreview, setUseSidecarPreview } = useEditorStore.getState();
+      setUseSidecarPreview(!useSidecarPreview);
+    });
     return () => {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
+      unlisten3.then((f) => f());
     };
   }, []);
+
+  // ── Native menu event listeners ───────────────────────────────────────────
+  // Wired below in a separate effect so closures capture the right callbacks.
 
   // History panel
   const [showHistory, setShowHistory] = useState(false);
@@ -231,6 +239,87 @@ export default function App() {
     prevPreviewWidthRef.current = previewWidth;
   }, [previewWidth, handlePreviewTrigger]);
 
+  // ── Native menu wiring ───────────────────────────────────────────────────
+  // Store is authoritative: Monaco mirrors every keystroke into the tab's
+  // content, so menu-triggered saves read the latest text from the store.
+  useEffect(() => {
+    const unlisteners: Promise<() => void>[] = [];
+
+    unlisteners.push(listen("menu:new-file", () => handleNewFile()));
+
+    unlisteners.push(listen("menu:open-file", async () => {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({ multiple: false });
+        if (typeof selected !== "string") return;
+        const content = await invoke<string>("read_file", { path: selected });
+        const name = selected.split("/").pop() ?? selected;
+        useEditorStore.getState().openTab(selected, name, content);
+      } catch (e) {
+        console.error("open file error", e);
+      }
+    }));
+
+    unlisteners.push(listen("menu:open-folder", async () => {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({ directory: true, multiple: false });
+        if (typeof selected === "string") {
+          useEditorStore.getState().setWorkspacePath(selected);
+        }
+      } catch (e) {
+        console.error("open folder error", e);
+      }
+    }));
+
+    unlisteners.push(listen("menu:save", async () => {
+      const tab = useEditorStore.getState().activeTab();
+      if (!tab) return;
+      await handleSave(tab.path, tab.content);
+      handleSnapshot(tab.path);
+    }));
+
+    unlisteners.push(listen("menu:save-all", async () => {
+      const tabs = useEditorStore.getState().tabs.filter((t) => t.isDirty && !t.isTemp);
+      for (const t of tabs) {
+        await handleSave(t.path, t.content);
+        handleSnapshot(t.path);
+      }
+    }));
+
+    unlisteners.push(listen("menu:close-tab", () => {
+      const path = useEditorStore.getState().activeTabPath;
+      if (path) useEditorStore.getState().closeTab(path);
+    }));
+
+    unlisteners.push(listen("menu:export-pdf", () => handleExportPdf()));
+
+    unlisteners.push(listen("menu:toggle-sidebar", () => {
+      setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0));
+    }));
+
+    unlisteners.push(listen("menu:toggle-preview", () => {
+      setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0));
+    }));
+
+    unlisteners.push(listen("menu:toggle-outline", () => {
+      setShowToc((v) => !v);
+    }));
+
+    unlisteners.push(listen("menu:toggle-writing-mode", () => {
+      // TODO: wire up writing-mode once implemented.
+      console.info("writing-mode toggle not implemented yet");
+    }));
+
+    unlisteners.push(listen("menu:toggle-history", () => {
+      setShowHistory((v) => !v);
+    }));
+
+    return () => {
+      unlisteners.forEach((p) => p.then((f) => f()));
+    };
+  }, [handleNewFile, handleSave, handleSnapshot, handleExportPdf]);
+
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
@@ -327,7 +416,6 @@ const PreviewHeader = memo(function PreviewHeader({
   const setZoom       = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
   const useSidecar    = useEditorStore((s) => s.useSidecarPreview);
-  const setUseSidecar = useEditorStore((s) => s.setUseSidecarPreview);
   const isMd          = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
   const isTypst       = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
@@ -373,24 +461,8 @@ const PreviewHeader = memo(function PreviewHeader({
         </span>
       )}
 
-      {/* ToC toggle + zoom + recompile cluster, pushed to the right */}
+      {/* Recompile + zoom cluster, outline toggle last */}
       <div className="preview-zoom-controls">
-        <button
-          className={`preview-icon-btn${useSidecar ? " preview-icon-btn--active" : ""}`}
-          onClick={() => setUseSidecar(!useSidecar)}
-          title={useSidecar ? "Using sidecar preview (tinymist). Click to switch to in-process SVG." : "Using in-process SVG preview. Click to switch to sidecar (tinymist)."}
-        >
-          ⚡
-        </button>
-        <span className="preview-zoom-sep" />
-        <button
-          className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
-          onClick={onToggleToc}
-          title={showToc ? "Show preview" : "Show table of contents"}
-        >
-          ☰
-        </button>
-        <span className="preview-zoom-sep" />
         {!showToc && (
           <>
             <button
@@ -401,32 +473,44 @@ const PreviewHeader = memo(function PreviewHeader({
             >
               {loading ? <span className="spin">⟳</span> : "▶"}
             </button>
+            {!useSidecar && (
+              <>
+                <span className="preview-zoom-sep" />
+                <button
+                  className="preview-icon-btn"
+                  onClick={zoomOut}
+                  disabled={zoom <= ZOOM_MIN}
+                  title="Zoom out"
+                >
+                  −
+                </button>
+                <button
+                  className="preview-zoom-pct"
+                  onClick={zoomReset}
+                  title="Reset zoom to 100%"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  className="preview-icon-btn"
+                  onClick={zoomIn}
+                  disabled={zoom >= ZOOM_MAX}
+                  title="Zoom in"
+                >
+                  +
+                </button>
+              </>
+            )}
             <span className="preview-zoom-sep" />
-            <button
-              className="preview-icon-btn"
-              onClick={zoomOut}
-              disabled={zoom <= ZOOM_MIN}
-              title="Zoom out"
-            >
-              −
-            </button>
-            <button
-              className="preview-zoom-pct"
-              onClick={zoomReset}
-              title="Reset zoom to 100%"
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-            <button
-              className="preview-icon-btn"
-              onClick={zoomIn}
-              disabled={zoom >= ZOOM_MAX}
-              title="Zoom in"
-            >
-              +
-            </button>
           </>
         )}
+        <button
+          className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
+          onClick={onToggleToc}
+          title={showToc ? "Show preview" : "Show table of contents"}
+        >
+          ☰
+        </button>
       </div>
     </div>
   );

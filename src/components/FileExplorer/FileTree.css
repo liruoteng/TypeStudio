@@ -172,6 +172,10 @@
 .rb-icon     { color: #cc342d; font-weight: 700; font-size: 9px; }
 .swift-icon  { color: #f05138; font-weight: 700; font-size: 9px; }
 .kt-icon     { color: #7f52ff; font-weight: 700; font-size: 9px; }
+.php-icon    { color: #777bb4; font-weight: 700; font-size: 9px; }
+.r-icon      { color: #276dc3; font-weight: 700; font-size: 10px; }
+.cs-icon     { color: #68217a; font-weight: 700; font-size: 9px; }
+.xml-icon    { color: #e37933; font-weight: 700; font-size: 10px; }
 .txt-icon    { color: var(--text-muted); font-size: 10px; }
 .zip-icon    { color: #e8b455; font-size: 10px; }
 .dir-icon    { color: var(--icon-dir, #e8c07d); }

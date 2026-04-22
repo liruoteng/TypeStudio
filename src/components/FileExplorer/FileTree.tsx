@@ -32,6 +32,10 @@ function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
   if (ext === "rb") return <span className="file-icon rb-icon">Rb</span>;
   if (ext === "swift") return <span className="file-icon swift-icon">Sw</span>;
   if (ext === "kt") return <span className="file-icon kt-icon">Kt</span>;
+  if (ext === "php") return <span className="file-icon php-icon">Ph</span>;
+  if (ext === "r") return <span className="file-icon r-icon">R</span>;
+  if (ext === "cs") return <span className="file-icon cs-icon">C#</span>;
+  if (ext === "xml") return <span className="file-icon xml-icon">X</span>;
   if (ext === "txt") return <span className="file-icon txt-icon">≡</span>;
   if (["zip", "tar", "gz", "bz2", "7z", "rar"].includes(ext)) return <span className="file-icon zip-icon">⊞</span>;
   return <span className="file-icon generic-icon">·</span>;

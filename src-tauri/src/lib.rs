@@ -8,6 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 // ── Managed state ──────────────────────────────────────────────────────────
@@ -671,6 +672,95 @@ pub fn run() {
             eprintln!("[setup] Using tinymist at: {tinymist_path}");
 
             *app.state::<AppState>().tinymist_path.lock().unwrap() = tinymist_path.clone();
+
+            // ── Native menu ──────────────────────────────────────────────
+            // Items that mirror in-app actions emit `menu:<id>` events; the
+            // frontend listens for them and runs the same handler the button
+            // or shortcut would. Accelerators are assigned in the menu (not
+            // in the editor/React) so macOS shows them and dispatches them.
+            let handle = app.handle();
+
+            let m_new_file      = MenuItemBuilder::new("New File").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
+            let m_open_file     = MenuItemBuilder::new("Open File…").id("open-file").accelerator("CmdOrCtrl+O").build(handle)?;
+            let m_open_folder   = MenuItemBuilder::new("Open Folder…").id("open-folder").accelerator("CmdOrCtrl+Shift+O").build(handle)?;
+            let m_save          = MenuItemBuilder::new("Save").id("save").accelerator("CmdOrCtrl+S").build(handle)?;
+            let m_save_all      = MenuItemBuilder::new("Save All").id("save-all").accelerator("CmdOrCtrl+Alt+S").build(handle)?;
+            let m_close_tab     = MenuItemBuilder::new("Close Tab").id("close-tab").accelerator("CmdOrCtrl+W").build(handle)?;
+            let m_export_pdf    = MenuItemBuilder::new("Export PDF…").id("export-pdf").accelerator("CmdOrCtrl+E").build(handle)?;
+
+            let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar").id("toggle-sidebar").accelerator("CmdOrCtrl+B").build(handle)?;
+            let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
+            let m_toggle_outline = MenuItemBuilder::new("Toggle Outline").id("toggle-outline").build(handle)?;
+            let m_toggle_writing = MenuItemBuilder::new("Toggle Writing Mode").id("toggle-writing-mode").build(handle)?;
+            let m_toggle_sidecar = MenuItemBuilder::new("Toggle Sidecar Preview").id("toggle-sidecar-preview").accelerator("CmdOrCtrl+Shift+P").build(handle)?;
+            let m_show_history   = MenuItemBuilder::new("Toggle File History").id("toggle-history").build(handle)?;
+
+            let file_menu = SubmenuBuilder::new(handle, "File")
+                .item(&m_new_file)
+                .item(&m_open_file)
+                .item(&m_open_folder)
+                .separator()
+                .item(&m_save)
+                .item(&m_save_all)
+                .separator()
+                .item(&m_export_pdf)
+                .separator()
+                .item(&m_close_tab)
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(handle, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let view_menu = SubmenuBuilder::new(handle, "View")
+                .item(&m_toggle_sidebar)
+                .item(&m_toggle_preview)
+                .item(&m_toggle_outline)
+                .separator()
+                .item(&m_toggle_writing)
+                .separator()
+                .item(&m_show_history)
+                .item(&m_toggle_sidecar)
+                .build()?;
+
+            let app_menu = SubmenuBuilder::new(handle, "Type Studio")
+                .about(Some(AboutMetadata::default()))
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let window_menu = SubmenuBuilder::new(handle, "Window")
+                .minimize()
+                .close_window()
+                .build()?;
+            let menu = MenuBuilder::new(handle)
+                .items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])
+                .build()?;
+            app.set_menu(menu)?;
+            app.on_menu_event(|app, event| {
+                let id = event.id().as_ref();
+                // Every app-owned item simply forwards a `menu:<id>` event.
+                match id {
+                    "new-file" | "open-file" | "open-folder" | "save" | "save-all"
+                    | "close-tab" | "export-pdf" | "toggle-sidebar" | "toggle-preview"
+                    | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
+                    | "toggle-history" => {
+                        let _ = app.emit(&format!("menu:{id}"), ());
+                    }
+                    _ => {}
+                }
+            });
 
             // Spawn compile actor
             tauri::async_runtime::spawn(compile_actor(compile_rx, world_arc, app.handle().clone()));
