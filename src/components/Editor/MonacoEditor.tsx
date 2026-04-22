@@ -240,7 +240,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       // drop to 80 ms in that mode — feels live. Otherwise 1.5 s is fine
       // because the in-process SVG path compiles from memory on a shorter
       // timer above.
-      const autoSaveMs = useEditorStore.getState().useSidecarPreview ? 80 : 1500;
+      const autoSaveMs = useEditorStore.getState().useSidecarPreview ? 0 : 1500;
       clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = setTimeout(() => {
         if (onSave) onSave(activeTabPath, value);
