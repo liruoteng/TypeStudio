@@ -16,6 +16,7 @@ import "./PreviewPanel.css";
  */
 export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const theme = useEditorStore((s) => s.theme);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +36,12 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
     setError(null);
     setUrl(null);
 
-    invoke<string>("start_sidecar_preview", { path: activeTabPath })
+    // Map app theme to tinymist's --invert-colors so the PDF background
+    // follows the app rather than the OS. "dark" theme → inverted PDF;
+    // "claude" (light) theme → normal white background.
+    const invertColors = theme === "dark" ? "always" : "never";
+
+    invoke<string>("start_sidecar_preview", { path: activeTabPath, invertColors })
       .then((serverUrl) => {
         if (reqIdRef.current !== id) return;
         setUrl(serverUrl);
@@ -44,7 +50,7 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
         if (reqIdRef.current !== id) return;
         setError(typeof e === "string" ? e : String(e));
       });
-  }, [activeTabPath]);
+  }, [activeTabPath, theme]);
 
   // On unmount, shut down the child. Re-activations will restart it.
   useEffect(() => {

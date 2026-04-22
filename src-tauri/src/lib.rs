@@ -375,11 +375,12 @@ fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Resul
 #[tauri::command]
 async fn start_sidecar_preview(
     path: String,
+    invert_colors: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let tinymist = state.tinymist_path.lock().unwrap().clone();
     let sidecar = state.preview_sidecar.clone();
-    preview_sidecar::start(&sidecar, &tinymist, &path).await
+    preview_sidecar::start(&sidecar, &tinymist, &path, &invert_colors).await
 }
 
 #[tauri::command]

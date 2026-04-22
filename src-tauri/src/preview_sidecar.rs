@@ -20,6 +20,7 @@ pub struct PreviewSidecar {
     child: Option<Child>,
     url: Option<String>,
     path: Option<String>,
+    invert_colors: Option<String>,
 }
 
 pub type SharedSidecar = Arc<Mutex<PreviewSidecar>>;
@@ -33,6 +34,7 @@ impl PreviewSidecar {
         }
         self.url = None;
         self.path = None;
+        self.invert_colors = None;
     }
 }
 
@@ -43,11 +45,14 @@ pub async fn start(
     sidecar: &SharedSidecar,
     tinymist_path: &str,
     input_path: &str,
+    invert_colors: &str,
 ) -> Result<String, String> {
     let mut guard = sidecar.lock().await;
 
-    // Same file already running? Reuse.
-    if guard.path.as_deref() == Some(input_path) {
+    // Reuse only if both the file *and* the invert-colors setting are unchanged.
+    let same_path = guard.path.as_deref() == Some(input_path);
+    let same_invert = guard.invert_colors.as_deref() == Some(invert_colors);
+    if same_path && same_invert {
         if let Some(url) = guard.url.clone() {
             return Ok(url);
         }
@@ -69,7 +74,7 @@ pub async fn start(
         .arg("--data-plane-host").arg("127.0.0.1:0")
         .arg("--control-plane-host").arg("127.0.0.1:0")
         .arg("--root").arg(&root)
-        .arg("--invert-colors").arg("auto")
+        .arg("--invert-colors").arg(invert_colors)
         .arg(input_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -106,6 +111,7 @@ pub async fn start(
     guard.child = Some(child);
     guard.url = Some(url.clone());
     guard.path = Some(input_path.to_string());
+    guard.invert_colors = Some(invert_colors.to_string());
 
     Ok(url)
 }
