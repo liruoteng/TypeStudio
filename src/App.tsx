@@ -7,6 +7,7 @@ import { Toolbar } from "./components/Layout/Toolbar";
 import { FileTree } from "./components/FileExplorer/FileTree";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
+import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { useEditorStore } from "./stores/editorStore";
@@ -279,7 +280,7 @@ export default function App() {
           <div className="preview-column" style={{ width: previewWidth }}>
             <PreviewHeader showToc={showToc} onToggleToc={() => setShowToc((v) => !v)} />
             <div className="preview-area">
-              {showToc ? <TableOfContents /> : <PreviewPanel />}
+              {showToc ? <TableOfContents /> : <PreviewBody />}
             </div>
           </div>
         ) : (
@@ -297,6 +298,12 @@ export default function App() {
     </div>
   );
 }
+
+/** Chooses sidecar iframe vs in-process SVG preview based on store flag. */
+const PreviewBody = memo(function PreviewBody() {
+  const useSidecar = useEditorStore((s) => s.useSidecarPreview);
+  return useSidecar ? <SidecarPreviewPanel /> : <PreviewPanel />;
+});
 
 const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;
@@ -319,6 +326,8 @@ const PreviewHeader = memo(function PreviewHeader({
   const zoom          = useEditorStore((s) => s.previewZoom);
   const setZoom       = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
+  const useSidecar    = useEditorStore((s) => s.useSidecarPreview);
+  const setUseSidecar = useEditorStore((s) => s.setUseSidecarPreview);
   const isMd          = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
   const isTypst       = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
@@ -366,6 +375,14 @@ const PreviewHeader = memo(function PreviewHeader({
 
       {/* ToC toggle + zoom + recompile cluster, pushed to the right */}
       <div className="preview-zoom-controls">
+        <button
+          className={`preview-icon-btn${useSidecar ? " preview-icon-btn--active" : ""}`}
+          onClick={() => setUseSidecar(!useSidecar)}
+          title={useSidecar ? "Using sidecar preview (tinymist). Click to switch to in-process SVG." : "Using in-process SVG preview. Click to switch to sidecar (tinymist)."}
+        >
+          ⚡
+        </button>
+        <span className="preview-zoom-sep" />
         <button
           className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
           onClick={onToggleToc}

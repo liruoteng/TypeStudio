@@ -1,5 +1,6 @@
 mod converter;
 mod lsp_bridge;
+mod preview_sidecar;
 mod typst_world;
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ pub struct AppState {
     pub compile_tx: tokio::sync::watch::Sender<Option<CompileRequest>>,
     /// Persistent in-process Typst compiler world — shared with the compile actor.
     pub typst_world: Arc<Mutex<Option<typst_world::TypstWorld>>>,
+    /// Sidecar preview server (alternative high-performance preview path).
+    pub preview_sidecar: preview_sidecar::SharedSidecar,
 }
 
 // ── File system commands ───────────────────────────────────────────────────
@@ -363,6 +366,28 @@ fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Resul
     state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
 }
 
+// ── Sidecar preview ────────────────────────────────────────────────────────
+//
+// Starts/stops a `tinymist preview` child process. The frontend embeds the
+// returned URL in an <iframe>, inheriting tinymist's full incremental
+// rendering pipeline (vector-IR deltas + WASM renderer).
+
+#[tauri::command]
+async fn start_sidecar_preview(
+    path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let tinymist = state.tinymist_path.lock().unwrap().clone();
+    let sidecar = state.preview_sidecar.clone();
+    preview_sidecar::start(&sidecar, &tinymist, &path).await
+}
+
+#[tauri::command]
+async fn stop_sidecar_preview(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    preview_sidecar::stop(&state.preview_sidecar).await;
+    Ok(())
+}
+
 // ── export_pdf ─────────────────────────────────────────────────────────────
 
 /// Compile a .typ file to PDF and save to `dest_path`.
@@ -612,6 +637,7 @@ pub fn run() {
             tinymist_path: Mutex::new(String::new()),
             compile_tx,
             typst_world: Arc::clone(&world_arc),
+            preview_sidecar: Arc::new(tokio::sync::Mutex::new(preview_sidecar::PreviewSidecar::default())),
         })
         .invoke_handler(tauri::generate_handler![
             read_file,
@@ -622,6 +648,8 @@ pub fn run() {
             list_dir,
             update_preview_source,
             trigger_preview_compile,
+            start_sidecar_preview,
+            stop_sidecar_preview,
             export_pdf,
             save_snapshot,
             list_snapshots,

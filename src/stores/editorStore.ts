@@ -39,6 +39,11 @@ interface EditorState {
   setPreviewError: (err: string | null) => void;
   setPreviewZoom: (zoom: number) => void;
 
+  // Sidecar preview: when true, render an <iframe> pointing at a
+  // `tinymist preview` child process instead of compiling SVG in-process.
+  useSidecarPreview: boolean;
+  setUseSidecarPreview: (v: boolean) => void;
+
   // Workspace
   workspacePath: string | null;
   setWorkspacePath: (path: string) => void;
@@ -109,6 +114,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPreviewLoading: (v) => set({ previewLoading: v }),
   setPreviewError: (err) => set({ previewError: err, previewLoading: false, compileStatus: "error" }),
   setPreviewZoom: (zoom) => set({ previewZoom: Math.min(4, Math.max(0.25, zoom)) }),
+
+  useSidecarPreview: (localStorage.getItem("use-sidecar-preview") ?? "1") === "1",
+  setUseSidecarPreview: (v) => {
+    localStorage.setItem("use-sidecar-preview", v ? "1" : "0");
+    set({ useSidecarPreview: v });
+  },
 
   workspacePath: null,
   setWorkspacePath: (path) => set({ workspacePath: path }),
