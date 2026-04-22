@@ -236,11 +236,15 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         }, 50);
       }
 
-      // Auto-save 1.5 s after the last keystroke
+      // Auto-save debounce. Sidecar preview watches the file on disk, so we
+      // drop to 80 ms in that mode — feels live. Otherwise 1.5 s is fine
+      // because the in-process SVG path compiles from memory on a shorter
+      // timer above.
+      const autoSaveMs = useEditorStore.getState().useSidecarPreview ? 80 : 1500;
       clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = setTimeout(() => {
         if (onSave) onSave(activeTabPath, value);
-      }, 1500);
+      }, autoSaveMs);
 
       // Notify LSP of content change — debounced to avoid serializing the full
       // document text on every keystroke, which stalls the event loop for large files.
