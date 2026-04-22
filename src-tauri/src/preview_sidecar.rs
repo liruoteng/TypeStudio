@@ -6,6 +6,7 @@
 //! (IncrSvgDocServer + typst.ts WASM renderer) for free, at the cost of
 //! an extra process per opened document.
 
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -54,13 +55,20 @@ pub async fn start(
 
     guard.stop().await;
 
+    // Resolve the project root so absolute imports (`#import "/foo.typ"`)
+    // work. Defaults to the input file's parent directory.
+    let root = Path::new(input_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
     let mut child = Command::new(tinymist_path)
         .arg("preview")
         .arg("--no-open")
         // Let the OS pick free ports — avoids clashes across documents / runs.
         .arg("--data-plane-host").arg("127.0.0.1:0")
         .arg("--control-plane-host").arg("127.0.0.1:0")
-        .arg("--partial-rendering").arg("true")
+        .arg("--root").arg(&root)
         .arg("--invert-colors").arg("auto")
         .arg(input_path)
         .stdin(Stdio::null())
