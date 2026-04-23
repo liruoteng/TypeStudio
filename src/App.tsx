@@ -10,6 +10,7 @@ import { PreviewPanel } from "./components/Preview/PreviewPanel";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
+import { SettingsDialog } from "./components/Settings/SettingsDialog";
 import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
@@ -68,10 +69,26 @@ export default function App() {
   // Table of Contents toggle
   const [showToc, setShowToc] = useState(false);
 
+  // Settings dialog
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Hydrate persisted settings once on mount
+  useEffect(() => {
+    useEditorStore.getState().hydrateSettings();
+  }, []);
+
+  // While a splitter is being dragged we render a full-window overlay. This
+  // (a) keeps the cursor as col-resize everywhere, and (b) prevents child
+  // frames like the sidecar preview <iframe> or the Monaco editor from
+  // swallowing mousemove events — without the overlay the drag stalls as
+  // soon as the cursor crosses into the iframe.
+  const [isResizing, setIsResizing] = useState(false);
+
   // ── Resizable sidebar ─────────────────────────────────────────────────────
   const startSidebarResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      setIsResizing(true);
       const startX = e.clientX;
       const startW = sidebarWidth === 0 ? MIN_SIDEBAR : sidebarWidth;
       const onMove = (ev: MouseEvent) => {
@@ -79,6 +96,7 @@ export default function App() {
         setSidebarWidth(next < SIDEBAR_COLLAPSE ? 0 : Math.max(next, MIN_SIDEBAR));
       };
       const onUp = () => {
+        setIsResizing(false);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -92,6 +110,7 @@ export default function App() {
   const startPreviewResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      setIsResizing(true);
       const startX = e.clientX;
       const startW = previewWidth === 0 ? PREVIEW_DEFAULT : previewWidth;
       const onMove = (ev: MouseEvent) => {
@@ -99,6 +118,7 @@ export default function App() {
         setPreviewWidth(next < PREVIEW_SNAP_CLOSE ? 0 : Math.max(next, PREVIEW_SNAP_CLOSE));
       };
       const onUp = () => {
+        setIsResizing(false);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -315,6 +335,10 @@ export default function App() {
       setShowHistory((v) => !v);
     }));
 
+    unlisteners.push(listen("menu:open-settings", () => {
+      setShowSettings(true);
+    }));
+
     return () => {
       unlisteners.forEach((p) => p.then((f) => f()));
     };
@@ -384,6 +408,20 @@ export default function App() {
       </div>
 
       <StatusBar lspStatus={lspStatus} onShowHistory={() => setShowHistory((v) => !v)} />
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {isResizing && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            cursor: "col-resize",
+            // Transparent but hit-testable — swallows mousemove so iframes
+            // and the editor don't steal the drag.
+            background: "transparent",
+          }}
+        />
+      )}
     </div>
   );
 }

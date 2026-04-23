@@ -61,6 +61,14 @@ fn write_file(path: String, contents: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    if Path::new(&path).exists() {
+        return Err(format!("Destination already exists: {path}"));
+    }
+    fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn create_file(path: String) -> Result<(), String> {
     fs::write(&path, "").map_err(|e| e.to_string())
 }
@@ -175,6 +183,36 @@ fn delete_path(path: String) -> Result<(), String> {
     }
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_child = entry.path();
+        let dst_child = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&src_child, &dst_child)?;
+        } else {
+            fs::copy(&src_child, &dst_child)?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn copy_path(src: String, dest: String) -> Result<(), String> {
+    let s = Path::new(&src);
+    let d = Path::new(&dest);
+    if d.exists() {
+        return Err(format!("Destination already exists: {dest}"));
+    }
+    if s.is_dir() {
+        copy_dir_recursive(s, d).map_err(|e| e.to_string())
+    } else {
+        fs::copy(s, d).map(|_| ()).map_err(|e| e.to_string())
+    }
+}
+
 #[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
     Command::new("open")
@@ -183,6 +221,32 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+// ── App settings (persisted to config dir) ─────────────────────────────────
+
+fn settings_file_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+#[tauri::command]
+fn read_settings(app: tauri::AppHandle) -> Result<String, String> {
+    let p = settings_file_path(&app)?;
+    if !p.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_settings(app: tauri::AppHandle, contents: String) -> Result<(), String> {
+    let p = settings_file_path(&app)?;
+    fs::write(&p, contents).map_err(|e| e.to_string())
 }
 
 // ── File conversion ────────────────────────────────────────────────────────
@@ -645,6 +709,7 @@ pub fn run() {
             read_file,
             read_file_bytes,
             write_file,
+            write_file_bytes,
             create_file,
             create_dir,
             list_dir,
@@ -656,9 +721,12 @@ pub fn run() {
             save_snapshot,
             list_snapshots,
             rename_path,
+            copy_path,
             delete_path,
             reveal_in_finder,
             convert_to_typst,
+            read_settings,
+            write_settings,
         ])
         .setup(move |app| {
             let resource_dir = app
@@ -729,8 +797,12 @@ pub fn run() {
                 .item(&m_toggle_sidecar)
                 .build()?;
 
+            let m_settings = MenuItemBuilder::new("Settings…").id("open-settings").accelerator("CmdOrCtrl+,").build(handle)?;
+
             let app_menu = SubmenuBuilder::new(handle, "Type Studio")
                 .about(Some(AboutMetadata::default()))
+                .separator()
+                .item(&m_settings)
                 .separator()
                 .services()
                 .separator()
@@ -755,7 +827,7 @@ pub fn run() {
                     "new-file" | "open-file" | "open-folder" | "save" | "save-all"
                     | "close-tab" | "export-pdf" | "toggle-sidebar" | "toggle-preview"
                     | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
-                    | "toggle-history" => {
+                    | "toggle-history" | "open-settings" => {
                         let _ = app.emit(&format!("menu:{id}"), ());
                     }
                     _ => {}

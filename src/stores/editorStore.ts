@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import type { LspStatus } from "../components/Editor/lsp-client";
 
 export interface Tab {
@@ -61,6 +62,23 @@ interface EditorState {
   // Editor settings
   editorFontSize: number;
   setEditorFontSize: (size: number) => void;
+  editorTabSize: number;
+  setEditorTabSize: (n: number) => void;
+  editorWordWrap: boolean;
+  setEditorWordWrap: (v: boolean) => void;
+  editorMinimap: boolean;
+  setEditorMinimap: (v: boolean) => void;
+  editorLineNumbers: boolean;
+  setEditorLineNumbers: (v: boolean) => void;
+
+  // General settings
+  confirmOnClose: boolean;
+  setConfirmOnClose: (v: boolean) => void;
+  defaultPreviewZoom: number;
+  setDefaultPreviewZoom: (n: number) => void;
+
+  // Persisted settings lifecycle
+  hydrateSettings: () => Promise<void>;
 
   // Metrics
   lastEditTime: number | null;
@@ -76,11 +94,37 @@ interface EditorState {
   activeTab: () => Tab | null;
 }
 
+// ── Settings persistence ────────────────────────────────────────────────────
+// Keys persisted to disk via Tauri (settings.json in app config dir).
+const PERSISTED_KEYS = [
+  "theme",
+  "editorFontSize",
+  "editorTabSize",
+  "editorWordWrap",
+  "editorMinimap",
+  "editorLineNumbers",
+  "useSidecarPreview",
+  "defaultPreviewZoom",
+  "confirmOnClose",
+] as const;
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+function schedulePersist(getState: () => EditorState) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const s = getState();
+    const payload: Record<string, unknown> = {};
+    for (const k of PERSISTED_KEYS) payload[k] = (s as unknown as Record<string, unknown>)[k];
+    invoke("write_settings", { contents: JSON.stringify(payload, null, 2) }).catch(console.error);
+  }, 150);
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   theme: (localStorage.getItem("app-theme") as AppTheme | null) ?? "dark",
   setTheme: (theme) => {
     localStorage.setItem("app-theme", theme);
     set({ theme });
+    schedulePersist(get);
   },
 
   lspStatus: "disconnected",
@@ -119,6 +163,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setUseSidecarPreview: (v) => {
     localStorage.setItem("use-sidecar-preview", v ? "1" : "0");
     set({ useSidecarPreview: v });
+    schedulePersist(get);
   },
 
   workspacePath: null,
@@ -181,7 +226,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
 
   editorFontSize: 14,
-  setEditorFontSize: (size) => set({ editorFontSize: Math.min(32, Math.max(8, size)) }),
+  setEditorFontSize: (size) => {
+    set({ editorFontSize: Math.min(32, Math.max(8, size)) });
+    schedulePersist(get);
+  },
+  editorTabSize: 2,
+  setEditorTabSize: (n) => {
+    set({ editorTabSize: Math.min(8, Math.max(1, Math.round(n))) });
+    schedulePersist(get);
+  },
+  editorWordWrap: true,
+  setEditorWordWrap: (v) => { set({ editorWordWrap: v }); schedulePersist(get); },
+  editorMinimap: true,
+  setEditorMinimap: (v) => { set({ editorMinimap: v }); schedulePersist(get); },
+  editorLineNumbers: true,
+  setEditorLineNumbers: (v) => { set({ editorLineNumbers: v }); schedulePersist(get); },
+
+  confirmOnClose: true,
+  setConfirmOnClose: (v) => { set({ confirmOnClose: v }); schedulePersist(get); },
+  defaultPreviewZoom: 1,
+  setDefaultPreviewZoom: (n) => {
+    set({ defaultPreviewZoom: Math.min(4, Math.max(0.25, n)) });
+    schedulePersist(get);
+  },
+
+  hydrateSettings: async () => {
+    try {
+      const raw = await invoke<string>("read_settings");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<Record<(typeof PERSISTED_KEYS)[number], unknown>>;
+      const patch: Partial<EditorState> = {};
+      if (typeof parsed.theme === "string") patch.theme = parsed.theme as AppTheme;
+      if (typeof parsed.editorFontSize === "number") patch.editorFontSize = parsed.editorFontSize;
+      if (typeof parsed.editorTabSize === "number") patch.editorTabSize = parsed.editorTabSize;
+      if (typeof parsed.editorWordWrap === "boolean") patch.editorWordWrap = parsed.editorWordWrap;
+      if (typeof parsed.editorMinimap === "boolean") patch.editorMinimap = parsed.editorMinimap;
+      if (typeof parsed.editorLineNumbers === "boolean") patch.editorLineNumbers = parsed.editorLineNumbers;
+      if (typeof parsed.useSidecarPreview === "boolean") patch.useSidecarPreview = parsed.useSidecarPreview;
+      if (typeof parsed.defaultPreviewZoom === "number") {
+        patch.defaultPreviewZoom = parsed.defaultPreviewZoom;
+        patch.previewZoom = parsed.defaultPreviewZoom;
+      }
+      if (typeof parsed.confirmOnClose === "boolean") patch.confirmOnClose = parsed.confirmOnClose;
+      set(patch);
+    } catch (e) {
+      console.error("hydrateSettings failed", e);
+    }
+  },
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),

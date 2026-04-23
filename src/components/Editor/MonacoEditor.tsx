@@ -78,6 +78,10 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   const appTheme       = useEditorStore((s) => s.theme);
   const monacoTheme    = appTheme === "claude" ? "typst-light" : "typst-dark";
   const editorFontSize = useEditorStore((s) => s.editorFontSize);
+  const editorTabSize = useEditorStore((s) => s.editorTabSize);
+  const editorWordWrap = useEditorStore((s) => s.editorWordWrap);
+  const editorMinimap = useEditorStore((s) => s.editorMinimap);
+  const editorLineNumbers = useEditorStore((s) => s.editorLineNumbers);
   const setLastEditTime = useEditorStore((s) => s.setLastEditTime);
   const scrollToLine   = useEditorStore((s) => s.scrollToLine);
   const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
@@ -132,6 +136,16 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize: editorFontSize });
   }, [editorFontSize]);
+
+  // Update other editor options live
+  useEffect(() => {
+    editorRef.current?.updateOptions({
+      tabSize: editorTabSize,
+      wordWrap: editorWordWrap ? "on" : "off",
+      minimap: { enabled: editorMinimap },
+      lineNumbers: editorLineNumbers ? "on" : "off",
+    });
+  }, [editorTabSize, editorWordWrap, editorMinimap, editorLineNumbers]);
 
   // Scroll editor to line when preview requests it
   useEffect(() => {
@@ -340,11 +354,11 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
           fontSize: editorFontSize,
           fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
           fontLigatures: false,
-          lineNumbers: "on",
-          minimap: { enabled: true },
+          lineNumbers: editorLineNumbers ? "on" : "off",
+          minimap: { enabled: editorMinimap },
           scrollBeyondLastLine: false,
-          wordWrap: "on",
-          tabSize: 2,
+          wordWrap: editorWordWrap ? "on" : "off",
+          tabSize: editorTabSize,
           renderWhitespace: "selection",
           smoothScrolling: true,
           cursorBlinking: "smooth",
