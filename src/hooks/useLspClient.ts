@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import type * as Monaco from "monaco-editor";
 import { startLspClient, LspClientHandle } from "../components/Editor/lsp-client";
 import { useEditorStore } from "../stores/editorStore";
@@ -11,18 +11,17 @@ export function useLspClient(
   monaco: typeof Monaco | null
 ): LspClientHandle | null {
   const setLspStatus = useEditorStore((s) => s.setLspStatus);
-  const handleRef = useRef<LspClientHandle | null>(null);
+  const [handle, setHandle] = useState<LspClientHandle | null>(null);
 
   useEffect(() => {
     if (!monaco) return;
-    if (handleRef.current) return;
-    const handle = startLspClient(monaco, setLspStatus);
-    handleRef.current = handle;
+    const h = startLspClient(monaco, setLspStatus);
+    setHandle(h);
     return () => {
-      handle.stop();
-      handleRef.current = null;
+      h.stop();
+      setHandle(null);
     };
   }, [monaco, setLspStatus]);
 
-  return handleRef.current;
+  return handle;
 }

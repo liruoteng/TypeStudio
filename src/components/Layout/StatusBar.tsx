@@ -1,12 +1,70 @@
 import { useState, useEffect, useRef } from "react";
+import { useMonaco } from "@monaco-editor/react";
+import type * as Monaco from "monaco-editor";
 import { useEditorStore } from "../../stores/editorStore";
 import "./StatusBar.css";
 
 interface StatusBarProps {
   lspStatus?: "connecting" | "connected" | "disconnected";
-  errorCount?: number;
-  warningCount?: number;
   onShowHistory?: () => void;
+}
+
+/**
+ * Subscribes to Monaco's marker registry and returns live error/warning
+ * counts for the active tab's model, plus a helper that jumps the editor
+ * to the first marker of the given severity.
+ */
+function useActiveMarkers(activeTabPath: string | null) {
+  const monaco = useMonaco();
+  const [counts, setCounts] = useState({ errors: 0, warnings: 0 });
+
+  useEffect(() => {
+    if (!monaco || !activeTabPath) {
+      setCounts({ errors: 0, warnings: 0 });
+      return;
+    }
+    const recount = () => {
+      const model = monaco.editor.getModels().find((m) => {
+        const mp = m.uri.scheme === "file" ? m.uri.fsPath : m.uri.path;
+        return mp === activeTabPath;
+      });
+      if (!model) { setCounts({ errors: 0, warnings: 0 }); return; }
+      const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+      let errors = 0, warnings = 0;
+      for (const m of markers) {
+        if (m.severity === monaco.MarkerSeverity.Error) errors++;
+        else if (m.severity === monaco.MarkerSeverity.Warning) warnings++;
+      }
+      setCounts({ errors, warnings });
+    };
+    recount();
+    const sub = monaco.editor.onDidChangeMarkers(recount);
+    return () => sub.dispose();
+  }, [monaco, activeTabPath]);
+
+  const jumpToFirst = (sev: "error" | "warning") => {
+    if (!monaco || !activeTabPath) return;
+    const model = monaco.editor.getModels().find((m) => {
+      const mp = m.uri.scheme === "file" ? m.uri.fsPath : m.uri.path;
+      return mp === activeTabPath;
+    });
+    if (!model) return;
+    const target = sev === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning;
+    const marker = monaco.editor
+      .getModelMarkers({ resource: model.uri })
+      .filter((m) => m.severity === target)
+      .sort((a, b) => a.startLineNumber - b.startLineNumber || a.startColumn - b.startColumn)[0];
+    if (!marker) return;
+    const editor = monaco.editor
+      .getEditors()
+      .find((e) => (e as Monaco.editor.IStandaloneCodeEditor).getModel() === model);
+    if (!editor) return;
+    editor.revealLineInCenter(marker.startLineNumber);
+    editor.setPosition({ lineNumber: marker.startLineNumber, column: marker.startColumn });
+    editor.focus();
+  };
+
+  return { ...counts, jumpToFirst };
 }
 
 function getLanguageLabel(path: string): string {
@@ -39,12 +97,11 @@ const FONT_SIZE_PRESETS = [8, 10, 12, 13, 14, 15, 16, 18, 20, 24];
 
 export function StatusBar({
   lspStatus = "disconnected",
-  errorCount = 0,
-  warningCount = 0,
   onShowHistory,
 }: StatusBarProps) {
   const activeTab    = useEditorStore((s) => s.activeTab());
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const { errors: errorCount, warnings: warningCount, jumpToFirst } = useActiveMarkers(activeTabPath);
   const fontSize     = useEditorStore((s) => s.editorFontSize);
   const setFontSize  = useEditorStore((s) => s.setEditorFontSize);
   const lastEditTime = useEditorStore((s) => s.lastEditTime);
@@ -85,10 +142,22 @@ export function StatusBar({
           ◉ Tinymist: {lspStatus}
         </span>
         {errorCount > 0 && (
-          <span className="status-errors">✗ {errorCount}</span>
+          <button
+            className="status-errors"
+            onClick={() => jumpToFirst("error")}
+            title={`${errorCount} error${errorCount === 1 ? "" : "s"} — click to jump (F8 / Shift+F8 to cycle)`}
+          >
+            ✗ {errorCount}
+          </button>
         )}
         {warningCount > 0 && (
-          <span className="status-warnings">⚠ {warningCount}</span>
+          <button
+            className="status-warnings"
+            onClick={() => jumpToFirst("warning")}
+            title={`${warningCount} warning${warningCount === 1 ? "" : "s"} — click to jump`}
+          >
+            ⚠ {warningCount}
+          </button>
         )}
 
         {/* History/version button */}

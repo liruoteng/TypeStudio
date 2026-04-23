@@ -50,11 +50,14 @@ async fn handle_connection(
     };
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
-    // Spawn Tinymist
+    // Spawn Tinymist as an LSP server. Without the `lsp` subcommand it just
+    // prints help and exits, which is silent on the client side — the
+    // WebSocket stays open but nothing is ever read or written.
     let mut child = match Command::new(&tinymist_path)
+        .arg("lsp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
     {
         Ok(c) => c,
@@ -93,13 +96,13 @@ async fn handle_connection(
                 None => continue, // skip other headers
             };
 
-            // Read the blank separator line(s)
+            // Read the blank separator line (\r\n). `read_line` is safe here
+            // because it only reads up to and including `\n`. Looping until a
+            // non-empty line would over-read into the JSON body, which has no
+            // trailing newline and would block read_line forever.
             let mut sep = String::new();
-            while sep.trim().is_empty() {
-                sep.clear();
-                if stdout_reader.read_line(&mut sep).await.unwrap_or(0) == 0 {
-                    return;
-                }
+            if stdout_reader.read_line(&mut sep).await.unwrap_or(0) == 0 {
+                break;
             }
 
             // Read exactly `len` bytes of JSON body

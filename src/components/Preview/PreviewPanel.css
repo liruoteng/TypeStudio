@@ -89,6 +89,34 @@
   100% { background-position: -100% 0; }
 }
 
+/* Stale preview: dim pages slightly when showing last-good render after a syntax error */
+.preview-stale .preview-pages-content {
+  opacity: 0.55;
+  filter: saturate(0.85);
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+
+.preview-error-banner {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #fca5a5;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+  cursor: help;
+}
+.preview-error-banner-icon {
+  font-size: 12px;
+}
+
 /* ── Page list ───────────────────────────────────────────────────────────── */
 /* Inner zoomable wrapper — separate from the scroll container so the
    scrollbar stays at native size while only the pages scale. */

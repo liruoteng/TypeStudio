@@ -155,7 +155,10 @@ export const PreviewPanel = memo(function PreviewPanel() {
     );
   }
 
-  if (error) {
+  // When there's an error AND we already have a previously-successful render,
+  // keep showing those pages (dimmed) with a small banner. Only fall back to
+  // the full-screen error view when there's nothing to show.
+  if (error && pageCount === 0) {
     return (
       <div ref={panelRef} className="preview-panel preview-error">
         <div className="preview-error-icon">⚠</div>
@@ -187,10 +190,16 @@ export const PreviewPanel = memo(function PreviewPanel() {
     <>
       <div
         ref={panelRef}
-        className={`preview-panel${loading ? " preview-reloading" : ""}`}
+        className={`preview-panel${loading ? " preview-reloading" : ""}${error ? " preview-stale" : ""}`}
         onContextMenu={handleContextMenu}
       >
         {loading && <div className="preview-reload-indicator" />}
+        {error && (
+          <div className="preview-error-banner" title={error}>
+            <span className="preview-error-banner-icon">⚠</span>
+            <span>Syntax error — showing last successful preview</span>
+          </div>
+        )}
         <div
           className="preview-pages-content"
           style={{ "--preview-zoom": zoom } as React.CSSProperties}

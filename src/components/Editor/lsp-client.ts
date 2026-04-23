@@ -158,10 +158,15 @@ export function startLspClient(
   }
 
   function handleDiagnostics(params: DiagnosticsParams) {
-    // Find the Monaco model matching the URI
-    const model = monaco.editor
-      .getModels()
-      .find((m) => m.uri.toString() === params.uri);
+    // Match by filesystem path: tinymist sends `file:///Users/foo.typ` but
+    // @monaco-editor/react creates models from plain paths via `Uri.parse`,
+    // producing URIs with no `file:` scheme. Exact-URI comparison fails, so
+    // normalize both sides to a path string before matching.
+    const targetPath = decodeURIComponent(params.uri.replace(/^file:\/+/, "/"));
+    const model = monaco.editor.getModels().find((m) => {
+      const mp = m.uri.scheme === "file" ? m.uri.fsPath : m.uri.path;
+      return mp === targetPath;
+    });
     if (!model) return;
 
     const markers: Monaco.editor.IMarkerData[] = params.diagnostics.map((d) => ({
@@ -258,7 +263,7 @@ export function startLspClient(
 
     socket.onopen = () => {
       if (stopped) { socket.close(); return; }
-      initialize().catch(console.error);
+      initialize().catch((e) => console.error("[LSP] initialize failed", e));
     };
 
     socket.onmessage = (ev) => onMessage(ev.data as string);
