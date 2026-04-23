@@ -145,12 +145,12 @@ export const PreviewPanel = memo(function PreviewPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   usePinchZoom(panelRef);
 
-  if (activeTabPath && !activeTabPath.endsWith(".typ")) {
+  if (activeTabPath && !activeTabPath.endsWith(".typ") && !activeTabPath.endsWith(".md") && !activeTabPath.endsWith(".markdown")) {
     return (
       <div ref={panelRef} className="preview-panel preview-empty">
         <div className="preview-empty-icon">📄</div>
         <p>Preview not available</p>
-        <p className="preview-empty-hint">Open a .typ file to see a preview</p>
+        <p className="preview-empty-hint">Open a .typ or .md file to see a preview</p>
       </div>
     );
   }
@@ -178,7 +178,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
       <div ref={panelRef} className="preview-panel preview-empty">
         <div className="preview-empty-icon">📄</div>
         <p>Preview will appear here</p>
-        <p className="preview-empty-hint">Save a .typ file to render it</p>
+        <p className="preview-empty-hint">Save a .typ or .md file to render it</p>
       </div>
     );
   }

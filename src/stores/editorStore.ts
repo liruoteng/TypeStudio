@@ -53,7 +53,7 @@ interface EditorState {
   tabs: Tab[];
   activeTabPath: string | null;
   openTab: (path: string, name: string, content: string) => void;
-  openTempTab: () => void;
+  openTempTab: (kind?: "typ" | "md") => void;
   closeTab: (path: string) => void;
   setActiveTab: (path: string) => void;
   updateTabContent: (path: string, content: string) => void;
@@ -184,15 +184,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  openTempTab: () => {
-    const tempPath = "__temp__/untitled.typ";
+  openTempTab: (kind = "typ") => {
+    const ext = kind === "md" ? "md" : "typ";
+    const name = `untitled.${ext}`;
+    const tempPath = `__temp__/${name}`;
     const existing = get().tabs.find((t) => t.path === tempPath);
     if (existing) {
       set({ activeTabPath: tempPath });
       return;
     }
     set((s) => ({
-      tabs: [...s.tabs, { path: tempPath, name: "untitled.typ", content: "", isDirty: false, isTemp: true }],
+      tabs: [...s.tabs, { path: tempPath, name, content: "", isDirty: false, isTemp: true }],
       activeTabPath: tempPath,
     }));
   },

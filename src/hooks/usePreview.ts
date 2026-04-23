@@ -17,7 +17,9 @@ export function usePreview(saveEvent: SaveEvent | null) {
   const setPreviewLoading = useEditorStore((s) => s.setPreviewLoading);
 
   useEffect(() => {
-    if (!saveEvent || !saveEvent.path.endsWith(".typ")) return;
+    if (!saveEvent) return;
+    const p = saveEvent.path;
+    if (!p.endsWith(".typ") && !p.endsWith(".md") && !p.endsWith(".markdown")) return;
     setPreviewLoading(true);
     invoke("trigger_preview_compile", { path: saveEvent.path }).catch(console.error);
   }, [saveEvent?.n]); // eslint-disable-line react-hooks/exhaustive-deps

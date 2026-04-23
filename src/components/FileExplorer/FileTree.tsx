@@ -318,14 +318,6 @@ interface FileNodeProps {
   highlighted?: boolean;
 }
 
-function mdHiddenTypPath(mdPath: string): string {
-  const lastSlash = mdPath.lastIndexOf("/");
-  const dir = mdPath.slice(0, lastSlash + 1);
-  const base = mdPath.slice(lastSlash + 1);
-  const noExt = base.includes(".") ? base.slice(0, base.lastIndexOf(".")) : base;
-  return `${dir}.${noExt}.typ`;
-}
-
 function FileNode({ path, name, depth, onRefreshParent, highlighted }: FileNodeProps) {
   const openTab = useEditorStore((s) => s.openTab);
   const closeTab = useEditorStore((s) => s.closeTab);
@@ -347,10 +339,6 @@ function FileNode({ path, name, depth, onRefreshParent, highlighted }: FileNodeP
     }
     try {
       const content = await invoke<string>("read_file", { path });
-      if (path.endsWith(".md") || path.endsWith(".markdown")) {
-        const typstContent = await invoke<string>("convert_to_typst", { path });
-        await invoke("write_file", { path: mdHiddenTypPath(path), contents: typstContent });
-      }
       openTab(path, name, content);
     } catch (e) {
       console.error("read_file error", e);
