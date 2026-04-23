@@ -445,7 +445,8 @@ function FileNode({ path, name, depth, onRefreshParent, highlighted }: FileNodeP
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onClick={(e) => { e.stopPropagation(); openFile(); }}
+        onClick={(e) => { e.stopPropagation(); if (!path.endsWith(".pdf")) openFile(); }}
+        onDoubleClick={(e) => { e.stopPropagation(); if (path.endsWith(".pdf")) openFile(); }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
       >
         <FileIcon name={name} isDir={false} />
