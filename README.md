@@ -8,11 +8,6 @@ services and preview.
 ## What it does
 
 - **Live preview.** Edit on the left, see the rendered PDF on the right.
-  Two preview modes:
-  - *In-process SVG* — compiles from in-memory content at ~50 ms, renders
-    to SVG pages with virtualized scrolling and button/Ctrl-wheel zoom.
-  - *Sidecar (tinymist preview)* — embeds tinymist's own incremental web
-    frontend in an iframe. Pinch-to-zoom works natively. Toggle with
     **View → Toggle Sidecar Preview** (⌘⇧P).
 - **Monaco editor** with a Typst language mode, slash-command palette, and
   Cmd+S snapshots so you can walk back to any earlier save.
@@ -45,20 +40,6 @@ cargo test --manifest-path src-tauri/Cargo.toml   # Rust side
 
 84 frontend tests and 61 Rust tests at last count.
 
-## Keyboard shortcuts
-
-| Action                    | Shortcut    |
-| ------------------------- | ----------- |
-| New file                  | ⌘N          |
-| Open file                 | ⌘O          |
-| Open folder               | ⌘⇧O         |
-| Save                      | ⌘S          |
-| Save all                  | ⌘⌥S         |
-| Export PDF                | ⌘E          |
-| Close tab                 | ⌘W          |
-| Toggle sidebar            | ⌘B          |
-| Toggle preview            | ⌘⇧V         |
-| Toggle sidecar preview    | ⌘⇧P         |
 
 ## Layout
 
