@@ -187,6 +187,11 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
     ],
     colors: {
       "editor.background": "#1E1E1E",
+      // Muted, conservative diagnostic squiggle colors
+      "editorError.foreground": "#E06C75",
+      "editorWarning.foreground": "#E5C07B",
+      "editorInfo.foreground": "#7FA7C7",
+      "editorHint.foreground": "#6A737D",
     },
   });
 
@@ -228,6 +233,11 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
       "editorSuggestWidget.selectedBackground": "#D6CEBD",
       "scrollbarSlider.background": "#C4BFAF66",
       "scrollbarSlider.hoverBackground": "#C4BFAF99",
+      // Muted, conservative diagnostic squiggle colors (warm light palette)
+      "editorError.foreground": "#C0524C",
+      "editorWarning.foreground": "#B5853A",
+      "editorInfo.foreground": "#3F7AAE",
+      "editorHint.foreground": "#7A7672",
     },
   });
 }

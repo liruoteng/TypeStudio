@@ -43,3 +43,29 @@
 .editor-empty-new-btn:hover {
   opacity: 1;
 }
+
+/* ── Diagnostic squigglies ────────────────────────────────────────────────
+   Soften Monaco's default wavy underlines: slightly transparent so they
+   read as a hint rather than a hard alarm, with a faint tinted background
+   on the offending range to make the region (not just the underline)
+   discoverable on hover. */
+.monaco-editor .squiggly-error {
+  opacity: 0.75;
+}
+.monaco-editor .squiggly-warning {
+  opacity: 0.7;
+}
+.monaco-editor .squiggly-info,
+.monaco-editor .squiggly-hint {
+  opacity: 0.6;
+}
+
+/* Subtle range tint — only visible on hover so the editor stays calm
+   while typing. Targets the inline decoration Monaco applies to the
+   diagnostic range. */
+.monaco-editor .view-line:hover .squiggly-error {
+  opacity: 1;
+}
+.monaco-editor .view-line:hover .squiggly-warning {
+  opacity: 0.95;
+}

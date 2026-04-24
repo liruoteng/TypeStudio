@@ -1,5 +1,6 @@
 mod converter;
 mod lsp_bridge;
+mod preview_sidecar;
 mod typst_world;
 
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 // ── Managed state ──────────────────────────────────────────────────────────
@@ -24,6 +26,8 @@ pub struct AppState {
     pub compile_tx: tokio::sync::watch::Sender<Option<CompileRequest>>,
     /// Persistent in-process Typst compiler world — shared with the compile actor.
     pub typst_world: Arc<Mutex<Option<typst_world::TypstWorld>>>,
+    /// Sidecar preview server (alternative high-performance preview path).
+    pub preview_sidecar: preview_sidecar::SharedSidecar,
 }
 
 // ── File system commands ───────────────────────────────────────────────────
@@ -54,6 +58,14 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    if Path::new(&path).exists() {
+        return Err(format!("Destination already exists: {path}"));
+    }
+    fs::write(&path, bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -186,6 +198,36 @@ fn delete_path(path: String) -> Result<(), String> {
     }
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_child = entry.path();
+        let dst_child = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&src_child, &dst_child)?;
+        } else {
+            fs::copy(&src_child, &dst_child)?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn copy_path(src: String, dest: String) -> Result<(), String> {
+    let s = Path::new(&src);
+    let d = Path::new(&dest);
+    if d.exists() {
+        return Err(format!("Destination already exists: {dest}"));
+    }
+    if s.is_dir() {
+        copy_dir_recursive(s, d).map_err(|e| e.to_string())
+    } else {
+        fs::copy(s, d).map(|_| ()).map_err(|e| e.to_string())
+    }
+}
+
 #[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
     Command::new("open")
@@ -194,6 +236,32 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+// ── App settings (persisted to config dir) ─────────────────────────────────
+
+fn settings_file_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+#[tauri::command]
+fn read_settings(app: tauri::AppHandle) -> Result<String, String> {
+    let p = settings_file_path(&app)?;
+    if !p.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_settings(app: tauri::AppHandle, contents: String) -> Result<(), String> {
+    let p = settings_file_path(&app)?;
+    fs::write(&p, contents).map_err(|e| e.to_string())
 }
 
 // ── File conversion ────────────────────────────────────────────────────────
@@ -376,6 +444,29 @@ fn update_preview_source(
 fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Result<(), String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
+}
+
+// ── Sidecar preview ────────────────────────────────────────────────────────
+//
+// Starts/stops a `tinymist preview` child process. The frontend embeds the
+// returned URL in an <iframe>, inheriting tinymist's full incremental
+// rendering pipeline (vector-IR deltas + WASM renderer).
+
+#[tauri::command]
+async fn start_sidecar_preview(
+    path: String,
+    invert_colors: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let tinymist = state.tinymist_path.lock().unwrap().clone();
+    let sidecar = state.preview_sidecar.clone();
+    preview_sidecar::start(&sidecar, &tinymist, &path, &invert_colors).await
+}
+
+#[tauri::command]
+async fn stop_sidecar_preview(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    preview_sidecar::stop(&state.preview_sidecar).await;
+    Ok(())
 }
 
 // ── export_pdf ─────────────────────────────────────────────────────────────
@@ -627,24 +718,31 @@ pub fn run() {
             tinymist_path: Mutex::new(String::new()),
             compile_tx,
             typst_world: Arc::clone(&world_arc),
+            preview_sidecar: Arc::new(tokio::sync::Mutex::new(preview_sidecar::PreviewSidecar::default())),
         })
         .invoke_handler(tauri::generate_handler![
             read_file,
             read_file_bytes,
             write_file,
+            write_file_bytes,
             create_file,
             create_temp_file,
             create_dir,
             list_dir,
             update_preview_source,
             trigger_preview_compile,
+            start_sidecar_preview,
+            stop_sidecar_preview,
             export_pdf,
             save_snapshot,
             list_snapshots,
             rename_path,
+            copy_path,
             delete_path,
             reveal_in_finder,
             convert_to_typst,
+            read_settings,
+            write_settings,
         ])
         .setup(move |app| {
             let resource_dir = app
@@ -658,6 +756,99 @@ pub fn run() {
             eprintln!("[setup] Using tinymist at: {tinymist_path}");
 
             *app.state::<AppState>().tinymist_path.lock().unwrap() = tinymist_path.clone();
+
+            // ── Native menu ──────────────────────────────────────────────
+            // Items that mirror in-app actions emit `menu:<id>` events; the
+            // frontend listens for them and runs the same handler the button
+            // or shortcut would. Accelerators are assigned in the menu (not
+            // in the editor/React) so macOS shows them and dispatches them.
+            let handle = app.handle();
+
+            let m_new_file      = MenuItemBuilder::new("New File").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
+            let m_open_file     = MenuItemBuilder::new("Open File…").id("open-file").accelerator("CmdOrCtrl+O").build(handle)?;
+            let m_open_folder   = MenuItemBuilder::new("Open Folder…").id("open-folder").accelerator("CmdOrCtrl+Shift+O").build(handle)?;
+            let m_save          = MenuItemBuilder::new("Save").id("save").accelerator("CmdOrCtrl+S").build(handle)?;
+            let m_save_all      = MenuItemBuilder::new("Save All").id("save-all").accelerator("CmdOrCtrl+Alt+S").build(handle)?;
+            let m_close_tab     = MenuItemBuilder::new("Close Tab").id("close-tab").accelerator("CmdOrCtrl+W").build(handle)?;
+            let m_export_pdf    = MenuItemBuilder::new("Export PDF…").id("export-pdf").accelerator("CmdOrCtrl+E").build(handle)?;
+
+            let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar").id("toggle-sidebar").accelerator("CmdOrCtrl+B").build(handle)?;
+            let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
+            let m_toggle_outline = MenuItemBuilder::new("Toggle Outline").id("toggle-outline").build(handle)?;
+            let m_toggle_writing = MenuItemBuilder::new("Toggle Writing Mode").id("toggle-writing-mode").build(handle)?;
+            let m_toggle_sidecar = MenuItemBuilder::new("Toggle Sidecar Preview").id("toggle-sidecar-preview").accelerator("CmdOrCtrl+Shift+P").build(handle)?;
+            let m_show_history   = MenuItemBuilder::new("Toggle File History").id("toggle-history").build(handle)?;
+
+            let file_menu = SubmenuBuilder::new(handle, "File")
+                .item(&m_new_file)
+                .item(&m_open_file)
+                .item(&m_open_folder)
+                .separator()
+                .item(&m_save)
+                .item(&m_save_all)
+                .separator()
+                .item(&m_export_pdf)
+                .separator()
+                .item(&m_close_tab)
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(handle, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let view_menu = SubmenuBuilder::new(handle, "View")
+                .item(&m_toggle_sidebar)
+                .item(&m_toggle_preview)
+                .item(&m_toggle_outline)
+                .separator()
+                .item(&m_toggle_writing)
+                .separator()
+                .item(&m_show_history)
+                .item(&m_toggle_sidecar)
+                .build()?;
+
+            let m_settings = MenuItemBuilder::new("Settings…").id("open-settings").accelerator("CmdOrCtrl+,").build(handle)?;
+
+            let app_menu = SubmenuBuilder::new(handle, "Type Studio")
+                .about(Some(AboutMetadata::default()))
+                .separator()
+                .item(&m_settings)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let window_menu = SubmenuBuilder::new(handle, "Window")
+                .minimize()
+                .close_window()
+                .build()?;
+            let menu = MenuBuilder::new(handle)
+                .items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])
+                .build()?;
+            app.set_menu(menu)?;
+            app.on_menu_event(|app, event| {
+                let id = event.id().as_ref();
+                // Every app-owned item simply forwards a `menu:<id>` event.
+                match id {
+                    "new-file" | "open-file" | "open-folder" | "save" | "save-all"
+                    | "close-tab" | "export-pdf" | "toggle-sidebar" | "toggle-preview"
+                    | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
+                    | "toggle-history" | "open-settings" => {
+                        let _ = app.emit(&format!("menu:{id}"), ());
+                    }
+                    _ => {}
+                }
+            });
 
             // Spawn compile actor
             tauri::async_runtime::spawn(compile_actor(compile_rx, world_arc, app.handle().clone()));

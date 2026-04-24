@@ -27,6 +27,17 @@
 .lsp-connecting   { color: #ffe28a; }
 .lsp-disconnected { color: rgba(255,255,255,0.5); }
 
+.status-errors,
+.status-warnings {
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.status-errors:hover,
+.status-warnings:hover { background: rgba(255, 255, 255, 0.06); }
 .status-errors     { color: #f87171; }
 .status-warnings   { color: #fbbf24; }
 .status-lang,

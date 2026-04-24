@@ -114,8 +114,40 @@
   white-space: nowrap;
   overflow: hidden;
 }
+.tree-row[draggable="true"] { -webkit-user-drag: element; }
 .tree-row:hover { background: var(--bg-hover); }
 .tree-row.active { background: var(--bg-active-item); color: var(--text); }
+.tree-row.drop-target {
+  background: var(--bg-active-item);
+  outline: 1px solid var(--accent, var(--border));
+  outline-offset: -1px;
+}
+.file-tree-body.drop-target { box-shadow: inset 0 0 0 1px var(--accent, var(--border)); }
+
+.drag-ghost {
+  position: absolute;
+  top: -1000px;
+  left: -1000px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--accent, var(--border));
+  border-radius: 4px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.drag-ghost-icon { opacity: 0.7; font-size: 10px; }
+
+@keyframes drop-flash {
+  0%   { background: var(--accent, #4a9eff); color: #fff; }
+  100% { background: transparent; }
+}
+.tree-row.drop-flash { animation: drop-flash 1.5s ease-out; }
 
 .tree-label {
   flex: 1;
@@ -172,6 +204,10 @@
 .rb-icon     { color: #cc342d; font-weight: 700; font-size: 9px; }
 .swift-icon  { color: #f05138; font-weight: 700; font-size: 9px; }
 .kt-icon     { color: #7f52ff; font-weight: 700; font-size: 9px; }
+.php-icon    { color: #777bb4; font-weight: 700; font-size: 9px; }
+.r-icon      { color: #276dc3; font-weight: 700; font-size: 10px; }
+.cs-icon     { color: #68217a; font-weight: 700; font-size: 9px; }
+.xml-icon    { color: #e37933; font-weight: 700; font-size: 10px; }
 .txt-icon    { color: var(--text-muted); font-size: 10px; }
 .zip-icon    { color: #e8b455; font-size: 10px; }
 .dir-icon    { color: var(--icon-dir, #e8c07d); }
