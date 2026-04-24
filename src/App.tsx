@@ -108,10 +108,28 @@ export default function App() {
     return `${dir}.${noExt}.typ`;
   }, []);
 
-  // ── New File — open a temporary untitled tab immediately ─────────────────
-  const handleNewFile = useCallback(() => {
-    useEditorStore.getState().openTempTab();
+  // ── New File — create a real file in the OS temp dir, open as a temp tab ──
+  const handleNewFile = useCallback(async () => {
+    try {
+      const tmpPath = await invoke<string>("create_temp_file", { extension: "typ" });
+      const name = tmpPath.split("/").pop() ?? "untitled.typ";
+      useEditorStore.getState().openTempTab(tmpPath, name);
+    } catch (e) {
+      console.error("create_temp_file error", e);
+    }
   }, []);
+
+  // ── Cmd+N — new untitled file ────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        handleNewFile();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleNewFile]);
 
   // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
@@ -139,7 +157,8 @@ export default function App() {
 
   // ── Snapshot: called on Cmd+S after the file is written ──────────────────
   const handleSnapshot = useCallback(async (path: string) => {
-    if (path.startsWith("__temp__")) return;
+    const tab = useEditorStore.getState().tabs.find((t) => t.path === path);
+    if (tab?.isTemp) return;
     try {
       await invoke("save_snapshot", { path });
     } catch (e) {
@@ -153,25 +172,25 @@ export default function App() {
   }, []);
 
   // ── Save: write file → mark clean → trigger preview compile ──────────────
-  const handleSave = useCallback(async (path: string, content: string) => {
-    // Temp file: show save dialog, write to real location, swap tabs
-    if (path.startsWith("__temp__")) {
+  const handleSave = useCallback(async (path: string, content: string, isExplicit: boolean = false) => {
+    const tab = useEditorStore.getState().tabs.find((t) => t.path === path);
+    // Explicit Cmd+S on a temp file: prompt for a real destination
+    if (isExplicit && tab?.isTemp) {
       try {
         const { save } = await import("@tauri-apps/plugin-dialog");
         const destPath = await save({
-          defaultPath: "untitled.typ",
+          defaultPath: tab.name,
           filters: [
             { name: "Typst", extensions: ["typ"] },
             { name: "All Files", extensions: ["*"] },
           ],
         });
         if (!destPath) return;
-        await invoke("create_file", { path: destPath });
         await invoke("write_file", { path: destPath, contents: content });
         const name = destPath.split("/").pop() ?? destPath;
-        const store = useEditorStore.getState();
-        store.closeTab(path);
-        store.openTab(destPath, name, content);
+        useEditorStore.getState().promoteTempTab(path, destPath, name);
+        // Best-effort cleanup of the original temp file
+        invoke("delete_path", { path }).catch(() => {});
         if (destPath.endsWith(".typ")) {
           setSaveEvent((prev) => ({ path: destPath, n: (prev?.n ?? 0) + 1 }));
         }
@@ -199,7 +218,6 @@ export default function App() {
 
   // ── Live preview: fire-and-forget to compile actor, results via events ──────
   const handlePreviewTrigger = useCallback((path: string, content: string) => {
-    if (path.startsWith("__temp__")) return;
     useEditorStore.getState().setPreviewLoading(true);
     invoke("update_preview_source", { path, content }).catch(console.error);
   }, []);
@@ -211,7 +229,7 @@ export default function App() {
   useEffect(() => {
     if (activeTabPath && activeTabPath !== prevActiveTabRef.current && previewOpen) {
       const tab = useEditorStore.getState().activeTab();
-      if (tab && !tab.isTemp && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
+      if (tab && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
         handlePreviewTrigger(tab.path, tab.content);
       }
     }
@@ -223,7 +241,7 @@ export default function App() {
   useEffect(() => {
     if (previewWidth > 0 && prevPreviewWidthRef.current === 0) {
       const tab = useEditorStore.getState().activeTab();
-      if (tab && !tab.isTemp && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
+      if (tab && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
         handlePreviewTrigger(tab.path, tab.content);
       }
     }

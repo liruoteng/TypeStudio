@@ -8,7 +8,7 @@
   --bg-elevated:     #2d2d2d;
   --bg-toolbar:      #323233;
   --bg-hover:        #2a2d2e;
-  --bg-active-item:  #094771;
+  --bg-active-item:  #3b2566;
   --bg-active-tab:   #1e1e1e;
   --bg-preview:      #3c3c3c;
   --bg-btn-hover:    #3c3c3c;
@@ -26,24 +26,24 @@
   --text-header:     #bbbbbb;
   --text-tree:       #cccccc;
 
-  --accent:          #007acc;
-  --accent-bright:   #4fc1ff;
-  --accent-btn:      #0e639c;
-  --accent-btn-hover:#1177bb;
-  --accent-tab-bar:  #007acc;
+  --accent:          #8b5cf6;
+  --accent-bright:   #c4b5fd;
+  --accent-btn:      #7c3aed;
+  --accent-btn-hover:#9333ea;
+  --accent-tab-bar:  #8b5cf6;
 
-  --status-bg:       #007acc;
+  --status-bg:       #6d28d9;
   --status-text:     #ffffff;
 
   --dirty:           #f6c349;
 
-  --icon-typst:      #4fc1ff;
+  --icon-typst:      #c4b5fd;
   --icon-bib:        #dcdcaa;
   --icon-dir:        #e8b84b;
 
   --spinner-track:   #555555;
-  --spinner-color:   #4fc1ff;
-  --reload-gradient: linear-gradient(90deg, #007acc, #4fc1ff, #007acc);
+  --spinner-color:   #c4b5fd;
+  --reload-gradient: linear-gradient(90deg, #7c3aed, #c4b5fd, #7c3aed);
 
   --scrollbar-thumb: #555555;
 }

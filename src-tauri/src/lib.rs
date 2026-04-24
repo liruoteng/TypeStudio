@@ -62,6 +62,21 @@ fn create_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn create_temp_file(extension: Option<String>) -> Result<String, String> {
+    let ext = extension.unwrap_or_else(|| "typ".to_string());
+    let dir = std::env::temp_dir().join("type-studio");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for n in 1..10000 {
+        let candidate = dir.join(format!("untitled-{n}.{ext}"));
+        if !candidate.exists() {
+            fs::write(&candidate, "").map_err(|e| e.to_string())?;
+            return Ok(candidate.to_string_lossy().to_string());
+        }
+    }
+    Err("could not allocate temp filename".into())
+}
+
+#[tauri::command]
 fn create_dir(path: String) -> Result<(), String> {
     fs::create_dir(&path).map_err(|e| e.to_string())
 }
@@ -618,6 +633,7 @@ pub fn run() {
             read_file_bytes,
             write_file,
             create_file,
+            create_temp_file,
             create_dir,
             list_dir,
             update_preview_source,

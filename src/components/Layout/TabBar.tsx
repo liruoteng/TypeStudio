@@ -16,8 +16,12 @@ export function TabBar() {
     setCtxMenu({ x: e.clientX, y: e.clientY, path });
   }, []);
 
-  const shouldConfirmClose = (t: { name: string; isDirty: boolean; isTemp?: boolean; content: string }) => {
-    if (t.isTemp && t.content !== "") return confirm(`"${t.name}" has not been saved to a file. Close without saving?`);
+  const shouldConfirmClose = (t: { name: string; path: string; isDirty: boolean; isTemp?: boolean; content: string }) => {
+    if (t.isTemp && t.content !== "") {
+      // Non-blocking reminder: the file is kept on disk in the OS temp dir.
+      console.info(`Reminder: "${t.name}" is still in temp at ${t.path}. Save it (Cmd+S) to keep it permanently.`);
+      return true;
+    }
     if (t.isDirty) return confirm(`Close "${t.name}" without saving?`);
     return true;
   };
@@ -54,11 +58,7 @@ export function TabBar() {
               className="tab-close"
               onClick={(e) => {
                 e.stopPropagation();
-                if (tab.isTemp && tab.content !== "") {
-                  if (!confirm(`"${tab.name}" has not been saved to a file. Close without saving?`)) return;
-                } else if (tab.isDirty && !confirm(`Close "${tab.name}" without saving?`)) {
-                  return;
-                }
+                if (!shouldConfirmClose(tab)) return;
                 closeTab(tab.path);
               }}
               title="Close tab"

@@ -47,7 +47,8 @@ interface EditorState {
   tabs: Tab[];
   activeTabPath: string | null;
   openTab: (path: string, name: string, content: string) => void;
-  openTempTab: () => void;
+  openTempTab: (path: string, name: string) => void;
+  promoteTempTab: (oldPath: string, newPath: string, newName: string) => void;
   closeTab: (path: string) => void;
   setActiveTab: (path: string) => void;
   updateTabContent: (path: string, content: string) => void;
@@ -128,18 +129,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  openTempTab: () => {
-    const tempPath = "__temp__/untitled.typ";
-    const existing = get().tabs.find((t) => t.path === tempPath);
+  openTempTab: (path, name) => {
+    const existing = get().tabs.find((t) => t.path === path);
     if (existing) {
-      set({ activeTabPath: tempPath });
+      set({ activeTabPath: path });
       return;
     }
     set((s) => ({
-      tabs: [...s.tabs, { path: tempPath, name: "untitled.typ", content: "", isDirty: false, isTemp: true }],
-      activeTabPath: tempPath,
+      tabs: [...s.tabs, { path, name, content: "", isDirty: false, isTemp: true }],
+      activeTabPath: path,
     }));
   },
+
+  promoteTempTab: (oldPath, newPath, newName) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.path === oldPath
+          ? { ...t, path: newPath, name: newName, isDirty: false, isTemp: false }
+          : t
+      ),
+      activeTabPath: s.activeTabPath === oldPath ? newPath : s.activeTabPath,
+    })),
 
   closeTab: (path) => {
     const { tabs, activeTabPath } = get();

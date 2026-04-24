@@ -8,7 +8,7 @@ import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import "./MonacoEditor.css";
 
 interface MonacoEditorProps {
-  onSave?: (path: string, content: string) => void;
+  onSave?: (path: string, content: string, isExplicit?: boolean) => void;
   onSnapshot?: (path: string) => void;
   onNewFile?: () => void;
   /** Called 800 ms after the last keystroke with in-memory content for live preview. */
@@ -160,11 +160,12 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       const path = useEditorStore.getState().activeTabPath;
       const content = editor.getValue();
       if (path && onSave) {
-        onSave(path, content);
+        onSave(path, content, true);
         lspClient?.notifySave(pathToUri(path));
         onSnapshotRef.current?.(path);
       }
     });
+
 
     // Slash command menu: trigger when '/' is typed at the start of a line
     // (preceded only by optional whitespace), update filter as user continues typing.
