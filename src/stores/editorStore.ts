@@ -113,6 +113,10 @@ interface EditorState {
   // Persisted settings lifecycle
   hydrateSettings: () => Promise<void>;
 
+  // Writing mode
+  writingMode: boolean;
+  setWritingMode: (v: boolean) => void;
+
   // Metrics
   lastEditTime: number | null;
   setLastEditTime: (t: number) => void;
@@ -122,6 +126,8 @@ interface EditorState {
   // Preview ↔ editor sync
   scrollToLine: number | null;
   setScrollToLine: (line: number | null) => void;
+  scrollToPreviewPage: number | null;
+  setScrollToPreviewPage: (page: number | null) => void;
 
   // Active tab helpers
   activeTab: () => Tab | null;
@@ -376,6 +382,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
+  writingMode: false,
+  setWritingMode: (v) => set({ writingMode: v }),
+
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),
   lastCompileMs: null,
@@ -383,6 +392,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   scrollToLine: null,
   setScrollToLine: (line) => set({ scrollToLine: line }),
+  scrollToPreviewPage: null,
+  setScrollToPreviewPage: (page) => set({ scrollToPreviewPage: page }),
 
   activeTab: () => {
     const { tabs, activeTabPath } = get();

@@ -22,6 +22,8 @@ export function Toolbar({ onExportPdf, onConvertToTypst }: ToolbarProps) {
   });
   const theme = useEditorStore((s) => s.theme);
   const setTheme = useEditorStore((s) => s.setTheme);
+  const writingMode = useEditorStore((s) => s.writingMode);
+  const setWritingMode = useEditorStore((s) => s.setWritingMode);
 
   const isMd = (activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown")) ?? false;
   const isTypst = (activeTabPath?.endsWith(".typ") ?? false) || isMd;
@@ -43,6 +45,14 @@ export function Toolbar({ onExportPdf, onConvertToTypst }: ToolbarProps) {
             → .typ
           </button>
         )}
+        <button
+          className={`toolbar-btn-theme${writingMode ? " toolbar-btn-theme--active" : ""}`}
+          onClick={() => setWritingMode(!writingMode)}
+          disabled={!activeTabPath}
+          title={writingMode ? "Exit writing mode" : "Enter writing mode"}
+        >
+          ✎
+        </button>
         <button
           className="toolbar-btn-theme"
           onClick={() => setTheme(NEXT_THEME[theme])}

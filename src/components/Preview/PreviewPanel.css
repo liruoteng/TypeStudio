@@ -168,6 +168,11 @@
   height: auto !important;
 }
 
+/* Show pointer cursor on clickable text in preview */
+.preview-page-inner svg text {
+  cursor: pointer;
+}
+
 /* Page number badge */
 .preview-page-number {
   position: absolute;

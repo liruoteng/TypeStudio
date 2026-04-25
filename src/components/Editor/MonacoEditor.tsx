@@ -89,6 +89,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   const setLastEditTime = useEditorStore((s) => s.setLastEditTime);
   const scrollToLine   = useEditorStore((s) => s.scrollToLine);
   const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
+  const writingMode    = useEditorStore((s) => s.writingMode);
 
   // The value passed to Monaco: only updated when the path changes (tab switch),
   // never on content edits. Monaco manages its own model content while typing.
@@ -112,6 +113,9 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
   const slashStartPos = useRef<Monaco.IPosition | null>(null);
   const isInsertingRef = useRef(false);
+
+  // Writing mode decorations collection
+  const decorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
 
   // When the active tab path changes (tab switch), load the new file's content
   // from the store snapshot and refresh Monaco's value + notify LSP.
@@ -183,6 +187,123 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     const path = useEditorStore.getState().activeTabPath;
     if (path) useEditorStore.getState().updateTabContent(path, externalContent.content);
   }, [externalContent?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply / remove writing mode options when the flag changes
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (writingMode) {
+      editor.updateOptions({
+        fontFamily: '"Georgia", "Times New Roman", serif',
+        fontLigatures: false,
+        lineNumbers: "off",
+        minimap: { enabled: false },
+        glyphMargin: false,
+        folding: false,
+        lineDecorationsWidth: 0,
+        lineNumbersMinChars: 0,
+        renderLineHighlight: "none",
+        wordWrap: "on",
+        padding: { top: 24, bottom: 24 },
+      });
+    } else {
+      editor.updateOptions({
+        fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+        fontLigatures: true,
+        lineNumbers: "on",
+        minimap: { enabled: true },
+        glyphMargin: true,
+        folding: true,
+        lineDecorationsWidth: 10,
+        lineNumbersMinChars: 5,
+        renderLineHighlight: "line",
+        wordWrap: "on",
+        padding: { top: 8, bottom: 8 },
+      });
+      decorationsRef.current?.clear();
+    }
+  }, [writingMode]);
+
+  // Recompute writing mode decorations when content or mode changes
+  useEffect(() => {
+    if (!writingMode) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    if (!decorationsRef.current) {
+      decorationsRef.current = editor.createDecorationsCollection([]);
+    }
+
+    function computeDecorations(): Monaco.editor.IModelDeltaDecoration[] {
+      const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
+      const lineCount = model!.getLineCount();
+      for (let ln = 1; ln <= lineCount; ln++) {
+        const text = model!.getLineContent(ln);
+
+        // Headings: lines starting with = signs
+        const headingMatch = text.match(/^(={1,6})\s/);
+        if (headingMatch) {
+          const level = Math.min(headingMatch[1].length, 3);
+          decorations.push({
+            range: { startLineNumber: ln, startColumn: 1, endLineNumber: ln, endColumn: text.length + 1 },
+            options: { inlineClassName: `wm-h${level}` },
+          });
+          continue;
+        }
+
+        // Bold: *text*
+        let boldMatch: RegExpExecArray | null;
+        const boldRe = /\*([^*\n]+)\*/g;
+        while ((boldMatch = boldRe.exec(text)) !== null) {
+          decorations.push({
+            range: {
+              startLineNumber: ln, startColumn: boldMatch.index + 1,
+              endLineNumber: ln, endColumn: boldMatch.index + boldMatch[0].length + 1,
+            },
+            options: { inlineClassName: "wm-bold" },
+          });
+        }
+
+        // Italic: _text_
+        let italicMatch: RegExpExecArray | null;
+        const italicRe = /_([^_\n]+)_/g;
+        while ((italicMatch = italicRe.exec(text)) !== null) {
+          decorations.push({
+            range: {
+              startLineNumber: ln, startColumn: italicMatch.index + 1,
+              endLineNumber: ln, endColumn: italicMatch.index + italicMatch[0].length + 1,
+            },
+            options: { inlineClassName: "wm-italic" },
+          });
+        }
+
+        // Inline code: `code`
+        let codeMatch: RegExpExecArray | null;
+        const codeRe = /`([^`\n]+)`/g;
+        while ((codeMatch = codeRe.exec(text)) !== null) {
+          decorations.push({
+            range: {
+              startLineNumber: ln, startColumn: codeMatch.index + 1,
+              endLineNumber: ln, endColumn: codeMatch.index + codeMatch[0].length + 1,
+            },
+            options: { inlineClassName: "wm-code" },
+          });
+        }
+      }
+      return decorations;
+    }
+
+    decorationsRef.current.set(computeDecorations());
+
+    const disposable = model.onDidChangeContent(() => {
+      if (!useEditorStore.getState().writingMode) return;
+      decorationsRef.current?.set(computeDecorations());
+    });
+    return () => disposable.dispose();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writingMode, editorFile?.path]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -375,8 +496,48 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     );
   }
 
+  const editorOptions: Monaco.editor.IStandaloneEditorConstructionOptions = writingMode
+    ? {
+        fontSize: editorFontSize,
+        fontFamily: '"Georgia", "Times New Roman", serif',
+        fontLigatures: false,
+        lineNumbers: "off" as const,
+        minimap: { enabled: false },
+        glyphMargin: false,
+        folding: false,
+        lineDecorationsWidth: 0,
+        lineNumbersMinChars: 0,
+        renderLineHighlight: "none" as const,
+        scrollBeyondLastLine: false,
+        wordWrap: "on" as const,
+        tabSize: 2,
+        renderWhitespace: "none" as const,
+        smoothScrolling: true,
+        cursorBlinking: "smooth" as const,
+        padding: { top: 24, bottom: 24 },
+        suggest: { showSnippets: true },
+        quickSuggestions: { other: true, comments: false, strings: false },
+      }
+    : {
+        fontSize: editorFontSize,
+        fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+        fontLigatures: true,
+        lineNumbers: "on" as const,
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        wordWrap: "on" as const,
+        tabSize: 2,
+        renderWhitespace: "selection" as const,
+        smoothScrolling: true,
+        cursorBlinking: "smooth" as const,
+        bracketPairColorization: { enabled: true },
+        padding: { top: 8, bottom: 8 },
+        suggest: { showSnippets: true },
+        quickSuggestions: { other: true, comments: false, strings: false },
+      };
+
   return (
-    <>
+    <div className={writingMode ? "editor-writing-mode" : undefined} style={writingMode ? { height: "100%" } : undefined}>
       <Editor
         height="100%"
         language={getFileLanguage(editorFile.path)}
@@ -385,24 +546,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         path={editorFile.path}
         onChange={handleChange}
         onMount={handleMount}
-        options={{
-          fontSize: editorFontSize,
-          fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-          fontLigatures: false,
-          lineNumbers: editorLineNumbers ? "on" : "off",
-          minimap: { enabled: editorMinimap },
-          scrollBeyondLastLine: false,
-          wordWrap: editorWordWrap ? "on" : "off",
-          tabSize: editorTabSize,
-          renderWhitespace: "selection",
-          smoothScrolling: true,
-          cursorBlinking: "smooth",
-          bracketPairColorization: { enabled: true },
-          padding: { top: 8, bottom: 8 },
-          suggest: { showSnippets: true },
-          quickSuggestions: false,
-          suggestOnTriggerCharacters: false,
-        }}
+        options={editorOptions}
       />
       {slashMenu && (
         <SlashMenu
@@ -413,6 +557,6 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
           onClose={handleSlashClose}
         />
       )}
-    </>
+    </div>
   );
 }

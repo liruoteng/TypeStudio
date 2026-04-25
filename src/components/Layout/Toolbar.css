@@ -88,6 +88,16 @@
   opacity: 0.3;
   cursor: default;
 }
+.toolbar-btn-theme--active {
+  background: var(--accent-btn);
+  color: var(--status-text);
+  border-color: var(--accent-btn);
+}
+.toolbar-btn-theme--active:hover:not(:disabled) {
+  background: var(--accent-btn-hover);
+  border-color: var(--accent-btn-hover);
+  color: var(--status-text);
+}
 
 .dirty-badge {
   color: var(--dirty);
