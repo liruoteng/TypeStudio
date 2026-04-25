@@ -1,9 +1,6 @@
 # Type Studio
 
-A desktop writing app for [Typst](https://typst.app) — fast editor on the
-left, live PDF on the right. Built with Tauri 2, React 19, and Monaco, with
-[tinymist](https://github.com/Myriad-Dreamin/tinymist) powering language
-services and preview.
+A desktop AI-Powered writing app for [Typst](https://typst.app) and MarkDown
 
 ## What it does
 
