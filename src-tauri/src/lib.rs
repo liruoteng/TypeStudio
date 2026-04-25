@@ -1,4 +1,5 @@
 mod converter;
+mod latex_import;
 mod lsp_bridge;
 mod preview_sidecar;
 mod typst_world;
@@ -741,6 +742,7 @@ pub fn run() {
             delete_path,
             reveal_in_finder,
             convert_to_typst,
+            latex_import::import_latex_template,
             read_settings,
             write_settings,
         ])
@@ -771,6 +773,7 @@ pub fn run() {
             let m_save_all      = MenuItemBuilder::new("Save All").id("save-all").accelerator("CmdOrCtrl+Alt+S").build(handle)?;
             let m_close_tab     = MenuItemBuilder::new("Close Tab").id("close-tab").accelerator("CmdOrCtrl+W").build(handle)?;
             let m_export_pdf    = MenuItemBuilder::new("Export PDF…").id("export-pdf").accelerator("CmdOrCtrl+E").build(handle)?;
+            let m_import_latex  = MenuItemBuilder::new("Import LaTeX Template…").id("import-latex").build(handle)?;
 
             let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar").id("toggle-sidebar").accelerator("CmdOrCtrl+B").build(handle)?;
             let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
@@ -788,6 +791,7 @@ pub fn run() {
                 .item(&m_save_all)
                 .separator()
                 .item(&m_export_pdf)
+                .item(&m_import_latex)
                 .separator()
                 .item(&m_close_tab)
                 .build()?;
@@ -841,7 +845,7 @@ pub fn run() {
                 // Every app-owned item simply forwards a `menu:<id>` event.
                 match id {
                     "new-file" | "open-file" | "open-folder" | "save" | "save-all"
-                    | "close-tab" | "export-pdf" | "toggle-sidebar" | "toggle-preview"
+                    | "close-tab" | "export-pdf" | "import-latex" | "toggle-sidebar" | "toggle-preview"
                     | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
                     | "toggle-history" | "open-settings" => {
                         let _ = app.emit(&format!("menu:{id}"), ());

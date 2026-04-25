@@ -72,6 +72,14 @@ export default function App() {
   // Settings dialog
   const [showSettings, setShowSettings] = useState(false);
 
+  // LaTeX import result
+  const [importResult, setImportResult] = useState<{
+    mainTyp: string;
+    reportPath: string;
+    profile: string | null;
+    notes: string[];
+  } | null>(null);
+
   // Hydrate persisted settings once on mount
   useEffect(() => {
     useEditorStore.getState().hydrateSettings();
@@ -357,6 +365,56 @@ export default function App() {
       setShowSettings(true);
     }));
 
+    unlisteners.push(listen("menu:import-latex", async () => {
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const zipPath = await open({
+          multiple: false,
+          filters: [{ name: "Zip Archive", extensions: ["zip"] }],
+          title: "Select LaTeX Template Bundle (.zip)",
+        });
+        if (typeof zipPath !== "string") return;
+
+        // Destination: new sub-folder in workspace if set, else sibling of zip.
+        const workspace = useEditorStore.getState().workspacePath;
+        let destDir: string;
+        if (workspace) {
+          const stem = zipPath.split("/").pop()?.replace(/\.zip$/i, "") ?? "latex-import";
+          destDir = `${workspace}/${stem}-typst`;
+        } else {
+          const dir = zipPath.slice(0, zipPath.lastIndexOf("/"));
+          const stem = zipPath.split("/").pop()?.replace(/\.zip$/i, "") ?? "latex-import";
+          destDir = `${dir}/${stem}-typst`;
+        }
+
+        const result = await invoke<{
+          profile: string | null;
+          dest_dir: string;
+          main_typ: string;
+          report_path: string;
+          notes: string[];
+        }>("import_latex_template", { zipPath, destDir });
+
+        // Open the converted main.typ.
+        const content = await invoke<string>("read_file", { path: result.main_typ });
+        const name = result.main_typ.split("/").pop() ?? "main.typ";
+        useEditorStore.getState().openTab(result.main_typ, name, content);
+        if (workspace) {
+          useEditorStore.getState().setWorkspacePath(workspace); // refresh file tree
+        }
+
+        setImportResult({
+          mainTyp: result.main_typ,
+          reportPath: result.report_path,
+          profile: result.profile,
+          notes: result.notes,
+        });
+      } catch (e) {
+        console.error("import-latex error", e);
+        alert(`LaTeX import failed:\n${e}`);
+      }
+    }));
+
     return () => {
       unlisteners.forEach((p) => p.then((f) => f()));
     };
@@ -427,6 +485,22 @@ export default function App() {
 
       <StatusBar lspStatus={lspStatus} onShowHistory={() => setShowHistory((v) => !v)} />
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {importResult && (
+        <LatexImportResultDialog
+          result={importResult}
+          onOpenReport={async () => {
+            try {
+              const content = await invoke<string>("read_file", { path: importResult.reportPath });
+              const name = importResult.reportPath.split("/").pop() ?? "CONVERSION_REPORT.md";
+              useEditorStore.getState().openTab(importResult.reportPath, name, content);
+            } catch (e) {
+              console.error(e);
+            }
+            setImportResult(null);
+          }}
+          onClose={() => setImportResult(null)}
+        />
+      )}
       {isResizing && (
         <div
           style={{
@@ -449,6 +523,81 @@ const PreviewBody = memo(function PreviewBody() {
   const useSidecar = useEditorStore((s) => s.useSidecarPreview);
   return useSidecar ? <SidecarPreviewPanel /> : <PreviewPanel />;
 });
+
+// ── LaTeX Import Result Dialog ────────────────────────────────────────────────
+
+function LatexImportResultDialog({
+  result,
+  onOpenReport,
+  onClose,
+}: {
+  result: { mainTyp: string; reportPath: string; profile: string | null; notes: string[] };
+  onOpenReport: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10000,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "var(--color-bg, #1e1e1e)",
+          color: "var(--color-fg, #ccc)",
+          border: "1px solid var(--color-border, #444)",
+          borderRadius: 8,
+          padding: "1.5rem",
+          maxWidth: 480,
+          width: "90%",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ margin: "0 0 0.75rem" }}>LaTeX Template Imported</h3>
+        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", opacity: 0.7 }}>
+          Profile: <strong>{result.profile ?? "unknown"}</strong>
+        </p>
+        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", opacity: 0.7 }}>
+          Opened: <code style={{ fontSize: "0.8rem" }}>{result.mainTyp.split("/").pop()}</code>
+        </p>
+        {result.notes.length > 0 && (
+          <details style={{ margin: "0.5rem 0", fontSize: "0.8rem" }}>
+            <summary style={{ cursor: "pointer", opacity: 0.8 }}>
+              {result.notes.length} conversion note{result.notes.length !== 1 ? "s" : ""}
+            </summary>
+            <ul style={{ margin: "0.4rem 0 0 1rem", padding: 0, opacity: 0.7 }}>
+              {result.notes.map((n, i) => (
+                <li key={i} style={{ marginBottom: "0.2rem" }}>{n}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", justifyContent: "flex-end" }}>
+          <button
+            style={{ padding: "0.35rem 0.9rem", cursor: "pointer", opacity: 0.8 }}
+            onClick={onOpenReport}
+          >
+            Open Report
+          </button>
+          <button
+            style={{ padding: "0.35rem 0.9rem", cursor: "pointer", fontWeight: "bold" }}
+            onClick={onClose}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;

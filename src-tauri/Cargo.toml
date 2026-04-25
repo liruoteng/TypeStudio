@@ -29,3 +29,5 @@ typst = "0.13"
 typst-svg = "0.13"
 typst-assets = { version = "0.13", features = ["fonts"] }
 comemo = "0.4"
+# LaTeX template import (zipped bundle extraction)
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
