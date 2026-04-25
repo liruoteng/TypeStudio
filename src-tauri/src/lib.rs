@@ -1,3 +1,4 @@
+mod ai;
 mod converter;
 mod latex_import;
 mod lsp_bridge;
@@ -745,6 +746,8 @@ pub fn run() {
             latex_import::import_latex_template,
             read_settings,
             write_settings,
+            ai::stream_ai_chat,
+            ai::search_citations,
         ])
         .setup(move |app| {
             let resource_dir = app

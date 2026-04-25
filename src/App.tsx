@@ -11,6 +11,7 @@ import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { SettingsDialog } from "./components/Settings/SettingsDialog";
+import { AIChatPanel } from "./components/AI/AIChatPanel";
 import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
@@ -68,6 +69,9 @@ export default function App() {
 
   // Table of Contents toggle
   const [showToc, setShowToc] = useState(false);
+
+  // AI chat panel toggle
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   // Settings dialog
   const [showSettings, setShowSettings] = useState(false);
@@ -467,9 +471,14 @@ export default function App() {
 
         {previewOpen ? (
           <div className="preview-column" style={{ width: previewWidth }}>
-            <PreviewHeader showToc={showToc} onToggleToc={() => setShowToc((v) => !v)} />
+            <PreviewHeader
+              showToc={showToc}
+              onToggleToc={() => { setShowToc((v) => !v); setShowAiPanel(false); }}
+              showAiPanel={showAiPanel}
+              onToggleAiPanel={() => { setShowAiPanel((v) => !v); setShowToc(false); }}
+            />
             <div className="preview-area">
-              {showToc ? <TableOfContents /> : <PreviewBody />}
+              {showAiPanel ? <AIChatPanel /> : showToc ? <TableOfContents /> : <PreviewBody />}
             </div>
           </div>
         ) : (
@@ -603,13 +612,17 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4;
 
-/** Preview column header: recompile button, page count, zoom controls, and ToC toggle. */
+/** Preview column header: recompile button, page count, zoom controls, ToC toggle, and AI toggle. */
 const PreviewHeader = memo(function PreviewHeader({
   showToc,
   onToggleToc,
+  showAiPanel,
+  onToggleAiPanel,
 }: {
   showToc: boolean;
   onToggleToc: () => void;
+  showAiPanel: boolean;
+  onToggleAiPanel: () => void;
 }) {
   // Subscribe only to primitives — never to the full Tab object — so this
   // component does NOT re-render on every keystroke. Content/path are read
@@ -659,16 +672,18 @@ const PreviewHeader = memo(function PreviewHeader({
 
   return (
     <div className="preview-header">
-      <span className="preview-header-label">{showToc ? "OUTLINE" : "PREVIEW"}</span>
-      {!showToc && pageCount > 0 && (
+      <span className="preview-header-label">
+        {showAiPanel ? "AI ASSISTANT" : showToc ? "OUTLINE" : "PREVIEW"}
+      </span>
+      {!showToc && !showAiPanel && pageCount > 0 && (
         <span className="preview-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"}
         </span>
       )}
 
-      {/* Recompile + zoom cluster, outline toggle last */}
+      {/* Recompile + zoom cluster, outline toggle, AI toggle */}
       <div className="preview-zoom-controls">
-        {!showToc && (
+        {!showToc && !showAiPanel && (
           <>
             <button
               className={`preview-run-btn preview-run-btn--${runStatus}`}
@@ -709,6 +724,13 @@ const PreviewHeader = memo(function PreviewHeader({
             <span className="preview-zoom-sep" />
           </>
         )}
+        <button
+          className={`preview-icon-btn${showAiPanel ? " preview-icon-btn--active" : ""}`}
+          onClick={onToggleAiPanel}
+          title={showAiPanel ? "Show preview" : "Open AI assistant"}
+        >
+          ✦
+        </button>
         <button
           className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
           onClick={onToggleToc}

@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./SettingsDialog.css";
 
-type Section = "general" | "editor" | "preview" | "appearance";
+type Section = "general" | "editor" | "preview" | "appearance" | "ai";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
   { id: "editor", label: "Editor" },
   { id: "preview", label: "Preview" },
   { id: "appearance", label: "Appearance" },
+  { id: "ai", label: "AI" },
 ];
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -43,6 +44,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           {section === "editor" && <EditorSection />}
           {section === "preview" && <PreviewSection />}
           {section === "appearance" && <AppearanceSection />}
+          {section === "ai" && <AiSection />}
         </div>
       </div>
     </div>
@@ -139,6 +141,34 @@ function PreviewSection() {
           value={Math.round(defaultZoom * 100)}
           onChange={(e) => setDefaultZoom((Number(e.target.value) || 100) / 100)}
         />
+      </Row>
+    </div>
+  );
+}
+
+function AiSection() {
+  const apiKey = useEditorStore((s) => s.aiApiKey);
+  const setApiKey = useEditorStore((s) => s.setAiApiKey);
+  const [showKey, setShowKey] = useState(false);
+  return (
+    <div>
+      <h2>AI</h2>
+      <Row label="Claude API key" hint="Required for AI chat. Stored locally and never sent to any third party except Anthropic.">
+        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          <input
+            type={showKey ? "text" : "password"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-ant-…"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            style={{ padding: "2px 6px", cursor: "pointer", flexShrink: 0 }}
+            onClick={() => setShowKey((v) => !v)}
+          >
+            {showKey ? "Hide" : "Show"}
+          </button>
+        </div>
       </Row>
     </div>
   );

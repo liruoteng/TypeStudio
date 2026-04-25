@@ -118,6 +118,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     // Close slash menu on tab switch
     setSlashMenu(null);
     slashStartPos.current = null;
+    useEditorStore.getState().setSelectedText(null);
 
     if (lspClient && tab && tab.path !== prevTabPath.current) {
       prevTabPath.current = tab.path;
@@ -154,6 +155,21 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     setScrollToLine(null);
   }, [scrollToLine, setScrollToLine]);
 
+  // Insert text at cursor position when AI panel dispatches editor:insert
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      const editor = editorRef.current;
+      if (!editor) return;
+      const selection = editor.getSelection();
+      if (!selection) return;
+      editor.executeEdits("ai-insert", [{ range: selection, text, forceMoveMarkers: true }]);
+      editor.focus();
+    };
+    window.addEventListener("editor:insert", handler);
+    return () => window.removeEventListener("editor:insert", handler);
+  }, []);
+
   // Imperatively restore content when a snapshot is loaded
   useEffect(() => {
     if (!externalContent || !editorRef.current) return;
@@ -180,6 +196,18 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       }
     });
 
+
+    // Track selection and expose it for the AI chat panel
+    editor.onDidChangeCursorSelection(() => {
+      const model = editor.getModel();
+      const sel = editor.getSelection();
+      if (!model || !sel || sel.isEmpty()) {
+        useEditorStore.getState().setSelectedText(null);
+        return;
+      }
+      const text = model.getValueInRange(sel);
+      useEditorStore.getState().setSelectedText(text || null);
+    });
 
     // Slash command menu: trigger when '/' is typed at the start of a line
     // (preceded only by optional whitespace), update filter as user continues typing.

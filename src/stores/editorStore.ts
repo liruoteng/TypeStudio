@@ -20,6 +20,12 @@ export type AppTheme = "dark" | "claude";
 export type CompileStatus = "idle" | "success" | "error";
 
 interface EditorState {
+  // AI
+  selectedText: string | null;
+  setSelectedText: (text: string | null) => void;
+  aiApiKey: string;
+  setAiApiKey: (key: string) => void;
+
   // Theme
   theme: AppTheme;
   setTheme: (theme: AppTheme) => void;
@@ -107,6 +113,7 @@ const PERSISTED_KEYS = [
   "useSidecarPreview",
   "defaultPreviewZoom",
   "confirmOnClose",
+  "aiApiKey",
 ] as const;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -121,6 +128,11 @@ function schedulePersist(getState: () => EditorState) {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
+  selectedText: null,
+  setSelectedText: (text) => set({ selectedText: text }),
+  aiApiKey: "",
+  setAiApiKey: (key) => { set({ aiApiKey: key }); schedulePersist(get); },
+
   theme: (localStorage.getItem("app-theme") as AppTheme | null) ?? "dark",
   setTheme: (theme) => {
     localStorage.setItem("app-theme", theme);
@@ -278,6 +290,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         patch.previewZoom = parsed.defaultPreviewZoom;
       }
       if (typeof parsed.confirmOnClose === "boolean") patch.confirmOnClose = parsed.confirmOnClose;
+      if (typeof parsed.aiApiKey === "string") patch.aiApiKey = parsed.aiApiKey;
       set(patch);
     } catch (e) {
       console.error("hydrateSettings failed", e);
