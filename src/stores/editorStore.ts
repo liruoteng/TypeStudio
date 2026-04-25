@@ -2,6 +2,18 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type { LspStatus } from "../components/Editor/lsp-client";
 
+export interface AiMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AiChatSession {
+  id: string;
+  title: string;
+  messages: AiMessage[];
+  createdAt: number;
+}
+
 export interface Tab {
   path: string;
   name: string;
@@ -20,11 +32,25 @@ export type AppTheme = "dark" | "claude";
 export type CompileStatus = "idle" | "success" | "error";
 
 interface EditorState {
-  // AI
+  // AI chat sessions
+  chatSessions: AiChatSession[];
+  activeChatSessionId: string | null;
+  createChatSession: () => string;
+  setActiveChatSession: (id: string) => void;
+  updateChatSession: (id: string, messages: AiMessage[]) => void;
+  deleteChatSession: (id: string) => void;
+
+  // AI editor integration
   selectedText: string | null;
   setSelectedText: (text: string | null) => void;
+  aiProvider: "claude" | "ollama";
+  setAiProvider: (p: "claude" | "ollama") => void;
   aiApiKey: string;
   setAiApiKey: (key: string) => void;
+  ollamaUrl: string;
+  setOllamaUrl: (url: string) => void;
+  ollamaModel: string;
+  setOllamaModel: (model: string) => void;
 
   // Theme
   theme: AppTheme;
@@ -114,6 +140,11 @@ const PERSISTED_KEYS = [
   "defaultPreviewZoom",
   "confirmOnClose",
   "aiApiKey",
+  "aiProvider",
+  "ollamaUrl",
+  "ollamaModel",
+  "chatSessions",
+  "activeChatSessionId",
 ] as const;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -128,10 +159,50 @@ function schedulePersist(getState: () => EditorState) {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
+  chatSessions: [],
+  activeChatSessionId: null,
+  createChatSession: () => {
+    const id = `session-${Date.now()}`;
+    const session: AiChatSession = { id, title: "New chat", messages: [], createdAt: Date.now() };
+    set((s) => ({ chatSessions: [...s.chatSessions, session], activeChatSessionId: id }));
+    schedulePersist(get);
+    return id;
+  },
+  setActiveChatSession: (id) => { set({ activeChatSessionId: id }); schedulePersist(get); },
+  updateChatSession: (id, messages) => {
+    set((s) => ({
+      chatSessions: s.chatSessions.map((sess) =>
+        sess.id !== id ? sess : {
+          ...sess,
+          messages,
+          title: sess.title === "New chat" && messages.length > 0
+            ? (messages.find((m) => m.role === "user")?.content.slice(0, 40) ?? "New chat")
+            : sess.title,
+        }
+      ),
+    }));
+    schedulePersist(get);
+  },
+  deleteChatSession: (id) => {
+    set((s) => {
+      const remaining = s.chatSessions.filter((sess) => sess.id !== id);
+      const nextActive =
+        s.activeChatSessionId === id ? (remaining[remaining.length - 1]?.id ?? null) : s.activeChatSessionId;
+      return { chatSessions: remaining, activeChatSessionId: nextActive };
+    });
+    schedulePersist(get);
+  },
+
   selectedText: null,
   setSelectedText: (text) => set({ selectedText: text }),
+  aiProvider: "claude",
+  setAiProvider: (p) => { set({ aiProvider: p }); schedulePersist(get); },
   aiApiKey: "",
   setAiApiKey: (key) => { set({ aiApiKey: key }); schedulePersist(get); },
+  ollamaUrl: "http://localhost:11434",
+  setOllamaUrl: (url) => { set({ ollamaUrl: url }); schedulePersist(get); },
+  ollamaModel: "llama3.2",
+  setOllamaModel: (model) => { set({ ollamaModel: model }); schedulePersist(get); },
 
   theme: (localStorage.getItem("app-theme") as AppTheme | null) ?? "dark",
   setTheme: (theme) => {
@@ -291,6 +362,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       if (typeof parsed.confirmOnClose === "boolean") patch.confirmOnClose = parsed.confirmOnClose;
       if (typeof parsed.aiApiKey === "string") patch.aiApiKey = parsed.aiApiKey;
+      if (parsed.aiProvider === "claude" || parsed.aiProvider === "ollama") patch.aiProvider = parsed.aiProvider;
+      if (typeof parsed.ollamaUrl === "string") patch.ollamaUrl = parsed.ollamaUrl;
+      if (typeof parsed.ollamaModel === "string") patch.ollamaModel = parsed.ollamaModel;
+      if (Array.isArray(parsed.chatSessions)) patch.chatSessions = parsed.chatSessions as AiChatSession[];
+      if (typeof parsed.activeChatSessionId === "string") patch.activeChatSessionId = parsed.activeChatSessionId;
       set(patch);
     } catch (e) {
       console.error("hydrateSettings failed", e);

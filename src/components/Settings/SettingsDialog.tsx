@@ -147,29 +147,98 @@ function PreviewSection() {
 }
 
 function AiSection() {
+  const provider = useEditorStore((s) => s.aiProvider);
+  const setProvider = useEditorStore((s) => s.setAiProvider);
   const apiKey = useEditorStore((s) => s.aiApiKey);
   const setApiKey = useEditorStore((s) => s.setAiApiKey);
+  const ollamaUrl = useEditorStore((s) => s.ollamaUrl);
+  const setOllamaUrl = useEditorStore((s) => s.setOllamaUrl);
+  const ollamaModel = useEditorStore((s) => s.ollamaModel);
+  const setOllamaModel = useEditorStore((s) => s.setOllamaModel);
   const [showKey, setShowKey] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  const fetchModels = async () => {
+    setLoadingModels(true);
+    setModelsError(null);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const models = await invoke<string[]>("list_ollama_models", { baseUrl: ollamaUrl });
+      setOllamaModels(models);
+      if (models.length > 0 && !models.includes(ollamaModel)) {
+        setOllamaModel(models[0]);
+      }
+    } catch (e) {
+      setModelsError(`Could not connect to Ollama: ${e}`);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
   return (
     <div>
       <h2>AI</h2>
-      <Row label="Claude API key" hint="Required for AI chat. Stored locally and never sent to any third party except Anthropic.">
-        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-          <input
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-…"
-            style={{ flex: 1, minWidth: 0 }}
-          />
-          <button
-            style={{ padding: "2px 6px", cursor: "pointer", flexShrink: 0 }}
-            onClick={() => setShowKey((v) => !v)}
-          >
-            {showKey ? "Hide" : "Show"}
-          </button>
-        </div>
+      <Row label="Provider">
+        <select value={provider} onChange={(e) => setProvider(e.target.value as "claude" | "ollama")}>
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="ollama">Ollama (local)</option>
+        </select>
       </Row>
+
+      {provider === "claude" && (
+        <Row label="Claude API key" hint="Stored locally. Only sent to api.anthropic.com.">
+          <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-ant-…"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <button style={{ padding: "2px 6px", cursor: "pointer", flexShrink: 0 }} onClick={() => setShowKey((v) => !v)}>
+              {showKey ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Row>
+      )}
+
+      {provider === "ollama" && (
+        <>
+          <Row label="Ollama server URL" hint="Default: http://localhost:11434">
+            <input
+              type="text"
+              value={ollamaUrl}
+              onChange={(e) => setOllamaUrl(e.target.value)}
+              placeholder="http://localhost:11434"
+            />
+          </Row>
+          <Row label="Model" hint="Select from installed models">
+            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              {ollamaModels.length > 0 ? (
+                <select value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} style={{ flex: 1 }}>
+                  {ollamaModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={ollamaModel}
+                  onChange={(e) => setOllamaModel(e.target.value)}
+                  placeholder="llama3.2"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              )}
+              <button style={{ padding: "2px 6px", cursor: "pointer", flexShrink: 0 }} onClick={fetchModels} disabled={loadingModels}>
+                {loadingModels ? "…" : "Refresh"}
+              </button>
+            </div>
+          </Row>
+          {modelsError && (
+            <p style={{ fontSize: "0.78rem", color: "var(--accent)", margin: "4px 12px 0" }}>{modelsError}</p>
+          )}
+        </>
+      )}
     </div>
   );
 }

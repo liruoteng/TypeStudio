@@ -624,9 +624,6 @@ const PreviewHeader = memo(function PreviewHeader({
   showAiPanel: boolean;
   onToggleAiPanel: () => void;
 }) {
-  // Subscribe only to primitives — never to the full Tab object — so this
-  // component does NOT re-render on every keystroke. Content/path are read
-  // imperatively from the store snapshot inside handleRefresh.
   const pageCount     = useEditorStore((s) => s.previewPages.length);
   const loading       = useEditorStore((s) => s.previewLoading);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
@@ -637,8 +634,8 @@ const PreviewHeader = memo(function PreviewHeader({
   const isMd          = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
   const isTypst       = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
-  const zoomOut = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
-  const zoomIn  = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomOut   = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomIn    = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
   const zoomReset = useCallback(() => setZoom(1), [setZoom]);
 
   const handleRefresh = useCallback(async () => {
@@ -672,16 +669,13 @@ const PreviewHeader = memo(function PreviewHeader({
 
   return (
     <div className="preview-header">
-      <span className="preview-header-label">
-        {showAiPanel ? "AI ASSISTANT" : showToc ? "OUTLINE" : "PREVIEW"}
-      </span>
+      <span className="preview-header-label">{showAiPanel ? "AI ASSISTANT" : showToc ? "OUTLINE" : "PREVIEW"}</span>
       {!showToc && !showAiPanel && pageCount > 0 && (
         <span className="preview-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"}
         </span>
       )}
 
-      {/* Recompile + zoom cluster, outline toggle, AI toggle */}
       <div className="preview-zoom-controls">
         {!showToc && !showAiPanel && (
           <>
@@ -696,29 +690,9 @@ const PreviewHeader = memo(function PreviewHeader({
             {!useSidecar && (
               <>
                 <span className="preview-zoom-sep" />
-                <button
-                  className="preview-icon-btn"
-                  onClick={zoomOut}
-                  disabled={zoom <= ZOOM_MIN}
-                  title="Zoom out"
-                >
-                  −
-                </button>
-                <button
-                  className="preview-zoom-pct"
-                  onClick={zoomReset}
-                  title="Reset zoom to 100%"
-                >
-                  {Math.round(zoom * 100)}%
-                </button>
-                <button
-                  className="preview-icon-btn"
-                  onClick={zoomIn}
-                  disabled={zoom >= ZOOM_MAX}
-                  title="Zoom in"
-                >
-                  +
-                </button>
+                <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out">−</button>
+                <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
+                <button className="preview-icon-btn" onClick={zoomIn}  disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
               </>
             )}
             <span className="preview-zoom-sep" />

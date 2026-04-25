@@ -748,6 +748,7 @@ pub fn run() {
             write_settings,
             ai::stream_ai_chat,
             ai::search_citations,
+            ai::list_ollama_models,
         ])
         .setup(move |app| {
             let resource_dir = app

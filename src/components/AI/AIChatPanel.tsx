@@ -1,12 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { useEditorStore } from "../../stores/editorStore";
+import { useEditorStore, type AiMessage } from "../../stores/editorStore";
 import "./AIChatPanel.css";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
 
 interface CitationAuthor {
   name: string;
@@ -40,8 +35,26 @@ function generateBibEntry(paper: CitationResult): string {
   return `@article{${key},\n  title = {${paper.title ?? ""}},\n  author = {${authors}},\n  year = {${paper.year ?? ""}},\n${doi}}`;
 }
 
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export function AIChatPanel() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // ── Sessions from store ────────────────────────────────────────────────
+  const chatSessions      = useEditorStore((s) => s.chatSessions);
+  const activeChatSessionId = useEditorStore((s) => s.activeChatSessionId);
+  const createChatSession = useEditorStore((s) => s.createChatSession);
+  const setActiveChatSession = useEditorStore((s) => s.setActiveChatSession);
+  const updateChatSession = useEditorStore((s) => s.updateChatSession);
+  const deleteChatSession = useEditorStore((s) => s.deleteChatSession);
+
+  const activeSession = chatSessions.find((s) => s.id === activeChatSessionId) ?? null;
+
+  // ── Local view state ───────────────────────────────────────────────────
+  const [showSessions, setShowSessions] = useState(false);
+  // Local messages: mirrors active session + live streaming turn
+  const [localMessages, setLocalMessages] = useState<AiMessage[]>(activeSession?.messages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [citationResults, setCitationResults] = useState<CitationResult[] | null>(null);
@@ -49,13 +62,52 @@ export function AIChatPanel() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<boolean>(false);
+  const localMessagesRef = useRef(localMessages);
+  localMessagesRef.current = localMessages;
 
+  // ── Provider settings ──────────────────────────────────────────────────
   const selectedText = useEditorStore((s) => s.selectedText);
-  const apiKey = useEditorStore((s) => s.aiApiKey);
+  const aiProvider   = useEditorStore((s) => s.aiProvider);
+  const apiKey       = useEditorStore((s) => s.aiApiKey);
+  const ollamaUrl    = useEditorStore((s) => s.ollamaUrl);
+  const ollamaModel  = useEditorStore((s) => s.ollamaModel);
+
+  // Sync local messages when active session changes (panel switch or session switch)
+  useEffect(() => {
+    setLocalMessages(activeSession?.messages ?? []);
+    setCitationResults(null);
+    setIsCiteMode(false);
+  }, [activeChatSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Commit local messages back to the store when streaming finishes or on unmount
+  const commitMessages = useCallback((msgs: AiMessage[]) => {
+    if (activeChatSessionId) updateChatSession(activeChatSessionId, msgs);
+  }, [activeChatSessionId, updateChatSession]);
+
+  useEffect(() => {
+    return () => { commitMessages(localMessagesRef.current); };
+  }, [commitMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, citationResults]);
+  }, [localMessages, citationResults]);
+
+  // ── Ensure there is always an active session ───────────────────────────
+  useEffect(() => {
+    if (!activeChatSessionId) createChatSession();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleNewSession = () => {
+    commitMessages(localMessagesRef.current);
+    createChatSession();
+    setShowSessions(false);
+  };
+
+  const handleSwitchSession = (id: string) => {
+    commitMessages(localMessagesRef.current);
+    setActiveChatSession(id);
+    setShowSessions(false);
+  };
 
   const insertAtCursor = useCallback((text: string) => {
     window.dispatchEvent(new CustomEvent("editor:insert", { detail: text }));
@@ -67,73 +119,75 @@ export function AIChatPanel() {
     setTimeout(() => setCopiedKey(null), 1500);
   }, []);
 
+  // ── Send message ───────────────────────────────────────────────────────
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     setInput("");
 
-    // ── Citation search mode ─────────────────────────────────────────────
+    // Citation search
     if (trimmed.startsWith("/cite ")) {
       const query = trimmed.slice(6).trim();
       if (!query) return;
       setIsCiteMode(true);
       setCitationResults(null);
-      setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
+      const next: AiMessage[] = [...localMessages, { role: "user", content: trimmed }];
+      setLocalMessages(next);
       setIsLoading(true);
       try {
         const results = await invoke<CitationResult[]>("search_citations", { query });
         setCitationResults(results);
-        setMessages((prev) => [
-          ...prev,
+        const withReply: AiMessage[] = [
+          ...next,
           {
             role: "assistant",
-            content:
-              results.length === 0
-                ? "No results found."
-                : `Found ${results.length} papers, ranked by citation count.`,
+            content: results.length === 0
+              ? "No results found."
+              : `Found ${results.length} papers, ranked by citation count.`,
           },
-        ]);
+        ];
+        setLocalMessages(withReply);
+        commitMessages(withReply);
       } catch (e) {
         setCitationResults([]);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `Citation search failed: ${String(e)}` },
-        ]);
+        const withErr: AiMessage[] = [...next, { role: "assistant", content: `Citation search failed: ${String(e)}` }];
+        setLocalMessages(withErr);
+        commitMessages(withErr);
       } finally {
         setIsLoading(false);
       }
       return;
     }
 
-    // ── AI chat mode ─────────────────────────────────────────────────────
+    // AI chat
     setIsCiteMode(false);
     setCitationResults(null);
 
-    if (!apiKey) {
-      setMessages((prev) => [
-        ...prev,
+    if (aiProvider === "claude" && !apiKey) {
+      const msgs: AiMessage[] = [
+        ...localMessages,
         { role: "user", content: trimmed },
-        {
-          role: "assistant",
-          content: "No API key configured. Please add your Claude API key in Settings → AI.",
-        },
-      ]);
+        { role: "assistant", content: "No API key configured. Please add your Claude API key in Settings → AI." },
+      ];
+      setLocalMessages(msgs);
+      commitMessages(msgs);
       return;
     }
 
-    // Include selected text as context in the API message (not shown in UI history)
     let contextualContent = trimmed;
     if (selectedText) {
       contextualContent = `Selected text:\n\`\`\`\n${selectedText}\n\`\`\`\n\n${trimmed}`;
     }
 
-    const uiMessages: Message[] = [...messages, { role: "user", content: trimmed }];
+    const withUser: AiMessage[] = [...localMessages, { role: "user", content: trimmed }];
+    const withPlaceholder: AiMessage[] = [...withUser, { role: "assistant", content: "" }];
+    setLocalMessages(withPlaceholder);
+
     const apiMessages = [
-      ...messages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+      ...localMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
       { role: "user" as const, content: contextualContent },
     ];
 
-    setMessages([...uiMessages, { role: "assistant", content: "" }]);
     setIsLoading(true);
     abortRef.current = false;
 
@@ -141,7 +195,7 @@ export function AIChatPanel() {
       const onChunk = new Channel<string>();
       onChunk.onmessage = (chunk: string) => {
         if (abortRef.current) return;
-        setMessages((prev) => {
+        setLocalMessages((prev) => {
           const copy = [...prev];
           copy[copy.length - 1] = {
             role: "assistant",
@@ -153,20 +207,24 @@ export function AIChatPanel() {
 
       await invoke("stream_ai_chat", {
         messages: apiMessages,
+        provider: aiProvider,
         apiKey,
+        ollamaUrl,
+        ollamaModel,
         system: SYSTEM_PROMPT,
         onChunk,
       });
+
+      // Commit the final messages after streaming completes
+      commitMessages(localMessagesRef.current);
     } catch (e: unknown) {
       if (!abortRef.current) {
-        setMessages((prev) => {
+        setLocalMessages((prev) => {
           const copy = [...prev];
-          copy[copy.length - 1] = {
-            role: "assistant",
-            content: `Error: ${String(e)}`,
-          };
+          copy[copy.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
           return copy;
         });
+        commitMessages(localMessagesRef.current);
       }
     } finally {
       setIsLoading(false);
@@ -183,12 +241,57 @@ export function AIChatPanel() {
   const handleStop = () => {
     abortRef.current = true;
     setIsLoading(false);
+    commitMessages(localMessagesRef.current);
   };
 
+  // ── Sessions list view ─────────────────────────────────────────────────
+  if (showSessions) {
+    return (
+      <div className="ai-chat-panel">
+        <div className="ai-sessions-header">
+          <button className="ai-sessions-back" onClick={() => setShowSessions(false)}>← Back</button>
+          <span className="ai-sessions-header-title">Chat sessions</span>
+          <button className="ai-chat-btn ai-chat-btn--send ai-sessions-new" onClick={handleNewSession}>+ New</button>
+        </div>
+        <div className="ai-sessions-list">
+          {chatSessions.length === 0 && (
+            <div className="ai-sessions-empty">No sessions yet.</div>
+          )}
+          {[...chatSessions].reverse().map((sess) => (
+            <div
+              key={sess.id}
+              className={`ai-session-item${sess.id === activeChatSessionId ? " ai-session-item--active" : ""}`}
+              onClick={() => handleSwitchSession(sess.id)}
+            >
+              <div className="ai-session-item-title">{sess.title}</div>
+              <div className="ai-session-item-meta">
+                {formatDate(sess.createdAt)} · {sess.messages.length} message{sess.messages.length !== 1 ? "s" : ""}
+              </div>
+              <button
+                className="ai-session-delete"
+                onClick={(e) => { e.stopPropagation(); deleteChatSession(sess.id); }}
+                title="Delete session"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Chat view ──────────────────────────────────────────────────────────
   return (
     <div className="ai-chat-panel">
+      <div className="ai-chat-topbar">
+        <button className="ai-topbar-btn" onClick={() => setShowSessions(true)} title="All sessions">☰</button>
+        <span className="ai-topbar-title">{activeSession?.title ?? "New chat"}</span>
+        <button className="ai-topbar-btn" onClick={handleNewSession} title="New chat">+</button>
+      </div>
+
       <div className="ai-chat-messages">
-        {messages.length === 0 && (
+        {localMessages.length === 0 && (
           <div className="ai-chat-empty">
             <div className="ai-chat-empty-icon">✦</div>
             <p>Ask anything about your document.</p>
@@ -200,7 +303,7 @@ export function AIChatPanel() {
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {localMessages.map((msg, i) => (
           <div key={i} className={`ai-chat-message ai-chat-message--${msg.role}`}>
             <div className="ai-chat-message-body">{msg.content}</div>
             {msg.role === "assistant" &&
@@ -224,10 +327,7 @@ export function AIChatPanel() {
               <div key={paper.paperId} className="ai-cite-card">
                 <div className="ai-cite-card-title">{paper.title ?? "(no title)"}</div>
                 <div className="ai-cite-card-meta">
-                  {paper.authors
-                    .slice(0, 3)
-                    .map((a) => a.name)
-                    .join(", ")}
+                  {paper.authors.slice(0, 3).map((a) => a.name).join(", ")}
                   {paper.authors.length > 3 && " et al."}
                   {paper.year ? ` · ${paper.year}` : ""}
                   {` · ${paper.citationCount ?? 0} citations`}
@@ -278,23 +378,15 @@ export function AIChatPanel() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={
-            selectedText ? "Ask about selection… or /cite query" : "Ask anything… or /cite query"
-          }
+          placeholder={selectedText ? "Ask about selection… or /cite query" : "Ask anything… or /cite query"}
           rows={3}
           disabled={isLoading}
         />
         <div className="ai-chat-input-actions">
           {isLoading ? (
-            <button className="ai-chat-btn ai-chat-btn--stop" onClick={handleStop}>
-              Stop
-            </button>
+            <button className="ai-chat-btn ai-chat-btn--stop" onClick={handleStop}>Stop</button>
           ) : (
-            <button
-              className="ai-chat-btn ai-chat-btn--send"
-              onClick={handleSend}
-              disabled={!input.trim()}
-            >
+            <button className="ai-chat-btn ai-chat-btn--send" onClick={handleSend} disabled={!input.trim()}>
               Send
             </button>
           )}
