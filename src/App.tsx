@@ -476,6 +476,7 @@ export default function App() {
               onToggleToc={() => { setShowToc((v) => !v); setShowAiPanel(false); }}
               showAiPanel={showAiPanel}
               onToggleAiPanel={() => { setShowAiPanel((v) => !v); setShowToc(false); }}
+              onShowPreview={() => { setShowToc(false); setShowAiPanel(false); }}
             />
             <div className="preview-area">
               {showAiPanel ? <AIChatPanel /> : showToc ? <TableOfContents /> : <PreviewBody />}
@@ -612,17 +613,67 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4;
 
+function RobotIcon() {
+  // 1 px grid, 14×14 viewBox.
+  //
+  //   . . . ████ . . .   antenna cap (4 px wide)
+  //   . . . . ██ . . .   antenna stem (2 px wide)
+  //   . . . . ██ . . .
+  //   ██████████████      head top wall (12 px wide)
+  //   █  ███  ███  █      eyes (3×2 visor blocks)
+  //   █  ███  ███  █
+  // ████            ████  ear bolts protruding from sides
+  //   █             █
+  //   █  ██████  █        mouth (6 px bar)
+  //   █             █
+  //   ██████████████      head bottom wall
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden>
+      {/* Antenna: flat cap + stem */}
+      <rect x="5" y="0" width="4" height="1" />
+      <rect x="6" y="1" width="2" height="3" />
+      {/* Head outline */}
+      <rect x="1" y="4"  width="12" height="1" />
+      <rect x="1" y="5"  width="1"  height="8" />
+      <rect x="12" y="5" width="1"  height="8" />
+      <rect x="1" y="13" width="12" height="1" />
+      {/* Ear bolts */}
+      <rect x="0" y="7"  width="1" height="2" />
+      <rect x="13" y="7" width="1" height="2" />
+      {/* Eyes — wide visor blocks */}
+      <rect x="3" y="6" width="3" height="2" />
+      <rect x="8" y="6" width="3" height="2" />
+      {/* Mouth — horizontal bar */}
+      <rect x="4" y="10" width="6" height="1" />
+    </svg>
+  );
+}
+
+function PageIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <rect x="1.5" y="0.5" width="8" height="11" rx="1" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M7 0.5 V3 H9.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="3.5" y1="5"  x2="7.5" y2="5"  stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <line x1="3.5" y1="7"  x2="7.5" y2="7"  stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <line x1="3.5" y1="9"  x2="6"   y2="9"  stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Preview column header: recompile button, page count, zoom controls, ToC toggle, and AI toggle. */
 const PreviewHeader = memo(function PreviewHeader({
   showToc,
   onToggleToc,
   showAiPanel,
   onToggleAiPanel,
+  onShowPreview,
 }: {
   showToc: boolean;
   onToggleToc: () => void;
   showAiPanel: boolean;
   onToggleAiPanel: () => void;
+  onShowPreview: () => void;
 }) {
   const pageCount     = useEditorStore((s) => s.previewPages.length);
   const loading       = useEditorStore((s) => s.previewLoading);
@@ -699,11 +750,18 @@ const PreviewHeader = memo(function PreviewHeader({
           </>
         )}
         <button
+          className={`preview-icon-btn${!showToc && !showAiPanel ? " preview-icon-btn--active" : ""}`}
+          onClick={onShowPreview}
+          title="Show preview"
+        >
+          <PageIcon />
+        </button>
+        <button
           className={`preview-icon-btn${showAiPanel ? " preview-icon-btn--active" : ""}`}
           onClick={onToggleAiPanel}
           title={showAiPanel ? "Show preview" : "Open AI assistant"}
         >
-          ✦
+          <RobotIcon />
         </button>
         <button
           className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
