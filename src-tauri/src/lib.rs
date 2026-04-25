@@ -358,6 +358,28 @@ pub struct PreviewError {
     pub message: String,
 }
 
+fn is_markdown_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref(),
+        Some("md") | Some("markdown")
+    )
+}
+
+/// Build the Typst source for a Markdown file by converting the body and
+/// prepending the parent directory's `template.typ` if present.
+fn compose_markdown_source(md_path: &Path, md_content: &str) -> String {
+    let body = converter::markdown_to_typst(md_content);
+    let template = md_path
+        .parent()
+        .map(|p| p.join("template.typ"))
+        .filter(|p| p.exists())
+        .and_then(|p| fs::read_to_string(&p).ok());
+    match template {
+        Some(t) => format!("{t}\n\n{body}"),
+        None => body,
+    }
+}
+
 fn hash_svg(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
@@ -382,6 +404,11 @@ async fn compile_actor(
         let world = Arc::clone(&world_arc);
         let result = tauri::async_runtime::spawn_blocking(move || {
             let main_path = Path::new(&req.path);
+            let source_content = if is_markdown_path(main_path) {
+                compose_markdown_source(main_path, &req.content)
+            } else {
+                req.content.clone()
+            };
             let mut guard = world.lock().unwrap();
 
             let needs_init = match guard.as_ref() {
@@ -391,7 +418,7 @@ async fn compile_actor(
             if needs_init {
                 *guard = Some(typst_world::TypstWorld::new(main_path)?);
             }
-            guard.as_mut().unwrap().set_source(main_path, &req.content)?;
+            guard.as_mut().unwrap().set_source(main_path, &source_content)?;
 
             let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
             drop(guard);
@@ -488,14 +515,37 @@ fn export_pdf(
         .parent()
         .map(|p| p.to_string_lossy().to_string());
 
-    run_tinymist_compile(
+    // For .md files, convert to Typst and compile from a temporary sibling .typ.
+    // The temp file lives next to the source so relative image paths still resolve.
+    let (compile_input, temp_to_clean) = if is_markdown_path(input_path) {
+        let md_content = fs::read_to_string(input_path).map_err(|e| e.to_string())?;
+        let typst_content = compose_markdown_source(input_path, &md_content);
+        let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
+        let stem = input_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "untitled".to_string());
+        let temp = parent.join(format!(".{stem}.export.typ"));
+        fs::write(&temp, typst_content).map_err(|e| e.to_string())?;
+        let temp_str = temp.to_string_lossy().to_string();
+        (temp_str.clone(), Some(temp_str))
+    } else {
+        (path.clone(), None)
+    };
+
+    let result = run_tinymist_compile(
         &tinymist,
-        &path,
+        &compile_input,
         &dest_path,
         "pdf",
         root.as_deref(),
-    )?;
+    );
 
+    if let Some(temp) = temp_to_clean {
+        let _ = fs::remove_file(&temp);
+    }
+
+    result?;
     Ok(dest_path)
 }
 
@@ -540,6 +590,40 @@ fn find_tinymist_path(resource_dir: &str) -> String {
 mod tests {
     use super::*;
     use std::fs;
+
+    // ── compose_markdown_source ───────────────────────────────────────────────
+
+    #[test]
+    fn compose_markdown_source_without_template_returns_body_only() {
+        let dir = std::env::temp_dir().join("ts_compose_notmpl");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let md = dir.join("doc.md");
+        fs::write(&md, "# Hello\n").unwrap();
+
+        let out = compose_markdown_source(&md, "# Hello\n");
+        assert!(out.contains("= Hello"));
+        assert!(!out.contains("#set page"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compose_markdown_source_prepends_template_when_present() {
+        let dir = std::env::temp_dir().join("ts_compose_tmpl");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let md = dir.join("doc.md");
+        fs::write(&md, "# Hello\n").unwrap();
+        fs::write(dir.join("template.typ"), "#set page(margin: 3cm)\n").unwrap();
+
+        let out = compose_markdown_source(&md, "# Hello\n");
+        let tmpl_pos = out.find("#set page(margin: 3cm)").expect("template missing");
+        let body_pos = out.find("= Hello").expect("body missing");
+        assert!(tmpl_pos < body_pos, "template must come before body");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     // ── hash_svg ──────────────────────────────────────────────────────────────
 
@@ -770,7 +854,8 @@ pub fn run() {
             // in the editor/React) so macOS shows them and dispatches them.
             let handle = app.handle();
 
-            let m_new_file      = MenuItemBuilder::new("New File").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
+            let m_new_file      = MenuItemBuilder::new("New Typst Document").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
+            let m_new_md        = MenuItemBuilder::new("New Markdown Document").id("new-file-md").accelerator("CmdOrCtrl+Shift+N").build(handle)?;
             let m_open_file     = MenuItemBuilder::new("Open File…").id("open-file").accelerator("CmdOrCtrl+O").build(handle)?;
             let m_open_folder   = MenuItemBuilder::new("Open Folder…").id("open-folder").accelerator("CmdOrCtrl+Shift+O").build(handle)?;
             let m_save          = MenuItemBuilder::new("Save").id("save").accelerator("CmdOrCtrl+S").build(handle)?;
@@ -788,6 +873,7 @@ pub fn run() {
 
             let file_menu = SubmenuBuilder::new(handle, "File")
                 .item(&m_new_file)
+                .item(&m_new_md)
                 .item(&m_open_file)
                 .item(&m_open_folder)
                 .separator()
@@ -848,7 +934,7 @@ pub fn run() {
                 let id = event.id().as_ref();
                 // Every app-owned item simply forwards a `menu:<id>` event.
                 match id {
-                    "new-file" | "open-file" | "open-folder" | "save" | "save-all"
+                    "new-file" | "new-file-md" | "open-file" | "open-folder" | "save" | "save-all"
                     | "close-tab" | "export-pdf" | "import-latex" | "toggle-sidebar" | "toggle-preview"
                     | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
                     | "toggle-history" | "open-settings" => {

@@ -21,6 +21,10 @@ function pathToUri(path: string): string {
   return path.startsWith("/") ? `file://${path}` : `file:///${path}`;
 }
 
+function isTypstPath(path: string): boolean {
+  return path.endsWith(".typ");
+}
+
 function getFileLanguage(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
@@ -122,7 +126,9 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
 
     if (lspClient && tab && tab.path !== prevTabPath.current) {
       prevTabPath.current = tab.path;
-      lspClient.notifyOpen(pathToUri(tab.path), tab.content);
+      if (isTypstPath(tab.path)) {
+        lspClient.notifyOpen(pathToUri(tab.path), tab.content);
+      }
     }
   }, [activeTabPath, lspClient]);
 
@@ -190,7 +196,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       const path = useEditorStore.getState().activeTabPath;
       const content = editor.getValue();
       if (path && onSave) {
-        onSave(path, content, true);
+        onSave(path, content);
         lspClient?.notifySave(pathToUri(path));
         onSnapshotRef.current?.(path);
       }
@@ -272,7 +278,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
 
       // Live preview: compile from in-memory content 150 ms after the last keystroke.
       // 150 ms is below human perception threshold, so preview feels instant.
-      if (activeTabPath.endsWith(".typ")) {
+      if (activeTabPath.endsWith(".typ") || activeTabPath.endsWith(".md") || activeTabPath.endsWith(".markdown")) {
         clearTimeout(previewTimer.current);
         previewTimer.current = setTimeout(() => {
           onPreviewTriggerRef.current?.(activeTabPath, value);
@@ -291,7 +297,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
 
       // Notify LSP of content change — debounced to avoid serializing the full
       // document text on every keystroke, which stalls the event loop for large files.
-      if (lspClient) {
+      if (lspClient && isTypstPath(activeTabPath)) {
         const uri = pathToUri(activeTabPath);
         const version = (changeVersions.current.get(uri) ?? 1) + 1;
         changeVersions.current.set(uri, version);

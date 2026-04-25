@@ -140,24 +140,9 @@ export default function App() {
     [previewWidth]
   );
 
-  // ── Hidden .typ path for a .md file ──────────────────────────────────────
-  const mdHiddenTypPath = useCallback((mdPath: string): string => {
-    const lastSlash = mdPath.lastIndexOf("/");
-    const dir = mdPath.slice(0, lastSlash + 1);
-    const basename = mdPath.slice(lastSlash + 1);
-    const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
-    return `${dir}.${noExt}.typ`;
-  }, []);
-
-  // ── New File — create a real file in the OS temp dir, open as a temp tab ──
-  const handleNewFile = useCallback(async () => {
-    try {
-      const tmpPath = await invoke<string>("create_temp_file", { extension: "typ" });
-      const name = tmpPath.split("/").pop() ?? "untitled.typ";
-      useEditorStore.getState().openTempTab(tmpPath, name);
-    } catch (e) {
-      console.error("create_temp_file error", e);
-    }
+  // ── New File — open a temporary untitled tab immediately ─────────────────
+  const handleNewFile = useCallback((kind: "typ" | "md" = "typ") => {
+    useEditorStore.getState().openTempTab(kind);
   }, []);
 
   // ── Cmd+N — new untitled file ────────────────────────────────────────────
@@ -175,11 +160,14 @@ export default function App() {
   // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
-    if (!tab?.path.endsWith(".typ")) return;
+    if (!tab) return;
+    const isTyp = tab.path.endsWith(".typ");
+    const isMd  = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
+    if (!isTyp && !isMd) return;
     try {
       const { save } = await import("@tauri-apps/plugin-dialog");
       // Suggest a default filename derived from the source file
-      const defaultName = tab.path.split("/").pop()?.replace(/\.typ$/, ".pdf") ?? "output.pdf";
+      const defaultName = tab.path.split("/").pop()?.replace(/\.(typ|md|markdown)$/, ".pdf") ?? "output.pdf";
       const destPath = await save({
         defaultPath: defaultName,
         filters: [{ name: "PDF", extensions: ["pdf"] }],
@@ -193,6 +181,52 @@ export default function App() {
       await openPath(outputPath);
     } catch (e) {
       console.error("export PDF error", e);
+    }
+  }, [markTabClean]);
+
+  // ── Convert .md → .typ (one-way eject) ───────────────────────────────────
+  const handleConvertToTypst = useCallback(async () => {
+    const tab = useEditorStore.getState().activeTab();
+    if (!tab) return;
+    const isMd = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
+    if (!isMd) return;
+    try {
+      // Persist current content so the backend converter reads fresh input.
+      if (!tab.path.startsWith("__temp__")) {
+        await invoke("write_file", { path: tab.path, contents: tab.content });
+        markTabClean(tab.path);
+      }
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const defaultName = tab.path.split("/").pop()?.replace(/\.(md|markdown)$/, ".typ") ?? "untitled.typ";
+      const destPath = await save({
+        defaultPath: defaultName,
+        filters: [{ name: "Typst", extensions: ["typ"] }],
+      });
+      if (!destPath) return;
+
+      const typstContent = tab.path.startsWith("__temp__")
+        ? // Temp tabs aren't on disk — convert via a transient write or skip backend.
+          // Simplest: write temp content to the dest path as a .md copy, convert, overwrite.
+          (await (async () => {
+            // Since convert_to_typst reads from disk, for a temp .md we write
+            // a sibling .md next to the chosen .typ, convert it, then delete.
+            const tmpMd = destPath.replace(/\.typ$/, ".__tmp__.md");
+            await invoke("write_file", { path: tmpMd, contents: tab.content });
+            try {
+              return await invoke<string>("convert_to_typst", { path: tmpMd });
+            } finally {
+              await invoke("delete_path", { path: tmpMd }).catch(() => {});
+            }
+          })())
+        : await invoke<string>("convert_to_typst", { path: tab.path });
+
+      await invoke("create_file", { path: destPath });
+      await invoke("write_file", { path: destPath, contents: typstContent });
+      const name = destPath.split("/").pop() ?? destPath;
+      useEditorStore.getState().openTab(destPath, name, typstContent);
+      setSaveEvent((prev) => ({ path: destPath, n: (prev?.n ?? 0) + 1 }));
+    } catch (e) {
+      console.error("convert to typst error", e);
     }
   }, [markTabClean]);
 
@@ -219,20 +253,20 @@ export default function App() {
     if (isExplicit && tab?.isTemp) {
       try {
         const { save } = await import("@tauri-apps/plugin-dialog");
+        const isMdTemp = path.endsWith(".md");
         const destPath = await save({
-          defaultPath: tab.name,
-          filters: [
-            { name: "Typst", extensions: ["typ"] },
-            { name: "All Files", extensions: ["*"] },
-          ],
+          defaultPath: isMdTemp ? "untitled.md" : "untitled.typ",
+          filters: isMdTemp
+            ? [{ name: "Markdown", extensions: ["md", "markdown"] }, { name: "All Files", extensions: ["*"] }]
+            : [{ name: "Typst", extensions: ["typ"] }, { name: "All Files", extensions: ["*"] }],
         });
         if (!destPath) return;
         await invoke("write_file", { path: destPath, contents: content });
         const name = destPath.split("/").pop() ?? destPath;
-        useEditorStore.getState().promoteTempTab(path, destPath, name);
-        // Best-effort cleanup of the original temp file
-        invoke("delete_path", { path }).catch(() => {});
-        if (destPath.endsWith(".typ")) {
+        const store = useEditorStore.getState();
+        store.closeTab(path);
+        store.openTab(destPath, name, content);
+        if (destPath.endsWith(".typ") || destPath.endsWith(".md") || destPath.endsWith(".markdown")) {
           setSaveEvent((prev) => ({ path: destPath, n: (prev?.n ?? 0) + 1 }));
         }
       } catch (e) {
@@ -243,24 +277,20 @@ export default function App() {
     try {
       await invoke("write_file", { path, contents: content });
       markTabClean(path);
-      if (path.endsWith(".md") || path.endsWith(".markdown")) {
-        // Re-convert and update the hidden .typ, then compile that
-        const typstContent = await invoke<string>("convert_to_typst", { path });
-        const typPath = mdHiddenTypPath(path);
-        await invoke("write_file", { path: typPath, contents: typstContent });
-        setSaveEvent((prev) => ({ path: typPath, n: (prev?.n ?? 0) + 1 }));
-      } else {
-        setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
-      }
+      setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
     } catch (e) {
       console.error("save error", e);
     }
-  }, [markTabClean, mdHiddenTypPath]);
+  }, [markTabClean]);
 
   // ── Live preview: fire-and-forget to compile actor, results via events ──────
   const handlePreviewTrigger = useCallback((path: string, content: string) => {
     useEditorStore.getState().setPreviewLoading(true);
-    invoke("update_preview_source", { path, content }).catch(console.error);
+    invoke("update_preview_source", { path, content }).catch((e) => {
+      console.error("update_preview_source failed:", JSON.stringify(e), e);
+      useEditorStore.getState().setPreviewError(String(e));
+      useEditorStore.getState().setPreviewLoading(false);
+    });
   }, []);
 
   const previewOpen = previewWidth > 0;
@@ -295,7 +325,8 @@ export default function App() {
   useEffect(() => {
     const unlisteners: Promise<() => void>[] = [];
 
-    unlisteners.push(listen("menu:new-file", () => handleNewFile()));
+    unlisteners.push(listen("menu:new-file", () => handleNewFile("typ")));
+    unlisteners.push(listen("menu:new-file-md", () => handleNewFile("md")));
 
     unlisteners.push(listen("menu:open-file", async () => {
       try {
@@ -427,7 +458,7 @@ export default function App() {
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} />
+        <Toolbar onExportPdf={handleExportPdf} onConvertToTypst={handleConvertToTypst} />
         {showHistory && activeTabPath && (
           <HistoryPanel
             filePath={activeTabPath}
@@ -528,10 +559,14 @@ export default function App() {
   );
 }
 
-/** Chooses sidecar iframe vs in-process SVG preview based on store flag. */
+/** Chooses sidecar iframe vs in-process SVG preview based on store flag.
+ *  .md files always use the in-process path — tinymist's sidecar compiles
+ *  from disk and doesn't understand Markdown. */
 const PreviewBody = memo(function PreviewBody() {
   const useSidecar = useEditorStore((s) => s.useSidecarPreview);
-  return useSidecar ? <SidecarPreviewPanel /> : <PreviewPanel />;
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const isMd = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
+  return useSidecar && !isMd ? <SidecarPreviewPanel /> : <PreviewPanel />;
 });
 
 // ── LaTeX Import Result Dialog ────────────────────────────────────────────────
@@ -699,17 +734,7 @@ const PreviewHeader = memo(function PreviewHeader({
       useEditorStore.getState().markTabClean(tab.path);
       const { setPreviewLoading, setPreviewError } = useEditorStore.getState();
       setPreviewLoading(true);
-      let compilePath = tab.path;
-      if (tabIsMd) {
-        const typstContent = await invoke<string>("convert_to_typst", { path: tab.path });
-        const lastSlash = tab.path.lastIndexOf("/");
-        const dir = tab.path.slice(0, lastSlash + 1);
-        const basename = tab.path.slice(lastSlash + 1);
-        const noExt = basename.includes(".") ? basename.slice(0, basename.lastIndexOf(".")) : basename;
-        compilePath = `${dir}.${noExt}.typ`;
-        await invoke("write_file", { path: compilePath, contents: typstContent });
-      }
-      invoke("trigger_preview_compile", { path: compilePath })
+      invoke("trigger_preview_compile", { path: tab.path })
         .catch((e: unknown) => { setPreviewError(String(e)); setPreviewLoading(false); });
     } catch (e) {
       console.error("refresh error", e);
