@@ -40,6 +40,8 @@ interface EditorState {
   setActiveChatSession: (id: string) => void;
   updateChatSession: (id: string, messages: AiMessage[]) => void;
   updateSessionClaudeId: (id: string, claudeSessionId: string) => void;
+  renameChatSession: (id: string, title: string) => void;
+  forkChatSession: (id: string) => void;
   deleteChatSession: (id: string) => void;
 
   // AI editor integration
@@ -199,6 +201,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sess.id !== id ? sess : { ...sess, claudeSessionId }
       ),
     }));
+    schedulePersist(get);
+  },
+  renameChatSession: (id, title) => {
+    set((s) => ({
+      chatSessions: s.chatSessions.map((sess) =>
+        sess.id !== id ? sess : { ...sess, title: title.trim() || sess.title }
+      ),
+    }));
+    schedulePersist(get);
+  },
+  forkChatSession: (id) => {
+    const original = get().chatSessions.find((s) => s.id === id);
+    if (!original) return;
+    const newId = `session-${Date.now()}`;
+    const forked: AiChatSession = {
+      id: newId,
+      title: `Fork of ${original.title}`,
+      messages: [...original.messages],
+      createdAt: Date.now(),
+    };
+    set((s) => ({ chatSessions: [...s.chatSessions, forked], activeChatSessionId: newId }));
     schedulePersist(get);
   },
   deleteChatSession: (id) => {

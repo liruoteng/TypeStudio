@@ -17,24 +17,19 @@ interface CitationResult {
   externalIds: { DOI?: string } | null;
 }
 
-type Effort = "low" | "normal" | "high";
+type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 type ChatMode = "plan" | "action";
 
 const CLAUDE_MODELS = [
-  { id: "claude-opus-4-7",           label: "Claude Opus 4.7" },
-  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  { id: "claude-opus-4-7",           label: "Opus 4.7" },
+  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
 ];
 
-function buildSystemPrompt(effort: Effort): string {
-  const base =
-    "You are a writing assistant in Type Studio, a Typst academic document editor. " +
-    "Help users write, improve, and edit their content. Respond in plain text. " +
-    "When given selected text as context, focus your response on working with that text.";
-  if (effort === "low") return base + " Be concise and brief.";
-  if (effort === "high") return base + " Think carefully and provide a thorough, comprehensive response.";
-  return base;
-}
+const SYSTEM_PROMPT =
+  "You are a writing assistant in Type Studio, a Typst academic document editor. " +
+  "Help users write, improve, and edit their content. Respond in plain text. " +
+  "When given selected text as context, focus your response on working with that text.";
 
 function generateBibKey(paper: CitationResult): string {
   const firstAuthor = paper.authors[0]?.name ?? "unknown";
@@ -58,16 +53,21 @@ export function AIChatPanel() {
   // ── Sessions from store ────────────────────────────────────────────────
   const chatSessions        = useEditorStore((s) => s.chatSessions);
   const activeChatSessionId = useEditorStore((s) => s.activeChatSessionId);
-  const createChatSession   = useEditorStore((s) => s.createChatSession);
-  const setActiveChatSession = useEditorStore((s) => s.setActiveChatSession);
-  const updateChatSession   = useEditorStore((s) => s.updateChatSession);
+  const createChatSession     = useEditorStore((s) => s.createChatSession);
+  const setActiveChatSession  = useEditorStore((s) => s.setActiveChatSession);
+  const updateChatSession     = useEditorStore((s) => s.updateChatSession);
   const updateSessionClaudeId = useEditorStore((s) => s.updateSessionClaudeId);
-  const deleteChatSession   = useEditorStore((s) => s.deleteChatSession);
+  const renameChatSession     = useEditorStore((s) => s.renameChatSession);
+  const forkChatSession       = useEditorStore((s) => s.forkChatSession);
+  const deleteChatSession     = useEditorStore((s) => s.deleteChatSession);
 
   const activeSession = chatSessions.find((s) => s.id === activeChatSessionId) ?? null;
 
   // ── Local view state ───────────────────────────────────────────────────
   const [showSessions, setShowSessions] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [cliStatus, setCliStatus] = useState<"checking" | "ready" | "not_found">("checking");
   // Local messages: mirrors active session + live streaming turn
   const [localMessages, setLocalMessages] = useState<AiMessage[]>(activeSession?.messages ?? []);
@@ -82,7 +82,7 @@ export function AIChatPanel() {
   localMessagesRef.current = localMessages;
 
   // ── Toolbar state ──────────────────────────────────────────────────────
-  const [effort, setEffort] = useState<Effort>("normal");
+  const [effort, setEffort] = useState<Effort>("high");
   const [thinking, setThinking] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("plan");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -168,11 +168,14 @@ export function AIChatPanel() {
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val.startsWith("claude-cli:")) {
+      const newModel = val.slice(11);
       setAiProvider("claude-cli");
-      setClaudeModel(val.slice(11));
+      setClaudeModel(newModel);
+      if (effort === "xhigh" && newModel !== "claude-opus-4-7") setEffort("high");
     } else if (val.startsWith("ollama:")) {
       setAiProvider("ollama");
       setOllamaModel(val.slice(7));
+      if (effort === "xhigh") setEffort("high");
     }
   };
 
@@ -180,10 +183,7 @@ export function AIChatPanel() {
     (sum, m) => sum + Math.ceil(m.content.length / 4),
     0
   );
-  const tokenLabel =
-    estimatedTokens >= 1000
-      ? `~${(estimatedTokens / 1000).toFixed(1)}k`
-      : `~${estimatedTokens}`;
+  const contextPct = Math.min(99, Math.round(estimatedTokens / 2000)); // 200k token window
 
   // ── Send message ───────────────────────────────────────────────────────
   const handleSend = async () => {
@@ -274,7 +274,7 @@ export function AIChatPanel() {
           messages: apiMessages,
           ollamaUrl,
           ollamaModel,
-          system: buildSystemPrompt(effort),
+          system: SYSTEM_PROMPT,
           onChunk,
         });
       } else {
@@ -295,8 +295,9 @@ export function AIChatPanel() {
         const returnedSessionId = await invoke<string | null>("stream_claude_cli", {
           sessionId: activeSession?.claudeSessionId ?? null,
           message: contextualContent,
-          system: activeSession?.claudeSessionId ? "" : buildSystemPrompt(effort),
+          system: activeSession?.claudeSessionId ? "" : SYSTEM_PROMPT,
           model: claudeModel || null,
+          effort,
           thinking,
           onChunk,
         });
@@ -342,36 +343,128 @@ export function AIChatPanel() {
     commitMessages(localMessagesRef.current);
   };
 
+  // ── Session list helpers ───────────────────────────────────────────────
+  function dateGroup(ts: number): string {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (ts >= todayStart) return "Today";
+    if (ts >= todayStart - 86400000) return "Yesterday";
+    if (ts >= todayStart - 6 * 86400000) return "This week";
+    return "Older";
+  }
+
+  const filteredSessions = [...chatSessions]
+    .reverse()
+    .filter((s) => s.title.toLowerCase().includes(sessionSearch.toLowerCase()));
+
+  const grouped = filteredSessions.reduce<Record<string, typeof filteredSessions>>((acc, sess) => {
+    const g = dateGroup(sess.createdAt);
+    (acc[g] ??= []).push(sess);
+    return acc;
+  }, {});
+
+  const GROUP_ORDER = ["Today", "Yesterday", "This week", "Older"];
+
+  const commitRename = () => {
+    if (renamingId) renameChatSession(renamingId, renameValue);
+    setRenamingId(null);
+  };
+
   // ── Sessions list view ─────────────────────────────────────────────────
   if (showSessions) {
     return (
       <div className="ai-chat-panel">
         <div className="ai-sessions-header">
           <button className="ai-sessions-back" onClick={() => setShowSessions(false)}>← Back</button>
-          <span className="ai-sessions-header-title">Chat sessions</span>
+          <span className="ai-sessions-header-title">Chats</span>
           <button className="ai-chat-btn ai-chat-btn--send ai-sessions-new" onClick={handleNewSession}>+ New</button>
         </div>
+
+        <div className="ai-sessions-search-row">
+          <input
+            className="ai-sessions-search"
+            placeholder="Search chats…"
+            value={sessionSearch}
+            onChange={(e) => setSessionSearch(e.target.value)}
+          />
+        </div>
+
         <div className="ai-sessions-list">
-          {chatSessions.length === 0 && (
-            <div className="ai-sessions-empty">No sessions yet.</div>
+          {filteredSessions.length === 0 && (
+            <div className="ai-sessions-empty">
+              {sessionSearch ? "No matching chats." : "No chats yet."}
+            </div>
           )}
-          {[...chatSessions].reverse().map((sess) => (
-            <div
-              key={sess.id}
-              className={`ai-session-item${sess.id === activeChatSessionId ? " ai-session-item--active" : ""}`}
-              onClick={() => handleSwitchSession(sess.id)}
-            >
-              <div className="ai-session-item-title">{sess.title}</div>
-              <div className="ai-session-item-meta">
-                {formatDate(sess.createdAt)} · {sess.messages.length} message{sess.messages.length !== 1 ? "s" : ""}
-              </div>
-              <button
-                className="ai-session-delete"
-                onClick={(e) => { e.stopPropagation(); deleteChatSession(sess.id); }}
-                title="Delete session"
-              >
-                ×
-              </button>
+
+          {GROUP_ORDER.filter((g) => grouped[g]?.length).map((group) => (
+            <div key={group} className="ai-sessions-group">
+              <div className="ai-sessions-group-label">{group}</div>
+              {grouped[group].map((sess) => {
+                const lastMsg = [...sess.messages].reverse().find((m) => m.role === "assistant");
+                const isActive = sess.id === activeChatSessionId;
+                const isRenaming = renamingId === sess.id;
+                return (
+                  <div
+                    key={sess.id}
+                    className={`ai-session-item${isActive ? " ai-session-item--active" : ""}`}
+                    onClick={() => !isRenaming && handleSwitchSession(sess.id)}
+                  >
+                    <div className="ai-session-item-main">
+                      {isRenaming ? (
+                        <input
+                          className="ai-session-rename-input"
+                          value={renameValue}
+                          autoFocus
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={commitRename}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename();
+                            if (e.key === "Escape") setRenamingId(null);
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <div
+                          className="ai-session-item-title"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingId(sess.id);
+                            setRenameValue(sess.title);
+                          }}
+                          title="Double-click to rename"
+                        >
+                          {sess.title}
+                        </div>
+                      )}
+                      {lastMsg && !isRenaming && (
+                        <div className="ai-session-item-preview">
+                          {lastMsg.content.slice(0, 80)}{lastMsg.content.length > 80 ? "…" : ""}
+                        </div>
+                      )}
+                      <div className="ai-session-item-meta">
+                        {formatDate(sess.createdAt)} · {sess.messages.length} msg{sess.messages.length !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="ai-session-item-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="ai-session-action-btn"
+                        onClick={() => { forkChatSession(sess.id); setShowSessions(false); }}
+                        title="Fork session"
+                      >
+                        ⎇
+                      </button>
+                      <button
+                        className="ai-session-action-btn ai-session-action-btn--delete"
+                        onClick={() => deleteChatSession(sess.id)}
+                        title="Delete session"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -493,25 +586,32 @@ export function AIChatPanel() {
           disabled={isLoading}
         />
         <div className="ai-chat-input-actions">
-          <span className="ai-toolbar-label">Model</span>
           <select
             className="ai-toolbar-model"
             value={modelValue}
             onChange={handleModelChange}
             title="Model"
           >
-            {CLAUDE_MODELS.map((m) => (
-              <option key={m.id} value={`claude-cli:${m.id}`}>{m.label}</option>
-            ))}
-            {ollamaModels.map((m) => (
-              <option key={m} value={`ollama:${m}`}>{m}</option>
-            ))}
-            {aiProvider === "ollama" && !ollamaModels.includes(ollamaModel) && (
-              <option value={`ollama:${ollamaModel}`}>{ollamaModel}</option>
+            <optgroup label="Claude">
+              {CLAUDE_MODELS.map((m) => (
+                <option key={m.id} value={`claude-cli:${m.id}`}>{m.label}</option>
+              ))}
+            </optgroup>
+            {ollamaModels.length > 0 && (
+              <optgroup label="Ollama (local)">
+                {ollamaModels.map((m) => (
+                  <option key={m} value={`ollama:${m}`}>{m}</option>
+                ))}
+                {aiProvider === "ollama" && !ollamaModels.includes(ollamaModel) && (
+                  <option value={`ollama:${ollamaModel}`}>{ollamaModel}</option>
+                )}
+              </optgroup>
             )}
           </select>
 
-          <span className="ai-toolbar-label">Effort</span>
+          <span className="ai-toolbar-sep" />
+
+          <span className="ai-toolbar-label">Effort:</span>
           <select
             className="ai-toolbar-select"
             value={effort}
@@ -519,38 +619,39 @@ export function AIChatPanel() {
             title="Effort"
           >
             <option value="low">Low</option>
-            <option value="normal">Normal</option>
+            <option value="medium">Medium</option>
             <option value="high">High</option>
+            {claudeModel === "claude-opus-4-7" && (
+              <option value="xhigh">XHigh</option>
+            )}
+            <option value="max">Max</option>
           </select>
 
-          <span className="ai-toolbar-tokens" title="Estimated context tokens">
-            {tokenLabel}
-          </span>
-
           <button
-            className={`ai-toolbar-toggle${thinking ? " active" : ""}`}
+            className={`ai-think-btn${thinking ? " active" : ""}`}
             onClick={() => setThinking((t) => !t)}
-            title="Extended thinking"
+            title={thinking ? "Thinking on" : "Thinking off"}
           >
-            Think
+            ◑
           </button>
 
-          <div className="ai-toolbar-mode" role="group" aria-label="Mode">
-            <button
-              className={`ai-toolbar-mode-btn${chatMode === "plan" ? " active" : ""}`}
-              onClick={() => setChatMode("plan")}
-              title="Respond in chat only"
-            >
-              Plan
-            </button>
-            <button
-              className={`ai-toolbar-mode-btn${chatMode === "action" ? " active" : ""}`}
-              onClick={() => setChatMode("action")}
-              title="Auto-insert response into editor"
-            >
-              Act
-            </button>
-          </div>
+          <span className="ai-toolbar-tokens" title="Estimated context usage">
+            {contextPct}%
+          </span>
+
+          <span className="ai-toolbar-spacer" />
+
+          <span className="ai-toolbar-label">Act</span>
+          <label className="ai-mode-toggle" title={chatMode === "action" ? "Auto-insert on" : "Auto-insert off"}>
+            <input
+              type="checkbox"
+              checked={chatMode === "action"}
+              onChange={(e) => setChatMode(e.target.checked ? "action" : "plan")}
+            />
+            <span className="ai-mode-toggle-track" />
+          </label>
+
+          <span className="ai-toolbar-sep" />
 
           {isLoading ? (
             <button className="ai-chat-btn ai-chat-btn--stop" onClick={handleStop}>Stop</button>

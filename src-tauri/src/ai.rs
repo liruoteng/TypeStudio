@@ -53,6 +53,7 @@ pub async fn stream_claude_cli(
     message: String,
     system: String,
     model: Option<String>,
+    effort: Option<String>,
     thinking: bool,
     on_chunk: Channel<String>,
 ) -> Result<Option<String>, String> {
@@ -71,6 +72,10 @@ pub async fn stream_claude_cli(
 
     if let Some(ref m) = model {
         cmd.arg("--model").arg(m);
+    }
+
+    if let Some(ref e) = effort {
+        cmd.arg("--effort").arg(e);
     }
 
     if thinking {
