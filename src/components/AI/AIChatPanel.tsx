@@ -42,17 +42,19 @@ function formatDate(ts: number): string {
 
 export function AIChatPanel() {
   // ── Sessions from store ────────────────────────────────────────────────
-  const chatSessions      = useEditorStore((s) => s.chatSessions);
+  const chatSessions        = useEditorStore((s) => s.chatSessions);
   const activeChatSessionId = useEditorStore((s) => s.activeChatSessionId);
-  const createChatSession = useEditorStore((s) => s.createChatSession);
+  const createChatSession   = useEditorStore((s) => s.createChatSession);
   const setActiveChatSession = useEditorStore((s) => s.setActiveChatSession);
-  const updateChatSession = useEditorStore((s) => s.updateChatSession);
-  const deleteChatSession = useEditorStore((s) => s.deleteChatSession);
+  const updateChatSession   = useEditorStore((s) => s.updateChatSession);
+  const updateSessionClaudeId = useEditorStore((s) => s.updateSessionClaudeId);
+  const deleteChatSession   = useEditorStore((s) => s.deleteChatSession);
 
   const activeSession = chatSessions.find((s) => s.id === activeChatSessionId) ?? null;
 
   // ── Local view state ───────────────────────────────────────────────────
   const [showSessions, setShowSessions] = useState(false);
+  const [cliStatus, setCliStatus] = useState<"checking" | "ready" | "not_found">("checking");
   // Local messages: mirrors active session + live streaming turn
   const [localMessages, setLocalMessages] = useState<AiMessage[]>(activeSession?.messages ?? []);
   const [input, setInput] = useState("");
@@ -68,9 +70,17 @@ export function AIChatPanel() {
   // ── Provider settings ──────────────────────────────────────────────────
   const selectedText = useEditorStore((s) => s.selectedText);
   const aiProvider   = useEditorStore((s) => s.aiProvider);
-  const apiKey       = useEditorStore((s) => s.aiApiKey);
   const ollamaUrl    = useEditorStore((s) => s.ollamaUrl);
   const ollamaModel  = useEditorStore((s) => s.ollamaModel);
+
+  // ── Check Claude CLI on mount ──────────────────────────────────────────
+  useEffect(() => {
+    if (aiProvider === "claude-cli") {
+      invoke<string>("check_claude_cli")
+        .then((s) => setCliStatus(s as "ready" | "not_found"))
+        .catch(() => setCliStatus("not_found"));
+    }
+  }, [aiProvider]);
 
   // Sync local messages when active session changes (panel switch or session switch)
   useEffect(() => {
@@ -163,11 +173,11 @@ export function AIChatPanel() {
     setIsCiteMode(false);
     setCitationResults(null);
 
-    if (aiProvider === "claude" && !apiKey) {
+    if (aiProvider === "claude-cli" && cliStatus !== "ready") {
       const msgs: AiMessage[] = [
         ...localMessages,
         { role: "user", content: trimmed },
-        { role: "assistant", content: "No API key configured. Please add your Claude API key in Settings → AI." },
+        { role: "assistant", content: "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code, then run `claude` to authenticate." },
       ];
       setLocalMessages(msgs);
       commitMessages(msgs);
@@ -183,39 +193,61 @@ export function AIChatPanel() {
     const withPlaceholder: AiMessage[] = [...withUser, { role: "assistant", content: "" }];
     setLocalMessages(withPlaceholder);
 
-    const apiMessages = [
-      ...localMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: contextualContent },
-    ];
-
     setIsLoading(true);
     abortRef.current = false;
 
     try {
-      const onChunk = new Channel<string>();
-      onChunk.onmessage = (chunk: string) => {
-        if (abortRef.current) return;
-        setLocalMessages((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = {
-            role: "assistant",
-            content: (copy[copy.length - 1]?.content ?? "") + chunk,
-          };
-          return copy;
+      if (aiProvider === "ollama") {
+        const apiMessages = [
+          ...localMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+          { role: "user" as const, content: contextualContent },
+        ];
+        const onChunk = new Channel<string>();
+        onChunk.onmessage = (chunk: string) => {
+          if (abortRef.current) return;
+          setLocalMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = {
+              role: "assistant",
+              content: (copy[copy.length - 1]?.content ?? "") + chunk,
+            };
+            return copy;
+          });
+        };
+        await invoke("stream_ai_chat", {
+          messages: apiMessages,
+          ollamaUrl,
+          ollamaModel,
+          system: SYSTEM_PROMPT,
+          onChunk,
         });
-      };
+      } else {
+        // Claude CLI: session-based, no need to replay history
+        const onChunk = new Channel<string>();
+        onChunk.onmessage = (chunk: string) => {
+          if (abortRef.current) return;
+          setLocalMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = {
+              role: "assistant",
+              content: (copy[copy.length - 1]?.content ?? "") + chunk,
+            };
+            return copy;
+          });
+        };
 
-      await invoke("stream_ai_chat", {
-        messages: apiMessages,
-        provider: aiProvider,
-        apiKey,
-        ollamaUrl,
-        ollamaModel,
-        system: SYSTEM_PROMPT,
-        onChunk,
-      });
+        const returnedSessionId = await invoke<string | null>("stream_claude_cli", {
+          sessionId: activeSession?.claudeSessionId ?? null,
+          message: contextualContent,
+          system: activeSession?.claudeSessionId ? "" : SYSTEM_PROMPT,
+          onChunk,
+        });
 
-      // Commit the final messages after streaming completes
+        if (returnedSessionId && activeChatSessionId) {
+          updateSessionClaudeId(activeChatSessionId, returnedSessionId);
+        }
+      }
+
       commitMessages(localMessagesRef.current);
     } catch (e: unknown) {
       if (!abortRef.current) {
@@ -289,6 +321,18 @@ export function AIChatPanel() {
         <span className="ai-topbar-title">{activeSession?.title ?? "New chat"}</span>
         <button className="ai-topbar-btn" onClick={handleNewSession} title="New chat">+</button>
       </div>
+
+      {aiProvider === "claude-cli" && cliStatus !== "ready" && (
+        <div className={`ai-cli-banner ai-cli-banner--${cliStatus}`}>
+          {cliStatus === "checking" ? "Checking Claude CLI…" : (
+            <>
+              Claude CLI not found.{" "}
+              <a href="https://claude.ai/download" target="_blank" rel="noreferrer">Install Claude</a>
+              {" "}and run <code>claude</code> to log in.
+            </>
+          )}
+        </div>
+      )}
 
       <div className="ai-chat-messages">
         {localMessages.length === 0 && (

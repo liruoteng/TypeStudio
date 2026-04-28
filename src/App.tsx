@@ -30,6 +30,7 @@ export default function App() {
   const lspStatus = useEditorStore((s) => s.lspStatus);
   const theme = useEditorStore((s) => s.theme);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  const writingMode = useEditorStore((s) => s.writingMode);
 
   // Track save events so usePreview re-compiles on every save of a .typ file
   const [saveEvent, setSaveEvent] = useState<SaveEvent | null>(null);
@@ -37,13 +38,11 @@ export default function App() {
 
   // ── Subscribe to compile actor events ─────────────────────────────────────
   useEffect(() => {
-    const t0Ref = { current: performance.now() };
     const unlisten1 = listen<{ total_pages: number; updates: { index: number; svg: string }[] }>("preview-result", (e) => {
-      const { applyPreviewUpdate, setLastCompileMs, setPreviewLoading } = useEditorStore.getState();
-      setLastCompileMs(performance.now() - t0Ref.current);
+      const { applyPreviewUpdate, setLastCompileMs, setPreviewLoading, compileStartedAt } = useEditorStore.getState();
+      if (compileStartedAt !== null) setLastCompileMs(performance.now() - compileStartedAt);
       applyPreviewUpdate(e.payload.total_pages, e.payload.updates);
       setPreviewLoading(false);
-      t0Ref.current = performance.now();
     });
     const unlisten2 = listen<{ message: string }>("preview-error", (e) => {
       const { setPreviewError } = useEditorStore.getState();
@@ -307,6 +306,24 @@ export default function App() {
     prevActiveTabRef.current = activeTabPath;
   }, [activeTabPath, previewOpen, handlePreviewTrigger]);
 
+  // ── Collapse preview when writing mode is active, restore on exit ─────────
+  const savedPreviewWidthRef = useRef(0);
+  useEffect(() => {
+    if (writingMode) {
+      if (previewWidth > 0) {
+        savedPreviewWidthRef.current = previewWidth;
+        setPreviewWidth(0);
+      }
+    } else {
+      if (savedPreviewWidthRef.current > 0) {
+        setPreviewWidth(savedPreviewWidthRef.current);
+        savedPreviewWidthRef.current = 0;
+      }
+    }
+  // previewWidth intentionally excluded — we only react to writingMode changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writingMode]);
+
   // ── Recompile when preview panel is unfolded ──────────────────────────────
   const prevPreviewWidthRef = useRef(previewWidth);
   useEffect(() => {
@@ -388,8 +405,8 @@ export default function App() {
     }));
 
     unlisteners.push(listen("menu:toggle-writing-mode", () => {
-      // TODO: wire up writing-mode once implemented.
-      console.info("writing-mode toggle not implemented yet");
+      const { writingMode: wm, setWritingMode } = useEditorStore.getState();
+      setWritingMode(!wm);
     }));
 
     unlisteners.push(listen("menu:toggle-history", () => {
@@ -458,7 +475,14 @@ export default function App() {
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <div style={{ position: "relative" }}>
-        <Toolbar onExportPdf={handleExportPdf} onConvertToTypst={handleConvertToTypst} />
+        <Toolbar
+          onExportPdf={handleExportPdf}
+          onConvertToTypst={handleConvertToTypst}
+          sidebarOpen={sidebarWidth > 0}
+          onToggleSidebar={() => setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0))}
+          previewOpen={previewWidth > 0}
+          onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
+        />
         {showHistory && activeTabPath && (
           <HistoryPanel
             filePath={activeTabPath}

@@ -12,6 +12,7 @@ export interface AiChatSession {
   title: string;
   messages: AiMessage[];
   createdAt: number;
+  claudeSessionId?: string; // CLI session for --resume
 }
 
 export interface Tab {
@@ -38,15 +39,14 @@ interface EditorState {
   createChatSession: () => string;
   setActiveChatSession: (id: string) => void;
   updateChatSession: (id: string, messages: AiMessage[]) => void;
+  updateSessionClaudeId: (id: string, claudeSessionId: string) => void;
   deleteChatSession: (id: string) => void;
 
   // AI editor integration
   selectedText: string | null;
   setSelectedText: (text: string | null) => void;
-  aiProvider: "claude" | "ollama";
-  setAiProvider: (p: "claude" | "ollama") => void;
-  aiApiKey: string;
-  setAiApiKey: (key: string) => void;
+  aiProvider: "claude-cli" | "ollama";
+  setAiProvider: (p: "claude-cli" | "ollama") => void;
   ollamaUrl: string;
   setOllamaUrl: (url: string) => void;
   ollamaModel: string;
@@ -122,6 +122,7 @@ interface EditorState {
   setLastEditTime: (t: number) => void;
   lastCompileMs: number | null;
   setLastCompileMs: (ms: number) => void;
+  compileStartedAt: number | null;
 
   // Preview ↔ editor sync
   scrollToLine: number | null;
@@ -145,12 +146,12 @@ const PERSISTED_KEYS = [
   "useSidecarPreview",
   "defaultPreviewZoom",
   "confirmOnClose",
-  "aiApiKey",
   "aiProvider",
   "ollamaUrl",
   "ollamaModel",
   "chatSessions",
   "activeChatSessionId",
+  "writingMode",
 ] as const;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -189,6 +190,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
     schedulePersist(get);
   },
+  updateSessionClaudeId: (id, claudeSessionId) => {
+    set((s) => ({
+      chatSessions: s.chatSessions.map((sess) =>
+        sess.id !== id ? sess : { ...sess, claudeSessionId }
+      ),
+    }));
+    schedulePersist(get);
+  },
   deleteChatSession: (id) => {
     set((s) => {
       const remaining = s.chatSessions.filter((sess) => sess.id !== id);
@@ -201,10 +210,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectedText: null,
   setSelectedText: (text) => set({ selectedText: text }),
-  aiProvider: "claude",
+  aiProvider: "claude-cli",
   setAiProvider: (p) => { set({ aiProvider: p }); schedulePersist(get); },
-  aiApiKey: "",
-  setAiApiKey: (key) => { set({ aiApiKey: key }); schedulePersist(get); },
   ollamaUrl: "http://localhost:11434",
   setOllamaUrl: (url) => { set({ ollamaUrl: url }); schedulePersist(get); },
   ollamaModel: "llama3.2",
@@ -245,7 +252,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return { previewPages: pages, previewError: null, compileStatus: "success" };
     }),
 
-  setPreviewLoading: (v) => set({ previewLoading: v }),
+  setPreviewLoading: (v) => set(v ? { previewLoading: true, compileStartedAt: performance.now() } : { previewLoading: false }),
   setPreviewError: (err) => set({ previewError: err, previewLoading: false, compileStatus: "error" }),
   setPreviewZoom: (zoom) => set({ previewZoom: Math.min(4, Math.max(0.25, zoom)) }),
 
@@ -370,12 +377,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         patch.previewZoom = parsed.defaultPreviewZoom;
       }
       if (typeof parsed.confirmOnClose === "boolean") patch.confirmOnClose = parsed.confirmOnClose;
-      if (typeof parsed.aiApiKey === "string") patch.aiApiKey = parsed.aiApiKey;
-      if (parsed.aiProvider === "claude" || parsed.aiProvider === "ollama") patch.aiProvider = parsed.aiProvider;
+      // Migrate old "claude" provider value to "claude-cli"
+      if (parsed.aiProvider === "claude" || parsed.aiProvider === "claude-cli") patch.aiProvider = "claude-cli";
+      else if (parsed.aiProvider === "ollama") patch.aiProvider = "ollama";
       if (typeof parsed.ollamaUrl === "string") patch.ollamaUrl = parsed.ollamaUrl;
       if (typeof parsed.ollamaModel === "string") patch.ollamaModel = parsed.ollamaModel;
       if (Array.isArray(parsed.chatSessions)) patch.chatSessions = parsed.chatSessions as AiChatSession[];
       if (typeof parsed.activeChatSessionId === "string") patch.activeChatSessionId = parsed.activeChatSessionId;
+      if (typeof parsed.writingMode === "boolean") patch.writingMode = parsed.writingMode;
       set(patch);
     } catch (e) {
       console.error("hydrateSettings failed", e);
@@ -383,12 +392,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   writingMode: false,
-  setWritingMode: (v) => set({ writingMode: v }),
+  setWritingMode: (v) => { set({ writingMode: v }); schedulePersist(get); },
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),
   lastCompileMs: null,
   setLastCompileMs: (ms) => set({ lastCompileMs: ms }),
+  compileStartedAt: null,
 
   scrollToLine: null,
   setScrollToLine: (line) => set({ scrollToLine: line }),

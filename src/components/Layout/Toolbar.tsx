@@ -9,12 +9,34 @@ const THEME_TITLE: Record<AppTheme, string> = {
 };
 const NEXT_THEME:  Record<AppTheme, AppTheme> = { dark: "claude", claude: "dark" };
 
+function PanelLeftIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <rect x="0.7" y="0.7" width="12.6" height="12.6" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <line x1="4.7" y1="0.7" x2="4.7" y2="13.3" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+function PanelRightIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <rect x="0.7" y="0.7" width="12.6" height="12.6" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <line x1="9.3" y1="0.7" x2="9.3" y2="13.3" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 interface ToolbarProps {
   onExportPdf: () => void;
   onConvertToTypst: () => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  previewOpen: boolean;
+  onTogglePreview: () => void;
 }
 
-export function Toolbar({ onExportPdf, onConvertToTypst }: ToolbarProps) {
+export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, previewOpen, onTogglePreview }: ToolbarProps) {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const isDirty = useEditorStore((s) => {
     const path = s.activeTabPath;
@@ -31,6 +53,13 @@ export function Toolbar({ onExportPdf, onConvertToTypst }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="toolbar-left">
+        <button
+          className={`toolbar-btn-theme${sidebarOpen ? "" : " toolbar-btn-theme--active"}`}
+          onClick={onToggleSidebar}
+          title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+        >
+          <PanelLeftIcon />
+        </button>
         <span className="app-logo">✦</span>
         <span className="app-name">Type Studio</span>
       </div>
@@ -67,6 +96,13 @@ export function Toolbar({ onExportPdf, onConvertToTypst }: ToolbarProps) {
           title="Export PDF"
         >
           ⬇
+        </button>
+        <button
+          className={`toolbar-btn-theme${previewOpen ? "" : " toolbar-btn-theme--active"}`}
+          onClick={onTogglePreview}
+          title={previewOpen ? "Hide preview" : "Show preview"}
+        >
+          <PanelRightIcon />
         </button>
       </div>
     </div>

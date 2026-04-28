@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+
 /// Markdown → Typst conversion (built-in, no external dependencies).
 /// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables.
 pub fn markdown_to_typst(content: &str) -> String {
+    let expanded = expand_references(content);
+    let content = expanded.as_str();
     let mut out = String::with_capacity(content.len());
     let mut in_code_block = false;
     let mut code_lang = String::new();
@@ -218,7 +222,12 @@ fn inline(text: &str) -> String {
         // Image: ![alt](url)
         if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
             if let Some((alt, url, end)) = parse_link(&chars, i + 1) {
-                result.push_str(&format!("#image(\"{url}\", alt: \"{alt}\")"));
+                if url.starts_with("http://") || url.starts_with("https://") {
+                    // Typst image() only accepts local paths; render as a link instead
+                    result.push_str(&format!("#link(\"{url}\")[{alt}]"));
+                } else {
+                    result.push_str(&format!("#image(\"{url}\", alt: \"{alt}\")"));
+                }
                 i = end;
                 continue;
             }
@@ -283,6 +292,23 @@ fn inline(text: &str) -> String {
             }
         }
 
+        // Autolink: <https://...> or <email@...>
+        if chars[i] == '<' {
+            if let Some(end) = find_closing_char(&chars, i + 1, '>') {
+                let content: String = chars[i + 1..end].iter().collect();
+                if content.starts_with("http://") || content.starts_with("https://") {
+                    result.push_str(&format!("#link(\"{content}\")"));
+                    i = end + 1;
+                    continue;
+                } else if content.contains('@') && !content.contains(' ') {
+                    let escaped = content.replace('@', "\\@");
+                    result.push_str(&format!("#link(\"mailto:{content}\")[{escaped}]"));
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+
         // Typst special chars that need escaping in plain text
         match chars[i] {
             '@' | '#' if result.ends_with(|c: char| !c.is_alphanumeric()) => {
@@ -322,8 +348,70 @@ fn parse_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
     let inner_text: String = chars[start + 1..text_end].iter().collect();
     if text_end + 1 >= chars.len() || chars[text_end + 1] != '(' { return None; }
     let url_end = find_closing_char(chars, text_end + 2, ')')?;
-    let url: String = chars[text_end + 2..url_end].iter().collect();
+    let url_raw: String = chars[text_end + 2..url_end].iter().collect();
+    let url = url_raw.split_whitespace().next().unwrap_or("").to_string();
     Some((inner_text, url, url_end + 1))
+}
+
+// ── Reference link helpers ────────────────────────────────────────────────────
+
+fn parse_ref_def(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if !line.starts_with('[') { return None; }
+    let bracket_end = line.find("]:")?;
+    let key = line[1..bracket_end].to_lowercase();
+    let rest = line[bracket_end + 2..].trim();
+    let url = rest.split_whitespace().next()?.to_string();
+    if url.is_empty() { return None; }
+    Some((key, url))
+}
+
+fn expand_references(content: &str) -> String {
+    let mut refs: HashMap<String, String> = HashMap::new();
+    for line in content.lines() {
+        if let Some((key, url)) = parse_ref_def(line) {
+            refs.insert(key, url);
+        }
+    }
+    if refs.is_empty() {
+        return content.to_string();
+    }
+    let mut out = String::with_capacity(content.len());
+    for line in content.lines() {
+        if parse_ref_def(line).is_some() {
+            continue;
+        }
+        out.push_str(&expand_ref_links(line, &refs));
+        out.push('\n');
+    }
+    out
+}
+
+fn expand_ref_links(line: &str, refs: &HashMap<String, String>) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut result = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '[' {
+            if let Some(text_end) = chars[i + 1..].iter().position(|&c| c == ']').map(|p| i + 1 + p) {
+                let text: String = chars[i + 1..text_end].iter().collect();
+                if text_end + 1 < chars.len() && chars[text_end + 1] == '[' {
+                    let ref_start = text_end + 2;
+                    if let Some(ref_end) = chars[ref_start..].iter().position(|&c| c == ']').map(|p| ref_start + p) {
+                        let ref_key: String = chars[ref_start..ref_end].iter().collect();
+                        if let Some(url) = refs.get(&ref_key.to_lowercase()) {
+                            result.push_str(&format!("[{text}]({url})"));
+                            i = ref_end + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+    result
 }
 
 // ── External tool helpers ─────────────────────────────────────────────────────
@@ -619,5 +707,51 @@ mod tests {
     fn link_with_bold_label() {
         let out = convert("[**bold**](url)\n");
         assert!(out.contains("#link(\"url\")"));
+    }
+
+    #[test]
+    fn link_title_stripped() {
+        let out = convert("[text](https://example.com \"Title\")\n");
+        assert!(out.contains("#link(\"https://example.com\")[text]"));
+        assert!(!out.contains("Title"));
+    }
+
+    #[test]
+    fn reference_link_resolved() {
+        let md = "[ref link][myref]\n\n[myref]: https://example.com\n";
+        let out = convert(md);
+        assert!(out.contains("#link(\"https://example.com\")[ref link]"));
+    }
+
+    #[test]
+    fn reference_definition_line_skipped() {
+        let out = convert("[myref]: https://example.com\n");
+        assert!(!out.contains("[myref]"));
+        assert!(!out.contains("https://example.com"));
+    }
+
+    #[test]
+    fn autolink_url() {
+        let out = convert("See <https://example.com> for details\n");
+        assert!(out.contains("#link(\"https://example.com\")"));
+    }
+
+    #[test]
+    fn autolink_email() {
+        let out = convert("Email <user@example.com> here\n");
+        assert!(out.contains("#link(\"mailto:user@example.com\")[user\\@example.com]"));
+    }
+
+    #[test]
+    fn image_local_path() {
+        let out = convert("![alt](photo.jpg)\n");
+        assert!(out.contains("#image(\"photo.jpg\", alt: \"alt\")"));
+    }
+
+    #[test]
+    fn image_url_becomes_link() {
+        let out = convert("![alt](https://example.com/img.png)\n");
+        assert!(out.contains("#link(\"https://example.com/img.png\")[alt]"));
+        assert!(!out.contains("#image("));
     }
 }

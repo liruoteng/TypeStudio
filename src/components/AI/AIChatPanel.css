@@ -156,6 +156,39 @@
   color: var(--accent);
 }
 
+/* ── CLI status banner ───────────────────────────────────────────────────── */
+
+.ai-cli-banner {
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.ai-cli-banner--checking {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.ai-cli-banner--not_found {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-secondary);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.ai-cli-banner code {
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-family: monospace;
+  font-size: 0.74rem;
+}
+
+.ai-cli-banner a {
+  color: var(--accent-bright);
+  text-decoration: underline;
+}
+
 /* ── Messages area ────────────────────────────────────────────────────────── */
 
 .ai-chat-messages {

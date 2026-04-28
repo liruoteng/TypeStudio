@@ -21,6 +21,9 @@ export function usePreview(saveEvent: SaveEvent | null) {
     const p = saveEvent.path;
     if (!p.endsWith(".typ") && !p.endsWith(".md") && !p.endsWith(".markdown")) return;
     setPreviewLoading(true);
-    invoke("trigger_preview_compile", { path: saveEvent.path }).catch(console.error);
+    invoke("trigger_preview_compile", { path: saveEvent.path }).catch((e) => {
+      console.error(e);
+      setPreviewLoading(false);
+    });
   }, [saveEvent?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 }

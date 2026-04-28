@@ -149,13 +149,10 @@ function PreviewSection() {
 function AiSection() {
   const provider = useEditorStore((s) => s.aiProvider);
   const setProvider = useEditorStore((s) => s.setAiProvider);
-  const apiKey = useEditorStore((s) => s.aiApiKey);
-  const setApiKey = useEditorStore((s) => s.setAiApiKey);
   const ollamaUrl = useEditorStore((s) => s.ollamaUrl);
   const setOllamaUrl = useEditorStore((s) => s.setOllamaUrl);
   const ollamaModel = useEditorStore((s) => s.ollamaModel);
   const setOllamaModel = useEditorStore((s) => s.setOllamaModel);
-  const [showKey, setShowKey] = useState(false);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -181,26 +178,17 @@ function AiSection() {
     <div>
       <h2>AI</h2>
       <Row label="Provider">
-        <select value={provider} onChange={(e) => setProvider(e.target.value as "claude" | "ollama")}>
-          <option value="claude">Claude (Anthropic)</option>
+        <select value={provider} onChange={(e) => setProvider(e.target.value as "claude-cli" | "ollama")}>
+          <option value="claude-cli">Claude (via Claude CLI)</option>
           <option value="ollama">Ollama (local)</option>
         </select>
       </Row>
 
-      {provider === "claude" && (
-        <Row label="Claude API key" hint="Stored locally. Only sent to api.anthropic.com.">
-          <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-…"
-              style={{ flex: 1, minWidth: 0 }}
-            />
-            <button style={{ padding: "2px 6px", cursor: "pointer", flexShrink: 0 }} onClick={() => setShowKey((v) => !v)}>
-              {showKey ? "Hide" : "Show"}
-            </button>
-          </div>
+      {provider === "claude-cli" && (
+        <Row label="Claude CLI" hint="Uses your Claude subscription — no API key needed.">
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            Install: <code>npm install -g @anthropic-ai/claude-code</code>, then run <code>claude</code> to log in.
+          </span>
         </Row>
       )}
 

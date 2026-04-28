@@ -186,6 +186,39 @@ fn list_snapshots(path: String) -> Result<Vec<SnapshotEntry>, String> {
 }
 
 #[tauri::command]
+fn path_exists(path: String) -> bool {
+    Path::new(&path).exists()
+}
+
+/// Show a native macOS NSAlert (via osascript) for a move conflict.
+/// Returns one of: "Replace", "Keep Both", "Stop".
+#[tauri::command]
+fn show_move_conflict_dialog(src_name: String, dest_dir_name: String) -> String {
+    let safe_src  = src_name.replace('\\', "\\\\").replace('"', "\\\"");
+    let safe_dest = dest_dir_name.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "display dialog \"\\\"{}\\\" already exists in \\\"{}\\\". \
+         What would you like to do?\" \
+         with title \"File Already Exists\" \
+         buttons {{\"Stop\", \"Keep Both\", \"Replace\"}} \
+         default button \"Keep Both\" \
+         cancel button \"Stop\" \
+         with icon caution",
+        safe_src, safe_dest
+    );
+    match std::process::Command::new("osascript").arg("-e").arg(&script).output() {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout);
+            s.trim()
+                .strip_prefix("button returned:")
+                .unwrap_or("Stop")
+                .to_string()
+        }
+        Err(_) => "Stop".to_string(),
+    }
+}
+
+#[tauri::command]
 fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
     fs::rename(&old_path, &new_path).map_err(|e| e.to_string())
 }
@@ -822,6 +855,8 @@ pub fn run() {
             export_pdf,
             save_snapshot,
             list_snapshots,
+            path_exists,
+            show_move_conflict_dialog,
             rename_path,
             copy_path,
             delete_path,
@@ -830,6 +865,8 @@ pub fn run() {
             latex_import::import_latex_template,
             read_settings,
             write_settings,
+            ai::check_claude_cli,
+            ai::stream_claude_cli,
             ai::stream_ai_chat,
             ai::search_citations,
             ai::list_ollama_models,

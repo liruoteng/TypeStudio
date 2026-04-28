@@ -474,6 +474,8 @@ function InlineCreateInput({ pendingCreate, depth }: { pendingCreate: PendingCre
   );
 }
 
+type ConflictChoice = "replace" | "stop" | "duplicate";
+
 export function FileTree() {
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const setWorkspacePath = useEditorStore((s) => s.setWorkspacePath);
@@ -487,6 +489,11 @@ export function FileTree() {
   const [highlightPath, setHighlightPath] = useState<string | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  const askConflict = useCallback(async (srcName: string, destDirName: string): Promise<ConflictChoice> => {
+    const btn = await invoke<string>("show_move_conflict_dialog", { srcName, destDirName });
+    return btn === "Replace" ? "replace" : btn === "Keep Both" ? "duplicate" : "stop";
+  }, []);
 
   const flashTarget = useCallback((dir: string, filePath: string) => {
     setExpandPath(dir);
@@ -521,17 +528,49 @@ export function FileTree() {
     if (isSelfOrDescendant(src, destDir)) return;
     const srcParent = parentOf(src);
     if (srcParent === destDir) return;
-    const newPath = joinPath(destDir, basename(src));
+
+    const name = basename(src);
+    let destPath = joinPath(destDir, name);
+
+    const exists = await invoke<boolean>("path_exists", { path: destPath });
+    if (exists) {
+      const choice = await askConflict(name, basename(destDir) || destDir);
+
+      if (choice === "stop") return;
+
+      if (choice === "replace") {
+        try {
+          await invoke("delete_path", { path: destPath });
+        } catch (e) {
+          console.error("delete before replace error", e);
+          alert(`Failed to replace: ${e}`);
+          return;
+        }
+      } else {
+        // "duplicate" — find a free name
+        const dot = name.lastIndexOf(".");
+        const stem = dot > 0 ? name.slice(0, dot) : name;
+        const ext  = dot > 0 ? name.slice(dot) : "";
+        let i = 2;
+        while (true) {
+          const candidate = joinPath(destDir, `${stem} (${i})${ext}`);
+          const taken = await invoke<boolean>("path_exists", { path: candidate });
+          if (!taken) { destPath = candidate; break; }
+          i++;
+        }
+      }
+    }
+
     try {
-      await invoke("rename_path", { oldPath: src, newPath });
+      await invoke("rename_path", { oldPath: src, newPath: destPath });
       bumpRefresh(srcParent);
       bumpRefresh(destDir);
-      flashTarget(destDir, newPath);
+      flashTarget(destDir, destPath);
     } catch (e) {
       console.error("move error", e);
       alert(`Failed to move: ${e}`);
     }
-  }, [workspacePath, bumpRefresh, flashTarget]);
+  }, [workspacePath, bumpRefresh, flashTarget, askConflict]);
 
   const copyOsFilesInto = useCallback(async (files: FileList, targetDir: string) => {
     let lastDest: string | null = null;

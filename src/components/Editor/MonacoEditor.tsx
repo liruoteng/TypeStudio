@@ -58,6 +58,167 @@ function getFileLanguage(path: string): string {
   return map[ext] ?? "plaintext";
 }
 
+// ── Writing-mode decoration helpers ──────────────────────────────────────────
+
+/** Push a Monaco inline decoration for [startCol, endCol) (1-based, endCol exclusive). */
+function dec(
+  decs: Monaco.editor.IModelDeltaDecoration[],
+  ln: number, startCol: number, endCol: number, cls: string,
+) {
+  if (startCol >= endCol) return;
+  decs.push({
+    range: { startLineNumber: ln, startColumn: startCol, endLineNumber: ln, endColumn: endCol },
+    options: { inlineClassName: cls },
+  });
+}
+
+/**
+ * Marker characters (*, #, >, etc.) are invisible on non-cursor lines and
+ * dimly visible when the cursor is on the same line.
+ */
+function dim(
+  decs: Monaco.editor.IModelDeltaDecoration[],
+  ln: number, startCol: number, endCol: number, cursorLine: number,
+) {
+  dec(decs, ln, startCol, endCol, ln === cursorLine ? "wm-marker-active" : "wm-marker");
+}
+
+/**
+ * Apply inline span decorations (bold, italic, code, links, strikethrough) to
+ * one line of text.  `fromOffset` is a 0-based char offset — patterns before
+ * it are skipped (used to avoid re-scanning block-level prefixes).
+ */
+function applyInlineStyles(
+  decs: Monaco.editor.IModelDeltaDecoration[],
+  line: string, ln: number, fromOffset: number, cursorLine: number,
+) {
+  // Single combined regex — longest patterns first so *** beats ** beats *.
+  const re = /\*\*\*([^*\n]+?)\*\*\*|\*\*([^*\n]+?)\*\*|__([^_\n]+?)__|_([^_\n]+?)_|\*([^*\n]+?)\*|~~([^~\n]+?)~~|`([^`\n]+?)`|\[([^\]]+?)\]\(([^)]+?)\)/g;
+  re.lastIndex = fromOffset;
+
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    const s = m.index;        // 0-based start
+    const e = s + m[0].length; // 0-based exclusive end
+
+    if (m[1] !== undefined) {
+      // ***bold+italic***  (3-char markers)
+      dim(decs, ln, s + 1, s + 4, cursorLine);
+      dec(decs, ln, s + 4, e - 2, "wm-bold wm-italic");
+      dim(decs, ln, e - 2, e + 1, cursorLine);
+    } else if (m[2] !== undefined || m[3] !== undefined) {
+      // **bold** or __bold__  (2-char markers)
+      dim(decs, ln, s + 1, s + 3, cursorLine);
+      dec(decs, ln, s + 3, e - 1, "wm-bold");
+      dim(decs, ln, e - 1, e + 1, cursorLine);
+    } else if (m[4] !== undefined || m[5] !== undefined) {
+      // _italic_ or *italic*  (1-char markers)
+      dim(decs, ln, s + 1, s + 2, cursorLine);
+      dec(decs, ln, s + 2, e, "wm-italic");
+      dim(decs, ln, e, e + 1, cursorLine);
+    } else if (m[6] !== undefined) {
+      // ~~strikethrough~~  (2-char markers)
+      dim(decs, ln, s + 1, s + 3, cursorLine);
+      dec(decs, ln, s + 3, e - 1, "wm-strike");
+      dim(decs, ln, e - 1, e + 1, cursorLine);
+    } else if (m[7] !== undefined) {
+      // `inline code`  (1-char markers)
+      dim(decs, ln, s + 1, s + 2, cursorLine);
+      dec(decs, ln, s + 2, e, "wm-code");
+      dim(decs, ln, e, e + 1, cursorLine);
+    } else if (m[8] !== undefined && m[9] !== undefined) {
+      // [link text](url) — hide everything except the visible text
+      dim(decs, ln, s + 1, s + 2, cursorLine);                          // [
+      dec(decs, ln, s + 2, s + 2 + m[8].length, "wm-link");             // link text
+      dim(decs, ln, s + 2 + m[8].length, e + 1, cursorLine);            // ](url)
+    }
+  }
+}
+
+/**
+ * Compute all writing-mode decorations for the current model content.
+ * Markers on `cursorLine` are dimly visible; on all other lines they are hidden.
+ * Branches on isMarkdown so headings use # (Markdown) or = (Typst).
+ */
+function computeWritingDecorations(
+  model: Monaco.editor.ITextModel,
+  isMarkdown: boolean,
+  cursorLine: number,
+): Monaco.editor.IModelDeltaDecoration[] {
+  const decs: Monaco.editor.IModelDeltaDecoration[] = [];
+  const lineCount = model.getLineCount();
+  let inFence = false;
+
+  for (let ln = 1; ln <= lineCount; ln++) {
+    const line = model.getLineContent(ln);
+
+    // Track fenced code blocks (``` or ~~~) — dim/hide the fence lines, skip interior
+    if (/^(`{3,}|~{3,})/.test(line)) {
+      inFence = !inFence;
+      dim(decs, ln, 1, line.length + 1, cursorLine);
+      continue;
+    }
+    if (inFence) continue;
+
+    if (isMarkdown) {
+      // Headings: # H1  ## H2  etc.
+      const hm = line.match(/^(#{1,6}) /);
+      if (hm) {
+        const lvl = Math.min(hm[1].length, 3) as 1 | 2 | 3;
+        dim(decs, ln, 1, hm[1].length + 2, cursorLine);
+        dec(decs, ln, hm[1].length + 2, line.length + 1, `wm-h${lvl}`);
+        applyInlineStyles(decs, line, ln, hm[1].length + 1, cursorLine);
+        continue;
+      }
+
+      // Horizontal rule: ---, ***, ___
+      if (/^([-*_])\1{2,}\s*$/.test(line)) {
+        dec(decs, ln, 1, line.length + 1, "wm-hr");
+        continue;
+      }
+
+      // Blockquote: > text
+      const bq = line.match(/^(>+\s?)/);
+      if (bq) {
+        dim(decs, ln, 1, bq[1].length + 1, cursorLine);
+        dec(decs, ln, bq[1].length + 1, line.length + 1, "wm-blockquote");
+        applyInlineStyles(decs, line, ln, bq[1].length, cursorLine);
+        continue;
+      }
+
+      // Unordered list: - item  * item  + item
+      const ul = line.match(/^(\s*)([-*+]) /);
+      if (ul) {
+        dim(decs, ln, ul[1].length + 1, ul[1].length + 3, cursorLine);
+        applyInlineStyles(decs, line, ln, ul[1].length + 2, cursorLine);
+        continue;
+      }
+
+      // Ordered list: 1. item
+      const ol = line.match(/^(\s*)(\d+\.) /);
+      if (ol) {
+        dim(decs, ln, ol[1].length + 1, ol[1].length + ol[2].length + 2, cursorLine);
+        applyInlineStyles(decs, line, ln, ol[1].length + ol[2].length + 1, cursorLine);
+        continue;
+      }
+    } else {
+      // Typst headings: = H1  == H2  etc.
+      const hm = line.match(/^(={1,6}) /);
+      if (hm) {
+        const lvl = Math.min(hm[1].length, 3) as 1 | 2 | 3;
+        dim(decs, ln, 1, hm[1].length + 2, cursorLine);
+        dec(decs, ln, hm[1].length + 2, line.length + 1, `wm-h${lvl}`);
+        applyInlineStyles(decs, line, ln, hm[1].length + 1, cursorLine);
+        continue;
+      }
+    }
+
+    applyInlineStyles(decs, line, ln, 0, cursorLine);
+  }
+
+  return decs;
+}
+
 /** Walk `snippet` by `offset` chars from `start`, respecting newlines. */
 function snippetOffsetToPosition(snippet: string, start: Monaco.IPosition, offset: number): Monaco.IPosition {
   let line = start.lineNumber;
@@ -116,6 +277,8 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
 
   // Writing mode decorations collection
   const decorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
+  // Writing mode view-zone IDs (extra whitespace injected before heading lines)
+  const zoneIdsRef = useRef<string[]>([]);
 
   // When the active tab path changes (tab switch), load the new file's content
   // from the store snapshot and refresh Monaco's value + notify LSP.
@@ -193,9 +356,11 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     const editor = editorRef.current;
     if (!editor) return;
     if (writingMode) {
+      const fs = useEditorStore.getState().editorFontSize;
       editor.updateOptions({
         fontFamily: '"Georgia", "Times New Roman", serif',
         fontLigatures: false,
+        lineHeight: Math.round(fs * 2.2),
         lineNumbers: "off",
         minimap: { enabled: false },
         glyphMargin: false,
@@ -210,6 +375,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       editor.updateOptions({
         fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
         fontLigatures: true,
+        lineHeight: 0, // reset to Monaco default (auto from fontSize)
         lineNumbers: "on",
         minimap: { enabled: true },
         glyphMargin: true,
@@ -221,10 +387,15 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         padding: { top: 8, bottom: 8 },
       });
       decorationsRef.current?.clear();
+      // Clear heading spacing zones when exiting writing mode
+      editor.changeViewZones(accessor => {
+        for (const id of zoneIdsRef.current) accessor.removeZone(id);
+        zoneIdsRef.current = [];
+      });
     }
-  }, [writingMode]);
+  }, [writingMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Recompute writing mode decorations when content or mode changes
+  // Recompute writing-mode decorations and heading spacing zones when mode/file changes
   useEffect(() => {
     if (!writingMode) return;
     const editor = editorRef.current;
@@ -236,72 +407,51 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       decorationsRef.current = editor.createDecorationsCollection([]);
     }
 
-    function computeDecorations(): Monaco.editor.IModelDeltaDecoration[] {
-      const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
-      const lineCount = model!.getLineCount();
-      for (let ln = 1; ln <= lineCount; ln++) {
-        const text = model!.getLineContent(ln);
+    const isMarkdown = !!(editorFile?.path.endsWith(".md") || editorFile?.path.endsWith(".markdown"));
+    const headingRe = isMarkdown ? /^(#{1,6}) / : /^(={1,6}) /;
 
-        // Headings: lines starting with = signs
-        const headingMatch = text.match(/^(={1,6})\s/);
-        if (headingMatch) {
-          const level = Math.min(headingMatch[1].length, 3);
-          decorations.push({
-            range: { startLineNumber: ln, startColumn: 1, endLineNumber: ln, endColumn: text.length + 1 },
-            options: { inlineClassName: `wm-h${level}` },
-          });
-          continue;
-        }
+    // Extra px inserted *before* a heading line via Monaco view zones.
+    // Mirrors Obsidian's heading margins: H1 largest, H3 smallest.
+    const headingTopPx = [0, 28, 18, 10, 0, 0, 0]; // index = heading level 1-6
 
-        // Bold: *text*
-        let boldMatch: RegExpExecArray | null;
-        const boldRe = /\*([^*\n]+)\*/g;
-        while ((boldMatch = boldRe.exec(text)) !== null) {
-          decorations.push({
-            range: {
-              startLineNumber: ln, startColumn: boldMatch.index + 1,
-              endLineNumber: ln, endColumn: boldMatch.index + boldMatch[0].length + 1,
-            },
-            options: { inlineClassName: "wm-bold" },
-          });
-        }
+    function refreshZones() {
+      editor!.changeViewZones(accessor => {
+        for (const id of zoneIdsRef.current) accessor.removeZone(id);
+        zoneIdsRef.current = [];
+        if (!useEditorStore.getState().writingMode) return;
 
-        // Italic: _text_
-        let italicMatch: RegExpExecArray | null;
-        const italicRe = /_([^_\n]+)_/g;
-        while ((italicMatch = italicRe.exec(text)) !== null) {
-          decorations.push({
-            range: {
-              startLineNumber: ln, startColumn: italicMatch.index + 1,
-              endLineNumber: ln, endColumn: italicMatch.index + italicMatch[0].length + 1,
-            },
-            options: { inlineClassName: "wm-italic" },
-          });
+        for (let ln = 1; ln <= model!.getLineCount(); ln++) {
+          const hm = model!.getLineContent(ln).match(headingRe);
+          if (!hm) continue;
+          const extraPx = headingTopPx[Math.min(hm[1].length, 6)];
+          if (extraPx <= 0) continue;
+          const domNode = document.createElement("div");
+          const id = accessor.addZone({ afterLineNumber: ln - 1, heightInPx: extraPx, domNode });
+          zoneIdsRef.current.push(id);
         }
-
-        // Inline code: `code`
-        let codeMatch: RegExpExecArray | null;
-        const codeRe = /`([^`\n]+)`/g;
-        while ((codeMatch = codeRe.exec(text)) !== null) {
-          decorations.push({
-            range: {
-              startLineNumber: ln, startColumn: codeMatch.index + 1,
-              endLineNumber: ln, endColumn: codeMatch.index + codeMatch[0].length + 1,
-            },
-            options: { inlineClassName: "wm-code" },
-          });
-        }
-      }
-      return decorations;
+      });
     }
 
-    decorationsRef.current.set(computeDecorations());
-
-    const disposable = model.onDidChangeContent(() => {
+    function refreshDecs() {
       if (!useEditorStore.getState().writingMode) return;
-      decorationsRef.current?.set(computeDecorations());
-    });
-    return () => disposable.dispose();
+      const cursorLine = editor!.getPosition()?.lineNumber ?? 0;
+      decorationsRef.current?.set(computeWritingDecorations(model!, isMarkdown, cursorLine));
+    }
+
+    refreshDecs();
+    refreshZones();
+
+    const d1 = model.onDidChangeContent(() => { refreshDecs(); refreshZones(); });
+    const d2 = editor.onDidChangeCursorPosition(refreshDecs);
+
+    return () => {
+      d1.dispose();
+      d2.dispose();
+      editor.changeViewZones(accessor => {
+        for (const id of zoneIdsRef.current) accessor.removeZone(id);
+        zoneIdsRef.current = [];
+      });
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingMode, editorFile?.path]);
 
@@ -501,6 +651,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         fontSize: editorFontSize,
         fontFamily: '"Georgia", "Times New Roman", serif',
         fontLigatures: false,
+        lineHeight: Math.round(editorFontSize * 2.2),
         lineNumbers: "off" as const,
         minimap: { enabled: false },
         glyphMargin: false,
@@ -537,7 +688,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       };
 
   return (
-    <div className={writingMode ? "editor-writing-mode" : undefined} style={writingMode ? { height: "100%" } : undefined}>
+    <div className={writingMode ? "editor-writing-mode" : undefined} style={{ height: "100%" }}>
       <Editor
         height="100%"
         language={getFileLanguage(editorFile.path)}

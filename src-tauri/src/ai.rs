@@ -1,7 +1,10 @@
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::process::Stdio;
 use tauri::ipc::Channel;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::process::Command as TokioCommand;
 
 // ── Shared types ───────────────────────────────────────────────────────────
 
@@ -11,81 +14,125 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-// ── Claude (Anthropic) streaming ───────────────────────────────────────────
+// ── Claude CLI ────────────────────────────────────────────────────────────
 
-#[derive(Serialize)]
-struct AnthropicRequest<'a> {
-    model: &'a str,
-    max_tokens: u32,
-    system: &'a str,
-    messages: &'a [ChatMessage],
-    stream: bool,
+fn extended_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let extras = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+    ];
+    let mut parts: Vec<String> = extras
+        .iter()
+        .filter(|p| !current.contains(*p))
+        .map(|p| p.to_string())
+        .collect();
+    parts.push(current);
+    parts.join(":")
 }
 
-async fn stream_claude(
-    client: &Client,
-    messages: &[ChatMessage],
-    api_key: &str,
-    system: &str,
-    on_chunk: &Channel<String>,
-) -> Result<(), String> {
-    let body = serde_json::to_string(&AnthropicRequest {
-        model: "claude-sonnet-4-6",
-        max_tokens: 4096,
-        system,
-        messages,
-        stream: true,
-    })
-    .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .body(body)
-        .send()
+#[tauri::command]
+pub async fn check_claude_cli() -> String {
+    let ok = TokioCommand::new("claude")
+        .arg("--version")
+        .env("PATH", extended_path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
         .await
-        .map_err(|e| e.to_string())?;
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok { "ready".to_string() } else { "not_found".to_string() }
+}
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Claude API error {status}: {body}"));
+#[tauri::command]
+pub async fn stream_claude_cli(
+    session_id: Option<String>,
+    message: String,
+    system: String,
+    on_chunk: Channel<String>,
+) -> Result<Option<String>, String> {
+    let mut cmd = TokioCommand::new("claude");
+    cmd.env("PATH", extended_path())
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("-p")
+        .arg(&message);
+
+    if let Some(ref sid) = session_id {
+        cmd.arg("--resume").arg(sid);
+    } else if !system.is_empty() {
+        cmd.arg("--system-prompt").arg(&system);
     }
 
-    let mut byte_stream = resp.bytes_stream();
-    let mut buffer = String::new();
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    while let Some(chunk) = byte_stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-        loop {
-            match buffer.find('\n') {
-                None => break,
-                Some(pos) => {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer = buffer[pos + 1..].to_string();
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            return Ok(());
-                        }
-                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
-                            if event["type"] == "content_block_delta"
-                                && event["delta"]["type"] == "text_delta"
-                            {
-                                if let Some(text) = event["delta"]["text"].as_str() {
-                                    on_chunk.send(text.to_string()).map_err(|e| e.to_string())?;
-                                }
-                            }
-                        }
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Claude CLI not found: {e}. Install with: npm install -g @anthropic-ai/claude-code"))?;
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    // Collect stderr in background so it doesn't block
+    let stderr_task = tokio::spawn(async move {
+        let mut out = String::new();
+        BufReader::new(stderr).read_to_string(&mut out).await.ok();
+        out
+    });
+
+    let mut lines = BufReader::new(stdout).lines();
+    let mut new_session_id: Option<String> = None;
+
+    while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+
+        match event["type"].as_str() {
+            Some("stream_event") => {
+                let ev = &event["event"];
+                if ev["type"] == "content_block_delta" && ev["delta"]["type"] == "text_delta" {
+                    if let Some(text) = ev["delta"]["text"].as_str() {
+                        on_chunk.send(text.to_string()).map_err(|e| e.to_string())?;
                     }
                 }
             }
+            Some("system") => {
+                if let Some(sid) = event["session_id"].as_str() {
+                    new_session_id = Some(sid.to_string());
+                }
+            }
+            Some("result") => {
+                if let Some(sid) = event["session_id"].as_str() {
+                    new_session_id = Some(sid.to_string());
+                }
+                if event["subtype"].as_str().map_or(false, |s| s != "success") {
+                    let msg = event["error"].as_str().unwrap_or("Claude CLI returned an error");
+                    return Err(msg.to_string());
+                }
+            }
+            _ => {}
         }
     }
 
-    Ok(())
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+    let stderr_output = stderr_task.await.unwrap_or_default();
+
+    if !status.success() && new_session_id.is_none() {
+        return Err(if stderr_output.is_empty() {
+            "Claude CLI failed. Make sure you are authenticated — run `claude` in your terminal.".to_string()
+        } else {
+            stderr_output.trim().to_string()
+        });
+    }
+
+    Ok(new_session_id)
 }
 
 // ── Ollama streaming ───────────────────────────────────────────────────────
@@ -184,20 +231,13 @@ async fn stream_ollama(
 #[tauri::command]
 pub async fn stream_ai_chat(
     messages: Vec<ChatMessage>,
-    provider: String,
-    api_key: String,
     ollama_url: String,
     ollama_model: String,
     system: String,
     on_chunk: Channel<String>,
 ) -> Result<(), String> {
     let client = Client::new();
-    match provider.as_str() {
-        "ollama" => {
-            stream_ollama(&client, &messages, &ollama_url, &ollama_model, &system, &on_chunk).await
-        }
-        _ => stream_claude(&client, &messages, &api_key, &system, &on_chunk).await,
-    }
+    stream_ollama(&client, &messages, &ollama_url, &ollama_model, &system, &on_chunk).await
 }
 
 // ── List Ollama models ─────────────────────────────────────────────────────

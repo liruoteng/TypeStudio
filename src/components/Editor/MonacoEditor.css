@@ -70,15 +70,35 @@
   opacity: 0.95;
 }
 
-/* Writing mode inline decorations */
-.wm-h1 { font-size: 1.6em !important; font-weight: 700 !important; }
-.wm-h2 { font-size: 1.35em !important; font-weight: 600 !important; }
-.wm-h3 { font-size: 1.15em !important; font-weight: 600 !important; }
+/* Writing mode inline decorations
+   NOTE: No font-size changes — Monaco enforces a uniform line height per
+   editor font-size setting, so larger font-size on a decoration clips the line. */
+
+/* Syntax markers: invisible off the cursor line, dimly visible on it */
+.wm-marker        { opacity: 0 !important; }
+.wm-marker-active { opacity: 0.35 !important; }
+
+/* Headings: font-size is safe because writing mode sets lineHeight to ~2.2x
+   the editor font-size, giving headings enough room at these ratios. */
+.wm-h1 { font-size: 1.5em !important; font-weight: 800 !important; letter-spacing: 0.01em !important; }
+.wm-h2 { font-size: 1.25em !important; font-weight: 700 !important; }
+.wm-h3 { font-size: 1.1em !important; font-weight: 600 !important; }
+
 .wm-bold { font-weight: 700 !important; }
 .wm-italic { font-style: italic !important; }
+
+.wm-strike { text-decoration: line-through !important; opacity: 0.6 !important; }
+
+.wm-blockquote { font-style: italic !important; opacity: 0.72 !important; }
+
+.wm-link { text-decoration: underline !important; opacity: 0.85 !important; }
+
+.wm-hr { opacity: 0.35 !important; letter-spacing: 0.15em !important; }
+
+.wm-fence { opacity: 0.4 !important; }
+
 .wm-code {
   font-family: "JetBrains Mono", "Fira Code", monospace !important;
-  font-size: 0.9em !important;
   background: rgba(128, 128, 128, 0.15);
   border-radius: 3px;
   padding: 1px 3px;
