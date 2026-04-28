@@ -51,6 +51,8 @@ interface EditorState {
   setOllamaUrl: (url: string) => void;
   ollamaModel: string;
   setOllamaModel: (model: string) => void;
+  claudeModel: string;
+  setClaudeModel: (model: string) => void;
 
   // Theme
   theme: AppTheme;
@@ -149,6 +151,7 @@ const PERSISTED_KEYS = [
   "aiProvider",
   "ollamaUrl",
   "ollamaModel",
+  "claudeModel",
   "chatSessions",
   "activeChatSessionId",
   "writingMode",
@@ -216,6 +219,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setOllamaUrl: (url) => { set({ ollamaUrl: url }); schedulePersist(get); },
   ollamaModel: "llama3.2",
   setOllamaModel: (model) => { set({ ollamaModel: model }); schedulePersist(get); },
+  claudeModel: "claude-sonnet-4-6",
+  setClaudeModel: (model) => { set({ claudeModel: model }); schedulePersist(get); },
 
   theme: (localStorage.getItem("app-theme") as AppTheme | null) ?? "dark",
   setTheme: (theme) => {
@@ -382,6 +387,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       else if (parsed.aiProvider === "ollama") patch.aiProvider = "ollama";
       if (typeof parsed.ollamaUrl === "string") patch.ollamaUrl = parsed.ollamaUrl;
       if (typeof parsed.ollamaModel === "string") patch.ollamaModel = parsed.ollamaModel;
+      if (typeof parsed.claudeModel === "string") patch.claudeModel = parsed.claudeModel;
       if (Array.isArray(parsed.chatSessions)) patch.chatSessions = parsed.chatSessions as AiChatSession[];
       if (typeof parsed.activeChatSessionId === "string") patch.activeChatSessionId = parsed.activeChatSessionId;
       if (typeof parsed.writingMode === "boolean") patch.writingMode = parsed.writingMode;

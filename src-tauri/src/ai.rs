@@ -52,6 +52,8 @@ pub async fn stream_claude_cli(
     session_id: Option<String>,
     message: String,
     system: String,
+    model: Option<String>,
+    thinking: bool,
     on_chunk: Channel<String>,
 ) -> Result<Option<String>, String> {
     let mut cmd = TokioCommand::new("claude");
@@ -65,6 +67,14 @@ pub async fn stream_claude_cli(
         cmd.arg("--resume").arg(sid);
     } else if !system.is_empty() {
         cmd.arg("--system-prompt").arg(&system);
+    }
+
+    if let Some(ref m) = model {
+        cmd.arg("--model").arg(m);
+    }
+
+    if thinking {
+        cmd.arg("--think");
     }
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

@@ -419,7 +419,9 @@
 
 .ai-chat-input-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .ai-chat-btn {
@@ -454,4 +456,99 @@
 
 .ai-chat-btn--stop:hover {
   background: var(--bg-hover);
+}
+
+/* ── Chat toolbar (inline with send button) ──────────────────────────────── */
+
+.ai-toolbar-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.ai-toolbar-model,
+.ai-toolbar-select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.74rem;
+  outline: none;
+  padding: 2px 4px;
+}
+
+.ai-toolbar-model { max-width: 100px; }
+.ai-toolbar-select { max-width: 80px; }
+
+.ai-toolbar-model:focus,
+.ai-toolbar-select:focus {
+  border-color: var(--accent);
+}
+
+.ai-toolbar-tokens {
+  color: var(--text-dim);
+  font-size: 0.71rem;
+  flex: 1;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ai-toolbar-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  line-height: 1.4;
+}
+
+.ai-toolbar-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ai-toolbar-toggle.active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.ai-toolbar-mode {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ai-toolbar-mode-btn {
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1.4;
+}
+
+.ai-toolbar-mode-btn:last-child {
+  border-right: none;
+}
+
+.ai-toolbar-mode-btn:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text);
+}
+
+.ai-toolbar-mode-btn.active {
+  background: var(--accent-btn);
+  color: #fff;
 }

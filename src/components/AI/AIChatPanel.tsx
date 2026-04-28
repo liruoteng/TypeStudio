@@ -17,10 +17,24 @@ interface CitationResult {
   externalIds: { DOI?: string } | null;
 }
 
-const SYSTEM_PROMPT =
-  "You are a writing assistant in Type Studio, a Typst academic document editor. " +
-  "Help users write, improve, and edit their content. Respond concisely and in plain text. " +
-  "When given selected text as context, focus your response on working with that text.";
+type Effort = "low" | "normal" | "high";
+type ChatMode = "plan" | "action";
+
+const CLAUDE_MODELS = [
+  { id: "claude-opus-4-7",           label: "Claude Opus 4.7" },
+  { id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+];
+
+function buildSystemPrompt(effort: Effort): string {
+  const base =
+    "You are a writing assistant in Type Studio, a Typst academic document editor. " +
+    "Help users write, improve, and edit their content. Respond in plain text. " +
+    "When given selected text as context, focus your response on working with that text.";
+  if (effort === "low") return base + " Be concise and brief.";
+  if (effort === "high") return base + " Think carefully and provide a thorough, comprehensive response.";
+  return base;
+}
 
 function generateBibKey(paper: CitationResult): string {
   const firstAuthor = paper.authors[0]?.name ?? "unknown";
@@ -67,11 +81,21 @@ export function AIChatPanel() {
   const localMessagesRef = useRef(localMessages);
   localMessagesRef.current = localMessages;
 
+  // ── Toolbar state ──────────────────────────────────────────────────────
+  const [effort, setEffort] = useState<Effort>("normal");
+  const [thinking, setThinking] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("plan");
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+
   // ── Provider settings ──────────────────────────────────────────────────
   const selectedText = useEditorStore((s) => s.selectedText);
   const aiProvider   = useEditorStore((s) => s.aiProvider);
-  const ollamaUrl    = useEditorStore((s) => s.ollamaUrl);
-  const ollamaModel  = useEditorStore((s) => s.ollamaModel);
+  const setAiProvider  = useEditorStore((s) => s.setAiProvider);
+  const ollamaUrl      = useEditorStore((s) => s.ollamaUrl);
+  const ollamaModel    = useEditorStore((s) => s.ollamaModel);
+  const setOllamaModel = useEditorStore((s) => s.setOllamaModel);
+  const claudeModel    = useEditorStore((s) => s.claudeModel);
+  const setClaudeModel = useEditorStore((s) => s.setClaudeModel);
 
   // ── Check Claude CLI on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -81,6 +105,13 @@ export function AIChatPanel() {
         .catch(() => setCliStatus("not_found"));
     }
   }, [aiProvider]);
+
+  // ── Fetch Ollama models ────────────────────────────────────────────────
+  useEffect(() => {
+    invoke<string[]>("list_ollama_models", { baseUrl: ollamaUrl })
+      .then(setOllamaModels)
+      .catch(() => setOllamaModels([]));
+  }, [ollamaUrl]);
 
   // Sync local messages when active session changes (panel switch or session switch)
   useEffect(() => {
@@ -128,6 +159,31 @@ export function AIChatPanel() {
     setCopiedKey(paper.paperId);
     setTimeout(() => setCopiedKey(null), 1500);
   }, []);
+
+  // ── Toolbar helpers ────────────────────────────────────────────────────
+  const modelValue = aiProvider === "claude-cli"
+    ? `claude-cli:${claudeModel}`
+    : `ollama:${ollamaModel}`;
+
+  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val.startsWith("claude-cli:")) {
+      setAiProvider("claude-cli");
+      setClaudeModel(val.slice(11));
+    } else if (val.startsWith("ollama:")) {
+      setAiProvider("ollama");
+      setOllamaModel(val.slice(7));
+    }
+  };
+
+  const estimatedTokens = localMessages.reduce(
+    (sum, m) => sum + Math.ceil(m.content.length / 4),
+    0
+  );
+  const tokenLabel =
+    estimatedTokens >= 1000
+      ? `~${(estimatedTokens / 1000).toFixed(1)}k`
+      : `~${estimatedTokens}`;
 
   // ── Send message ───────────────────────────────────────────────────────
   const handleSend = async () => {
@@ -218,7 +274,7 @@ export function AIChatPanel() {
           messages: apiMessages,
           ollamaUrl,
           ollamaModel,
-          system: SYSTEM_PROMPT,
+          system: buildSystemPrompt(effort),
           onChunk,
         });
       } else {
@@ -239,7 +295,9 @@ export function AIChatPanel() {
         const returnedSessionId = await invoke<string | null>("stream_claude_cli", {
           sessionId: activeSession?.claudeSessionId ?? null,
           message: contextualContent,
-          system: activeSession?.claudeSessionId ? "" : SYSTEM_PROMPT,
+          system: activeSession?.claudeSessionId ? "" : buildSystemPrompt(effort),
+          model: claudeModel || null,
+          thinking,
           onChunk,
         });
 
@@ -249,6 +307,14 @@ export function AIChatPanel() {
       }
 
       commitMessages(localMessagesRef.current);
+
+      if (chatMode === "action") {
+        const msgs = localMessagesRef.current;
+        const last = msgs[msgs.length - 1];
+        if (last?.role === "assistant" && last.content) {
+          insertAtCursor(last.content);
+        }
+      }
     } catch (e: unknown) {
       if (!abortRef.current) {
         setLocalMessages((prev) => {
@@ -427,6 +493,65 @@ export function AIChatPanel() {
           disabled={isLoading}
         />
         <div className="ai-chat-input-actions">
+          <span className="ai-toolbar-label">Model</span>
+          <select
+            className="ai-toolbar-model"
+            value={modelValue}
+            onChange={handleModelChange}
+            title="Model"
+          >
+            {CLAUDE_MODELS.map((m) => (
+              <option key={m.id} value={`claude-cli:${m.id}`}>{m.label}</option>
+            ))}
+            {ollamaModels.map((m) => (
+              <option key={m} value={`ollama:${m}`}>{m}</option>
+            ))}
+            {aiProvider === "ollama" && !ollamaModels.includes(ollamaModel) && (
+              <option value={`ollama:${ollamaModel}`}>{ollamaModel}</option>
+            )}
+          </select>
+
+          <span className="ai-toolbar-label">Effort</span>
+          <select
+            className="ai-toolbar-select"
+            value={effort}
+            onChange={(e) => setEffort(e.target.value as Effort)}
+            title="Effort"
+          >
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+          </select>
+
+          <span className="ai-toolbar-tokens" title="Estimated context tokens">
+            {tokenLabel}
+          </span>
+
+          <button
+            className={`ai-toolbar-toggle${thinking ? " active" : ""}`}
+            onClick={() => setThinking((t) => !t)}
+            title="Extended thinking"
+          >
+            Think
+          </button>
+
+          <div className="ai-toolbar-mode" role="group" aria-label="Mode">
+            <button
+              className={`ai-toolbar-mode-btn${chatMode === "plan" ? " active" : ""}`}
+              onClick={() => setChatMode("plan")}
+              title="Respond in chat only"
+            >
+              Plan
+            </button>
+            <button
+              className={`ai-toolbar-mode-btn${chatMode === "action" ? " active" : ""}`}
+              onClick={() => setChatMode("action")}
+              title="Auto-insert response into editor"
+            >
+              Act
+            </button>
+          </div>
+
           {isLoading ? (
             <button className="ai-chat-btn ai-chat-btn--stop" onClick={handleStop}>Stop</button>
           ) : (
