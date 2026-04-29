@@ -504,10 +504,11 @@
 
 .ai-chat-btn {
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 500;
+  font-family: inherit;
   padding: 5px 16px;
   transition: background 0.15s;
 }

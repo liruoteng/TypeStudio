@@ -6,9 +6,9 @@
   --bg-base:         #1e1e1e;
   --bg-surface:      #252526;
   --bg-elevated:     #2d2d2d;
-  --bg-toolbar:      #323233;
+  --bg-toolbar:      #1a1a1a;
   --bg-hover:        #2a2d2e;
-  --bg-active-item:  #3b2566;
+  --bg-active-item:  #1d3461;
   --bg-active-tab:   #1e1e1e;
   --bg-preview:      #3c3c3c;
   --bg-btn-hover:    #3c3c3c;
@@ -16,7 +16,7 @@
   --border-dim:      #1e1e1e;
   --border:          #333333;
   --border-medium:   #444444;
-  --border-btn:      #555555;
+  --border-btn:      #444444;
 
   --text:            #d4d4d4;
   --text-secondary:  #bbbbbb;
@@ -26,73 +26,73 @@
   --text-header:     #bbbbbb;
   --text-tree:       #cccccc;
 
-  --accent:          #8b5cf6;
-  --accent-bright:   #c4b5fd;
-  --accent-btn:      #7c3aed;
-  --accent-btn-hover:#9333ea;
-  --accent-tab-bar:  #8b5cf6;
+  --accent:          #3b82f6;
+  --accent-bright:   #60a5fa;
+  --accent-btn:      #1456f0;
+  --accent-btn-hover:#2563eb;
+  --accent-tab-bar:  #3b82f6;
 
-  --status-bg:       #6d28d9;
+  --status-bg:       #1456f0;
   --status-text:     #ffffff;
 
-  --dirty:           #f6c349;
+  --dirty:           #f59e0b;
 
-  --icon-typst:      #c4b5fd;
+  --icon-typst:      #60a5fa;
   --icon-bib:        #dcdcaa;
   --icon-dir:        #e8b84b;
 
-  --spinner-track:   #555555;
-  --spinner-color:   #c4b5fd;
-  --reload-gradient: linear-gradient(90deg, #7c3aed, #c4b5fd, #7c3aed);
+  --spinner-track:   #444444;
+  --spinner-color:   #60a5fa;
+  --reload-gradient: linear-gradient(90deg, #1456f0, #60a5fa, #1456f0);
 
-  --scrollbar-thumb: #555555;
+  --scrollbar-thumb: #444444;
 }
 
-/* ── Theme: Claude (warm light) ───────────────────────────────────────────── */
+/* ── Theme: Claude (MiniMax-inspired white light) ─────────────────────────── */
 [data-theme="claude"] {
-  --bg-base:         #faf9f6;
-  --bg-surface:      #f0ede4;
-  --bg-elevated:     #e8e4da;
+  --bg-base:         #ffffff;
+  --bg-surface:      #f8f9fa;
+  --bg-elevated:     #f0f1f3;
   --bg-toolbar:      #ffffff;
-  --bg-hover:        #e4dfd3;
-  --bg-active-item:  #d6cebd;
-  --bg-active-tab:   #faf9f6;
-  --bg-preview:      #e8e4da;
-  --bg-btn-hover:    #ede9df;
+  --bg-hover:        #f0f0f0;
+  --bg-active-item:  #e8f0fe;
+  --bg-active-tab:   #ffffff;
+  --bg-preview:      #f8f9fa;
+  --bg-btn-hover:    #f0f0f0;
 
-  --border-dim:      #e8e4da;
-  --border:          #d4cfbf;
-  --border-medium:   #c4bfaf;
-  --border-btn:      #aba59a;
+  --border-dim:      #f2f3f5;
+  --border:          #e5e7eb;
+  --border-medium:   #d1d5db;
+  --border-btn:      #d1d5db;
 
-  --text:            #1c1c1c;
-  --text-secondary:  #4a4846;
-  --text-muted:      #7a7672;
-  --text-dim:        #9a9692;
-  --text-tab:        #6a6662;
-  --text-header:     #5a5652;
-  --text-tree:       #2c2a28;
+  --text:            #222222;
+  --text-secondary:  #45515e;
+  --text-muted:      #8e8e93;
+  --text-dim:        #9ca3af;
+  --text-tab:        #6b7280;
+  --text-header:     #45515e;
+  --text-tree:       #374151;
 
-  --accent:          #d97559;
-  --accent-bright:   #e8856a;
-  --accent-btn:      #d97559;
-  --accent-btn-hover:#c4634a;
-  --accent-tab-bar:  #d97559;
+  --accent:          #1456f0;
+  --accent-bright:   #3b82f6;
+  --accent-btn:      #181e25;
+  --accent-btn-hover:#2d3748;
+  --accent-tab-bar:  #1456f0;
 
-  --status-bg:       #d97559;
+  --status-bg:       #181e25;
   --status-text:     #ffffff;
 
-  --dirty:           #d97559;
+  --dirty:           #f59e0b;
 
-  --icon-typst:      #d97559;
-  --icon-bib:        #8b6914;
-  --icon-dir:        #c4820a;
+  --icon-typst:      #1456f0;
+  --icon-bib:        #c47a15;
+  --icon-dir:        #d97706;
 
-  --spinner-track:   #d4cfbf;
-  --spinner-color:   #d97559;
-  --reload-gradient: linear-gradient(90deg, #d97559, #e8856a, #d97559);
+  --spinner-track:   #e5e7eb;
+  --spinner-color:   #1456f0;
+  --reload-gradient: linear-gradient(90deg, #1456f0, #3b82f6, #1456f0);
 
-  --scrollbar-thumb: #c4bfaf;
+  --scrollbar-thumb: #d1d5db;
 }
 
 /* ── App shell ─────────────────────────────────────────────────────────────── */
@@ -104,7 +104,7 @@
   overflow: hidden;
   background: var(--bg-base);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* ── Main body (three panels) ─────────────────────────────────────────────── */
@@ -147,10 +147,10 @@
 }
 
 .preview-header {
-  height: 35px;
+  height: 38px;
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
   gap: 4px;
   color: var(--text-header);
   background: var(--bg-elevated);
@@ -159,9 +159,11 @@
 }
 
 .preview-header-label {
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   font-weight: 600;
   font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 .preview-page-count {
@@ -176,11 +178,11 @@
 .preview-icon-btn {
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -202,30 +204,30 @@
   background: var(--bg-btn-hover);
 }
 
-/* Recompile / play button — flat colored icon showing compile status */
+/* Recompile / play button */
 .preview-run-btn {
   background: none;
   border: none;
-  border-radius: 3px;
-  font-size: 15px;
+  border-radius: 6px;
+  font-size: 14px;
   width: 28px;
-  height: 36px;
+  height: 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   flex-shrink: 0;
-  transition: opacity 0.12s;
+  transition: opacity 0.12s, background 0.12s;
 }
-.preview-run-btn:hover:not(:disabled) { opacity: 0.65; }
+.preview-run-btn:hover:not(:disabled) { background: var(--bg-btn-hover); opacity: 0.85; }
 .preview-run-btn:disabled { cursor: default; opacity: 0.35; }
 
 /* Status colors */
 .preview-run-btn--idle    { color: var(--text-muted); }
 .preview-run-btn--loading { color: var(--text-muted); }
-.preview-run-btn--success { color: #4caf50; }
-.preview-run-btn--error   { color: #ef4444; }
+.preview-run-btn--success { color: #16a34a; }
+.preview-run-btn--error   { color: #dc2626; }
 
 /* Spin animation for the loading indicator */
 .preview-run-btn .spin {
@@ -253,12 +255,12 @@
 .preview-zoom-pct {
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--text-muted);
   font-size: 11px;
   font-family: inherit;
   min-width: 36px;
-  height: 22px;
+  height: 24px;
   cursor: pointer;
   padding: 0 3px;
   text-align: center;
@@ -278,7 +280,7 @@
 /* ── Collapsed preview strip ──────────────────────────────────────────────── */
 .preview-collapsed-strip {
   flex-shrink: 0;
-  width: 18px;
+  width: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -292,13 +294,13 @@
 }
 .preview-collapsed-strip:hover {
   background: var(--bg-elevated);
-  color: var(--text);
+  color: var(--accent);
 }
 
 /* ── Collapsed sidebar strip ─────────────────────────────────────────────── */
 .sidebar-collapsed-strip {
   flex-shrink: 0;
-  width: 18px;
+  width: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -312,13 +314,13 @@
 }
 .sidebar-collapsed-strip:hover {
   background: var(--bg-elevated);
-  color: var(--text);
+  color: var(--accent);
 }
 
 /* ── Resize handles ───────────────────────────────────────────────────────── */
 .resize-handle {
   flex-shrink: 0;
-  background: var(--border);
+  background: var(--border-dim);
   transition: background 0.15s;
   z-index: 10;
 }
@@ -327,10 +329,10 @@
   background: var(--accent);
 }
 .resize-handle-v {
-  width: 3px;
+  width: 2px;
   cursor: col-resize;
 }
 .resize-handle-h {
-  height: 3px;
+  height: 2px;
   cursor: row-resize;
 }
