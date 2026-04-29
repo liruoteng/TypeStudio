@@ -21,7 +21,7 @@
   padding: 0 10px;
   height: 28px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-tab);
@@ -41,7 +41,7 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-/* Blue top accent on active tab */
+/* Blue top accent line on active tab */
 .tab.active::before {
   content: "";
   position: absolute;

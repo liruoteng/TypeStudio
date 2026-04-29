@@ -474,23 +474,23 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
-      <div style={{ position: "relative" }}>
-        <Toolbar
-          onExportPdf={handleExportPdf}
-          onConvertToTypst={handleConvertToTypst}
-          sidebarOpen={sidebarWidth > 0}
-          onToggleSidebar={() => setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0))}
-          previewOpen={previewWidth > 0}
-          onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
+      <Toolbar
+        onExportPdf={handleExportPdf}
+        onConvertToTypst={handleConvertToTypst}
+        sidebarOpen={sidebarWidth > 0}
+        onToggleSidebar={() => setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0))}
+        sidebarWidth={sidebarWidth}
+        previewOpen={previewWidth > 0}
+        onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
+        tabBar={<TabBar />}
+      />
+      {showHistory && activeTabPath && (
+        <HistoryPanel
+          filePath={activeTabPath}
+          onRestore={handleRestore}
+          onClose={() => setShowHistory(false)}
         />
-        {showHistory && activeTabPath && (
-          <HistoryPanel
-            filePath={activeTabPath}
-            onRestore={handleRestore}
-            onClose={() => setShowHistory(false)}
-          />
-        )}
-      </div>
+      )}
       <div className="app-body" ref={containerRef}>
         {sidebarWidth === 0 ? (
           <div
@@ -510,7 +510,6 @@ export default function App() {
         )}
 
         <div className="editor-column">
-          <TabBar />
           <div className="editor-area">
             <MonacoEditor
               onSave={handleSave}

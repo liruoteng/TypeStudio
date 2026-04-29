@@ -1,111 +1,102 @@
+/* Single unified bar: sidebar toggle | tabs (scrollable) | action buttons */
 .toolbar {
   display: flex;
-  align-items: center;
-  height: 42px;
+  align-items: stretch;
+  height: 38px;
   background: var(--bg-toolbar);
   border-bottom: 1px solid var(--border);
-  padding: 0 12px;
-  gap: 8px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
+/* ── Left: sidebar toggle (width matches sidebar when open) ───────────────── */
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 160px;
+  justify-content: flex-start;
+  padding: 0 6px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-dim);
+  /* width is set inline to match sidebarWidth when sidebar is open */
 }
 
-.app-logo {
-  font-size: 18px;
-  color: var(--accent);
-  line-height: 1;
-}
-
-.app-name {
-  font-family: "Outfit", "Helvetica Neue", Helvetica, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.toolbar-center {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* ── Center: tab strip ────────────────────────────────────────────────────── */
+.toolbar-tabs {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
 }
 
+/* Override tab-bar styles when rendered inside the unified toolbar */
+.toolbar-tabs .tab-bar {
+  height: 100%;
+  background: transparent;
+  border-bottom: none;
+  padding: 4px 4px 0;
+  gap: 2px;
+}
+
+.toolbar-tabs .tab {
+  height: 100%;
+  border-radius: 6px 6px 0 0;
+  border-bottom: none;
+}
+
+.toolbar-tabs .tab.active {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--bg-base);
+  box-shadow: none;
+}
+
+/* The blue top accent line on the active tab */
+.toolbar-tabs .tab.active::before {
+  border-radius: 3px 3px 0 0;
+}
+
+/* ── Right: action buttons ────────────────────────────────────────────────── */
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-dim);
 }
 
-/* Standard action button — 8px radius per DESIGN.md */
-.toolbar-btn {
-  padding: 5px 14px;
-  background: transparent;
-  border: 1px solid var(--border-btn);
-  border-radius: 8px;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  transition: background 0.12s, border-color 0.12s;
-}
-.toolbar-btn:hover:not(:disabled) {
-  background: var(--bg-btn-hover);
-  border-color: var(--text-muted);
-}
-.toolbar-btn:disabled { opacity: 0.4; cursor: default; }
-
-.toolbar-btn-primary {
-  background: var(--accent-btn);
-  border-color: var(--accent-btn);
-  color: #ffffff;
-}
-.toolbar-btn-primary:hover:not(:disabled) {
-  background: var(--accent-btn-hover);
-  border-color: var(--accent-btn-hover);
-}
-
-/* Nav/toggle icon buttons — pill shape (9999px) per DESIGN.md */
-.toolbar-btn-theme {
-  padding: 5px 10px;
+/* ── Icon button (toolbar actions) ───────────────────────────────────────── */
+.toolbar-btn-icon {
+  padding: 0 7px;
   font-size: 13px;
   line-height: 1;
-  border-radius: 9999px;
-  border: 1px solid var(--border-btn);
+  border-radius: 6px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 26px;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
-  min-width: 30px;
-  height: 28px;
 }
-.toolbar-btn-theme:hover:not(:disabled) {
+.toolbar-btn-icon:hover:not(:disabled) {
   background: var(--bg-btn-hover);
   color: var(--text);
   border-color: var(--border-medium);
 }
-.toolbar-btn-theme:disabled {
+.toolbar-btn-icon:disabled {
   opacity: 0.3;
   cursor: default;
 }
-.toolbar-btn-theme--active {
+.toolbar-btn-icon--active {
   background: var(--accent-btn);
   color: #ffffff;
   border-color: var(--accent-btn);
 }
-.toolbar-btn-theme--active:hover:not(:disabled) {
+.toolbar-btn-icon--active:hover:not(:disabled) {
   background: var(--accent-btn-hover);
   border-color: var(--accent-btn-hover);
   color: #ffffff;
@@ -115,3 +106,19 @@
   color: var(--dirty);
   font-size: 14px;
 }
+
+/* ── Legacy classes kept for compatibility ────────────────────────────────── */
+.toolbar-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--border-btn);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.toolbar-btn:hover:not(:disabled) { background: var(--bg-btn-hover); }
+.toolbar-btn:disabled { opacity: 0.4; cursor: default; }

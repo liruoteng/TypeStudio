@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import type { AppTheme } from "../../stores/editorStore";
 import "./Toolbar.css";
@@ -32,11 +33,13 @@ interface ToolbarProps {
   onConvertToTypst: () => void;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  sidebarWidth: number;
   previewOpen: boolean;
   onTogglePreview: () => void;
+  tabBar?: ReactNode;
 }
 
-export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, previewOpen, onTogglePreview }: ToolbarProps) {
+export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, sidebarWidth, previewOpen, onTogglePreview, tabBar }: ToolbarProps) {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const isDirty = useEditorStore((s) => {
     const path = s.activeTabPath;
@@ -52,22 +55,28 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
 
   return (
     <div className="toolbar">
-      <div className="toolbar-left">
+      <div
+        className="toolbar-left"
+        style={sidebarOpen ? { width: sidebarWidth } : undefined}
+      >
         <button
-          className={`toolbar-btn-theme${sidebarOpen ? "" : " toolbar-btn-theme--active"}`}
+          className={`toolbar-btn-icon${sidebarOpen ? "" : " toolbar-btn-icon--active"}`}
           onClick={onToggleSidebar}
           title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         >
           <PanelLeftIcon />
         </button>
-        <span className="app-logo">✦</span>
-        <span className="app-name">Type Studio</span>
       </div>
+
+      <div className="toolbar-tabs">
+        {tabBar}
+      </div>
+
       <div className="toolbar-right">
         {isDirty && <span className="dirty-badge" title="Unsaved changes">●</span>}
         {isMd && (
           <button
-            className="toolbar-btn-theme"
+            className="toolbar-btn-icon"
             onClick={onConvertToTypst}
             title="Convert to Typst (one-way; original .md is kept)"
           >
@@ -75,7 +84,7 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
           </button>
         )}
         <button
-          className={`toolbar-btn-theme${writingMode ? " toolbar-btn-theme--active" : ""}`}
+          className={`toolbar-btn-icon${writingMode ? " toolbar-btn-icon--active" : ""}`}
           onClick={() => setWritingMode(!writingMode)}
           disabled={!activeTabPath}
           title={writingMode ? "Exit writing mode" : "Enter writing mode"}
@@ -83,14 +92,14 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
           ✎
         </button>
         <button
-          className="toolbar-btn-theme"
+          className="toolbar-btn-icon"
           onClick={() => setTheme(NEXT_THEME[theme])}
           title={THEME_TITLE[theme]}
         >
           {THEME_ICON[theme]}
         </button>
         <button
-          className="toolbar-btn-theme"
+          className="toolbar-btn-icon"
           onClick={onExportPdf}
           disabled={!isTypst}
           title="Export PDF"
@@ -98,7 +107,7 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
           ⬇
         </button>
         <button
-          className={`toolbar-btn-theme${previewOpen ? "" : " toolbar-btn-theme--active"}`}
+          className={`toolbar-btn-icon${previewOpen ? "" : " toolbar-btn-icon--active"}`}
           onClick={onTogglePreview}
           title={previewOpen ? "Hide preview" : "Show preview"}
         >
