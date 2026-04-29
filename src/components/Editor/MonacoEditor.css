@@ -30,18 +30,19 @@
 
 .editor-empty-new-btn {
   margin-top: 16px;
-  padding: 6px 16px;
+  padding: 7px 20px;
   font-size: 13px;
-  background: var(--accent-bright, #7c6af7);
+  font-weight: 500;
+  font-family: inherit;
+  background: var(--accent-btn);
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
-  opacity: 0.85;
+  transition: background 0.12s, opacity 0.12s;
 }
-
 .editor-empty-new-btn:hover {
-  opacity: 1;
+  background: var(--accent-btn-hover);
 }
 
 /* ── Diagnostic squigglies ────────────────────────────────────────────────

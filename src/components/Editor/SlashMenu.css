@@ -4,13 +4,15 @@
   width: 260px;
   max-height: 320px;
   overflow-y: auto;
-  background: var(--bg-elevated);
+  background: var(--bg-base);
   border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  box-shadow:
+    rgba(0, 0, 0, 0.08) 0px 4px 6px,
+    rgba(44, 30, 116, 0.10) 0px 12px 28px -4px;
   padding: 4px;
   animation: slash-menu-in 80ms ease-out;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: inherit;
 }
 
 @keyframes slash-menu-in {
@@ -40,14 +42,15 @@
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-radius: 5px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: background 60ms;
+  transition: background 80ms, color 80ms;
 }
 
 .slash-menu-item.selected,
 .slash-menu-item:hover {
   background: var(--bg-active-item);
+  color: var(--accent);
 }
 
 .slash-menu-icon {
@@ -57,13 +60,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  background: var(--bg-surface);
+  border-radius: 6px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   font-size: 11px;
   font-weight: 700;
   color: var(--text-secondary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: inherit;
 }
 
 .slash-menu-text {
