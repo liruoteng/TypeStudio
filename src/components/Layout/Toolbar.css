@@ -20,6 +20,23 @@
   /* width is set inline to match sidebarWidth when sidebar is open */
 }
 
+/* ── Explorer action buttons inside toolbar-left ─────────────────────────── */
+.toolbar-explorer-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+/* Square icon buttons for the sidebar toolbar — same size/shape as the toggle */
+.toolbar-left .toolbar-btn-icon {
+  padding: 0;
+  width: 26px;
+  border-color: transparent;
+}
+.toolbar-left .toolbar-btn-icon:hover:not(:disabled) {
+  border-color: transparent;
+}
+
 /* ── Center: tab strip ────────────────────────────────────────────────────── */
 .toolbar-tabs {
   flex: 1;

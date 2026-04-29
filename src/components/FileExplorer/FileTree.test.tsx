@@ -51,7 +51,7 @@ describe("FileTree DnD", () => {
   });
 
   it("moves a file into a subfolder via drag-and-drop", async () => {
-    render(<FileTree />);
+    render(<FileTree onOpenFolder={() => {}} />);
 
     // Wait for tree contents to load
     await waitFor(() => expect(screen.getByText("a.typ")).toBeInTheDocument());
@@ -76,7 +76,7 @@ describe("FileTree DnD", () => {
   });
 
   it("does not move when source parent equals destination dir", async () => {
-    render(<FileTree />);
+    render(<FileTree onOpenFolder={() => {}} />);
     await waitFor(() => expect(screen.getByText("a.typ")).toBeInTheDocument());
 
     const fileRow = screen.getByText("a.typ").closest(".tree-row") as HTMLElement;

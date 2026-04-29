@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore, FileEntry } from "../../stores/editorStore";
 import { ContextMenu, type ContextMenuItem } from "../Layout/ContextMenu";
 import "./FileTree.css";
+
+export interface FileTreeHandle {
+  newFile: () => void;
+  newFolder: () => void;
+  refresh: () => void;
+}
 
 const DRAG_MIME = "application/x-type-studio-path";
 
@@ -476,9 +482,9 @@ function InlineCreateInput({ pendingCreate, depth }: { pendingCreate: PendingCre
 
 type ConflictChoice = "replace" | "stop" | "duplicate";
 
-export function FileTree() {
+export const FileTree = forwardRef<FileTreeHandle, { onOpenFolder: () => void }>(
+function FileTree({ onOpenFolder }, ref) {
   const workspacePath = useEditorStore((s) => s.workspacePath);
-  const setWorkspacePath = useEditorStore((s) => s.setWorkspacePath);
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
   const [creating, setCreating] = useState<null | { type: "file" | "folder"; name: string }>(null);
@@ -589,23 +595,17 @@ export function FileTree() {
     if (lastDest) flashTarget(targetDir, lastDest);
   }, [bumpRefresh, flashTarget]);
 
-  const handleOpenFolder = async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false });
-      if (typeof selected === "string") {
-        setWorkspacePath(selected);
-      }
-    } catch (e) {
-      console.error("open dialog error", e);
-    }
-  };
-
-  const startCreating = (type: "file" | "folder") => {
+  const startCreating = useCallback((type: "file" | "folder") => {
     setCreating({ type, name: "" });
-  };
+  }, []);
 
-  const handleRefresh = () => setRefreshKey((k) => k + 1);
+  const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  useImperativeHandle(ref, () => ({
+    newFile: () => startCreating("file"),
+    newFolder: () => startCreating("folder"),
+    refresh: handleRefresh,
+  }), [startCreating, handleRefresh]);
 
   const handleCreateConfirm = async () => {
     const name = creating?.name.trim();
@@ -685,44 +685,6 @@ export function FileTree() {
     <div className="file-tree">
       <div className="file-tree-header">
         <span className="file-tree-title">EXPLORER</span>
-        <div className="file-tree-actions">
-          {workspacePath && (
-            <>
-              <button
-                className="tree-action-btn"
-                onClick={() => startCreating("file")}
-                title="New File"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path fillRule="evenodd" d="M9.5 1.1l3.4 3.5.1.4v2h-1V5H9V2H3v12h4v1H2.5l-.5-.5v-13l.5-.5h6.7l.3.1zM10 2v2h1.9L10 2zm4 9h-2V9h-1v2H9v1h2v2h1v-2h2v-1z"/>
-                </svg>
-              </button>
-              <button
-                className="tree-action-btn"
-                onClick={() => startCreating("folder")}
-                title="New Folder"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M14.5 3H7.71l-.85-.85L6.51 2h-5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.5 9H2V3.5h4.29l.85.85.36.15H14V12zm-4-4H8V6H7v2H5v1h2v2h1V9h2V8z"/>
-                </svg>
-              </button>
-              <button
-                className="tree-action-btn"
-                onClick={handleRefresh}
-                title="Refresh"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.681 3H2V2h3.5l.5.5V6H5V4a5 5 0 1 0 4.53-.761l.302-.954A6 6 0 1 1 4.681 3z"/>
-                </svg>
-              </button>
-            </>
-          )}
-          <button className="tree-action-btn" onClick={handleOpenFolder} title="Open Folder">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M14.5 3H7.71l-.85-.85L6.51 2h-5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.5 9H2V3.5h4.29l.85.85.36.15H14V12z"/>
-            </svg>
-          </button>
-        </div>
       </div>
       <div
         className={`file-tree-body${bodyDropHover ? " drop-target" : ""}`}
@@ -758,7 +720,7 @@ export function FileTree() {
         ) : (
           <div className="file-tree-empty">
             <p>No folder opened</p>
-            <button className="open-folder-text-btn" onClick={handleOpenFolder}>
+            <button className="open-folder-text-btn" onClick={onOpenFolder}>
               Open Folder
             </button>
           </div>
@@ -774,4 +736,4 @@ export function FileTree() {
       )}
     </div>
   );
-}
+});

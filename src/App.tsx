@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { TabBar } from "./components/Layout/TabBar";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { Toolbar } from "./components/Layout/Toolbar";
-import { FileTree } from "./components/FileExplorer/FileTree";
+import { FileTree, type FileTreeHandle } from "./components/FileExplorer/FileTree";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
@@ -25,6 +25,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [previewWidth, setPreviewWidth] = useState(380);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileTreeRef = useRef<FileTreeHandle>(null);
 
   const markTabClean = useEditorStore((s) => s.markTabClean);
   const lspStatus = useEditorStore((s) => s.lspStatus);
@@ -138,6 +139,19 @@ export default function App() {
     },
     [previewWidth]
   );
+
+  // ── Open Folder ──────────────────────────────────────────────────────────
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true, multiple: false });
+      if (typeof selected === "string") {
+        useEditorStore.getState().setWorkspacePath(selected);
+      }
+    } catch (e) {
+      console.error("open folder error", e);
+    }
+  }, []);
 
   // ── New File — open a temporary untitled tab immediately ─────────────────
   const handleNewFile = useCallback((kind: "typ" | "md" = "typ") => {
@@ -358,17 +372,7 @@ export default function App() {
       }
     }));
 
-    unlisteners.push(listen("menu:open-folder", async () => {
-      try {
-        const { open } = await import("@tauri-apps/plugin-dialog");
-        const selected = await open({ directory: true, multiple: false });
-        if (typeof selected === "string") {
-          useEditorStore.getState().setWorkspacePath(selected);
-        }
-      } catch (e) {
-        console.error("open folder error", e);
-      }
-    }));
+    unlisteners.push(listen("menu:open-folder", handleOpenFolder));
 
     unlisteners.push(listen("menu:save", async () => {
       const tab = useEditorStore.getState().activeTab();
@@ -470,7 +474,7 @@ export default function App() {
     return () => {
       unlisteners.forEach((p) => p.then((f) => f()));
     };
-  }, [handleNewFile, handleSave, handleSnapshot, handleExportPdf]);
+  }, [handleNewFile, handleSave, handleSnapshot, handleExportPdf, handleOpenFolder]);
 
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
@@ -483,6 +487,10 @@ export default function App() {
         previewOpen={previewWidth > 0}
         onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
         tabBar={<TabBar />}
+        onExplorerNewFile={() => fileTreeRef.current?.newFile()}
+        onExplorerNewFolder={() => fileTreeRef.current?.newFolder()}
+        onExplorerRefresh={() => fileTreeRef.current?.refresh()}
+        onExplorerOpenFolder={handleOpenFolder}
       />
       {showHistory && activeTabPath && (
         <HistoryPanel
@@ -503,7 +511,7 @@ export default function App() {
         ) : (
           <>
             <div className="sidebar" style={{ width: sidebarWidth }}>
-              <FileTree />
+              <FileTree ref={fileTreeRef} onOpenFolder={handleOpenFolder} />
             </div>
             <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
           </>
