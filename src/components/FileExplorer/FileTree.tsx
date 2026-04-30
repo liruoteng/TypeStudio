@@ -99,6 +99,7 @@ interface DirNodeProps {
   depth: number;
   onRefreshParent?: () => void;
   onSelectDir?: (path: string) => void;
+  onClearDirSelection?: () => void;
   selectedDirPath?: string | null;
   pendingCreate?: PendingCreate | null;
   refreshVersions: Record<string, number>;
@@ -108,7 +109,7 @@ interface DirNodeProps {
   highlightPath?: string | null;
 }
 
-function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirPath, pendingCreate, refreshVersions, onRequestMove, onOsDrop, expandPath, highlightPath }: DirNodeProps) {
+function DirNode({ path, name, depth, onRefreshParent, onSelectDir, onClearDirSelection, selectedDirPath, pendingCreate, refreshVersions, onRequestMove, onOsDrop, expandPath, highlightPath }: DirNodeProps) {
   const [open, setOpen] = useState(depth === 0);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,6 +272,9 @@ function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirP
           onDragLeave={onDragLeave}
           onDrop={onDrop}
         >
+            {pendingCreate?.targetDir === path && (
+            <InlineCreateInput pendingCreate={pendingCreate} depth={depth + 1} />
+          )}
           {children.map((entry) =>
             entry.is_dir ? (
               <DirNode
@@ -280,6 +284,7 @@ function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirP
                 depth={depth + 1}
                 onRefreshParent={() => setRefreshKey((k) => k + 1)}
                 onSelectDir={onSelectDir}
+                onClearDirSelection={onClearDirSelection}
                 selectedDirPath={selectedDirPath}
                 pendingCreate={pendingCreate}
                 refreshVersions={refreshVersions}
@@ -296,11 +301,9 @@ function DirNode({ path, name, depth, onRefreshParent, onSelectDir, selectedDirP
                 depth={depth + 1}
                 onRefreshParent={() => setRefreshKey((k) => k + 1)}
                 highlighted={highlightPath === entry.path}
+                onClearDirSelection={onClearDirSelection}
               />
             )
-          )}
-          {pendingCreate?.targetDir === path && (
-            <InlineCreateInput pendingCreate={pendingCreate} depth={depth + 1} />
           )}
         </div>
       )}
@@ -322,9 +325,10 @@ interface FileNodeProps {
   depth: number;
   onRefreshParent?: () => void;
   highlighted?: boolean;
+  onClearDirSelection?: () => void;
 }
 
-function FileNode({ path, name, depth, onRefreshParent, highlighted }: FileNodeProps) {
+function FileNode({ path, name, depth, onRefreshParent, highlighted, onClearDirSelection }: FileNodeProps) {
   const openTab = useEditorStore((s) => s.openTab);
   const closeTab = useEditorStore((s) => s.closeTab);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
@@ -439,7 +443,7 @@ function FileNode({ path, name, depth, onRefreshParent, highlighted }: FileNodeP
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onClick={(e) => { e.stopPropagation(); if (!path.endsWith(".pdf")) openFile(); }}
+        onClick={(e) => { e.stopPropagation(); onClearDirSelection?.(); if (!path.endsWith(".pdf")) openFile(); }}
         onDoubleClick={(e) => { e.stopPropagation(); if (path.endsWith(".pdf")) openFile(); }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
       >
@@ -485,7 +489,6 @@ type ConflictChoice = "replace" | "stop" | "duplicate";
 export const FileTree = forwardRef<FileTreeHandle, { onOpenFolder: () => void }>(
 function FileTree({ onOpenFolder }, ref) {
   const workspacePath = useEditorStore((s) => s.workspacePath);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
   const [creating, setCreating] = useState<null | { type: "file" | "folder"; name: string }>(null);
   const [selectedDirPath, setSelectedDirPath] = useState<string | null>(null);
@@ -518,7 +521,7 @@ function FileTree({ onOpenFolder }, ref) {
     import("@tauri-apps/plugin-fs").then(({ watch }) => {
       watch(
         workspacePath,
-        () => setRefreshKey((k) => k + 1),
+        () => bumpRefresh(workspacePath),
         { recursive: true }
       ).then((stop) => { stopFn = stop; });
     });
@@ -599,7 +602,7 @@ function FileTree({ onOpenFolder }, ref) {
     setCreating({ type, name: "" });
   }, []);
 
-  const handleRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const handleRefresh = useCallback(() => { if (workspacePath) bumpRefresh(workspacePath); }, [workspacePath, bumpRefresh]);
 
   useImperativeHandle(ref, () => ({
     newFile: () => startCreating("file"),
@@ -697,11 +700,12 @@ function FileTree({ onOpenFolder }, ref) {
       >
         {workspacePath ? (
           <DirNode
-            key={refreshKey}
+            key={workspacePath}
             path={workspacePath}
             name={workspacePath.split("/").pop() ?? workspacePath}
             depth={0}
             onSelectDir={setSelectedDirPath}
+            onClearDirSelection={() => setSelectedDirPath(null)}
             selectedDirPath={selectedDirPath}
             refreshVersions={refreshVersions}
             onRequestMove={moveNode}

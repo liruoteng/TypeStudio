@@ -339,6 +339,7 @@ export function AIChatPanel() {
 
   const handleStop = () => {
     abortRef.current = true;
+    invoke("cancel_ai_stream").catch(() => {});
     setIsLoading(false);
     commitMessages(localMessagesRef.current);
   };

@@ -2,9 +2,26 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::ipc::Channel;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
+
+// ── Cancellation flag ──────────────────────────────────────────────────────
+
+pub struct AiCancelFlag(pub Arc<AtomicBool>);
+
+impl Default for AiCancelFlag {
+    fn default() -> Self {
+        AiCancelFlag(Arc::new(AtomicBool::new(false)))
+    }
+}
+
+#[tauri::command]
+pub fn cancel_ai_stream(cancel: tauri::State<AiCancelFlag>) {
+    cancel.0.store(true, Ordering::Relaxed);
+}
 
 // ── Shared types ───────────────────────────────────────────────────────────
 
@@ -56,7 +73,9 @@ pub async fn stream_claude_cli(
     effort: Option<String>,
     thinking: bool,
     on_chunk: Channel<String>,
+    cancel: tauri::State<'_, AiCancelFlag>,
 ) -> Result<Option<String>, String> {
+    cancel.0.store(false, Ordering::Relaxed);
     let mut cmd = TokioCommand::new("claude");
     cmd.env("PATH", extended_path())
         .arg("--output-format")
@@ -102,6 +121,10 @@ pub async fn stream_claude_cli(
     let mut new_session_id: Option<String> = None;
 
     while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+        if cancel.0.load(Ordering::Relaxed) {
+            let _ = child.kill().await;
+            return Err("cancelled".to_string());
+        }
         if line.is_empty() {
             continue;
         }
@@ -172,6 +195,7 @@ async fn stream_ollama(
     model: &str,
     system: &str,
     on_chunk: &Channel<String>,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<(), String> {
     // Prepend system message
     let mut ollama_messages: Vec<OllamaMessage> = vec![OllamaMessage {
@@ -212,6 +236,9 @@ async fn stream_ollama(
     let mut buffer = String::new();
 
     while let Some(chunk) = byte_stream.next().await {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".to_string());
+        }
         let chunk = chunk.map_err(|e| e.to_string())?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
         loop {
@@ -250,9 +277,29 @@ pub async fn stream_ai_chat(
     ollama_model: String,
     system: String,
     on_chunk: Channel<String>,
+    cancel: tauri::State<'_, AiCancelFlag>,
 ) -> Result<(), String> {
+    cancel.0.store(false, Ordering::Relaxed);
     let client = Client::new();
-    stream_ollama(&client, &messages, &ollama_url, &ollama_model, &system, &on_chunk).await
+    stream_ollama(&client, &messages, &ollama_url, &ollama_model, &system, &on_chunk, &cancel.0).await
+}
+
+// ── Ollama server lifecycle ────────────────────────────────────────────────
+
+/// Check if Ollama is reachable; if not, start `ollama serve` in the background.
+pub async fn ensure_ollama_server(base_url: String) {
+    let client = Client::new();
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+    if client.get(&url).send().await.is_ok() {
+        return; // already running
+    }
+    eprintln!("[ollama] server not detected, starting `ollama serve`…");
+    let _ = TokioCommand::new("ollama")
+        .arg("serve")
+        .env("PATH", extended_path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
 }
 
 // ── List Ollama models ─────────────────────────────────────────────────────

@@ -833,6 +833,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(ai::AiCancelFlag::default())
         .manage(AppState {
             tinymist_path: Mutex::new(String::new()),
             compile_tx,
@@ -868,6 +869,7 @@ pub fn run() {
             ai::check_claude_cli,
             ai::stream_claude_cli,
             ai::stream_ai_chat,
+            ai::cancel_ai_stream,
             ai::search_citations,
             ai::list_ollama_models,
         ])
@@ -980,6 +982,20 @@ pub fn run() {
                     _ => {}
                 }
             });
+
+            // Start Ollama if the user has configured it as their AI provider
+            if let Ok(settings_str) = fs::read_to_string(settings_file_path(app.handle())?) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&settings_str) {
+                    if v.get("aiProvider").and_then(|p| p.as_str()) == Some("ollama") {
+                        let url = v
+                            .get("ollamaUrl")
+                            .and_then(|u| u.as_str())
+                            .unwrap_or("http://localhost:11434")
+                            .to_string();
+                        tauri::async_runtime::spawn(ai::ensure_ollama_server(url));
+                    }
+                }
+            }
 
             // Spawn compile actor
             tauri::async_runtime::spawn(compile_actor(compile_rx, world_arc, app.handle().clone()));

@@ -37,6 +37,14 @@
   border-color: transparent;
 }
 
+.toolbar-file-icon {
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
 /* ── Center: tab strip ────────────────────────────────────────────────────── */
 .toolbar-tabs {
   flex: 1;

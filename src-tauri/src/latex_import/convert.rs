@@ -645,7 +645,7 @@ fn emit_command(
 fn emit_env(
     name: &str,
     opt: &[String],
-    env_args: &[String],
+    _env_args: &[String],
     tokens: &[Token],
     start: usize,
     cmd_map: &CommandMap,
@@ -890,7 +890,7 @@ fn extract_table_parts(tokens: &[Token], notes: &mut Vec<String>) -> (String, St
     (caption, label, tabular)
 }
 
-fn convert_tabular_body(body: &str, notes: &mut Vec<String>) -> String {
+fn convert_tabular_body(body: &str, _notes: &mut Vec<String>) -> String {
     // Best-effort: split by \\ (row end) and & (cell sep).
     let rows = body.split("\\\\");
     let mut cells = String::new();
@@ -1461,8 +1461,7 @@ mod tests {
 
     #[test]
     fn sanitize_rejects_absolute() {
-        use super::super::unzip::*;
-        // indirect via the public sanitize contract verified in unzip tests
+        // sanitize contract verified in unzip tests
     }
 
     // ── \input expansion ─────────────────────────────────────────────────────
@@ -1553,15 +1552,4 @@ mod tests {
         assert!(out.contains("[a]"), "first cell present");
         assert!(out.contains("[b]"), "second cell present");
     }
-}
-
-fn format_authors(authors: &[String]) -> String {
-    if authors.is_empty() {
-        return String::new();
-    }
-    authors
-        .iter()
-        .map(|a| format!("(name: \"{}\")", clean_ws(a)))
-        .collect::<Vec<_>>()
-        .join(", ")
 }

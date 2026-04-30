@@ -5,44 +5,44 @@ import "./Toolbar.css";
 
 function NewFileIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-      {/* Rounded square (the document) */}
-      <rect x="1.5" y="1.5" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.6"/>
-      {/* Pen rotated 45° — body + pointed nib */}
-      <g transform="rotate(45, 7, 7)">
-        <rect x="2.5" y="6.25" width="8.5" height="1.5" rx="0.75" stroke="currentColor" strokeWidth="1.3"/>
-        <path d="M2.5,6.25 L1,7 L2.5,7.75" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </g>
+    <svg className="toolbar-file-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M4.25 2.25h5.1l2.4 2.45v9.05h-7.5a2 2 0 0 1-2-2v-7.5a2 2 0 0 1 2-2Z" />
+      <path d="M9.25 2.35v2.6h2.45" />
+      <path d="M6.85 7.25v4.1" />
+      <path d="M4.8 9.3h4.1" />
     </svg>
   );
 }
 
 function NewFolderIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M1.5,6 L1.5,4 Q1.5,3 2.5,3 L5.5,3 L7,5.5 L12,5.5 Q12.5,5.5 12.5,6 L12.5,11.5 Q12.5,12.5 11.5,12.5 L2.5,12.5 Q1.5,12.5 1.5,11.5 Z"
-        stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
-      <line x1="5.5" y1="9" x2="8.5" y2="9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      <line x1="7" y1="7.5" x2="7" y2="10.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <svg className="toolbar-file-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M1.9 5.1V4.15c0-.9.5-1.4 1.4-1.4h3.05l1.35 1.5h5c.9 0 1.4.5 1.4 1.4v1.05" />
+      <path d="M1.9 5.75h12.2l-.75 6.1c-.12.9-.6 1.4-1.5 1.4h-7.7c-.9 0-1.38-.5-1.5-1.4l-.75-6.1Z" />
+      <path d="M8 7.95v3.1" />
+      <path d="M6.45 9.5h3.1" />
     </svg>
   );
 }
 
 function RefreshIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M7,2.5 A4.5,4.5 0 1,1 2.5,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      <path d="M1,8.5 L2.5,7 L4,8.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg className="toolbar-file-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M12.1 5.15A4.7 4.7 0 0 0 3.7 6.2" />
+      <path d="M12.25 2.85v2.55H9.7" />
+      <path d="M3.9 10.85a4.7 4.7 0 0 0 8.4-1.05" />
+      <path d="M3.75 13.15V10.6H6.3" />
     </svg>
   );
 }
 
 function OpenFolderIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M1.5,6 L1.5,4 Q1.5,3 2.5,3 L5.5,3 L7,5.5 L12,5.5 Q12.5,5.5 12.5,6 L12.5,11.5 Q12.5,12.5 11.5,12.5 L2.5,12.5 Q1.5,12.5 1.5,11.5 Z"
-        stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
-      <path d="M5.5,8.5 L7,10 L8.5,8.5 M7,10 L7,7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg className="toolbar-file-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M1.9 5.1V4.15c0-.9.5-1.4 1.4-1.4h3.05l1.35 1.5h5c.9 0 1.4.5 1.4 1.4v1.05" />
+      <path d="M1.9 5.75h12.2l-.75 6.1c-.12.9-.6 1.4-1.5 1.4h-7.7c-.9 0-1.38-.5-1.5-1.4l-.75-6.1Z" />
+      <path d="M8 10.95v-3.1" />
+      <path d="M6.45 9.4 8 7.85l1.55 1.55" />
     </svg>
   );
 }
