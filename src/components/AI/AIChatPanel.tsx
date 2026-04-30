@@ -1,7 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { useEditorStore, type AiMessage } from "../../stores/editorStore";
+import { prepareWithSegments, measureNaturalWidth } from "@chenglou/pretext";
 import "./AIChatPanel.css";
+
+// Measure Send/Stop text at the button's font so both share a stable min-width.
+const _BTN_FONT = "500 13px ui-sans-serif, system-ui, sans-serif";
+const _BTN_PAD  = 32; // 16px left + 16px right
+const BTN_MIN_WIDTH =
+  Math.ceil(
+    Math.max(
+      measureNaturalWidth(prepareWithSegments("Send", _BTN_FONT)),
+      measureNaturalWidth(prepareWithSegments("Stop", _BTN_FONT)),
+    )
+  ) + _BTN_PAD;
 
 interface CitationAuthor {
   name: string;
@@ -49,6 +61,10 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
 export function AIChatPanel() {
   // ── Sessions from store ────────────────────────────────────────────────
   const chatSessions        = useEditorStore((s) => s.chatSessions);
@@ -73,16 +89,21 @@ export function AIChatPanel() {
   const [localMessages, setLocalMessages] = useState<AiMessage[]>(activeSession?.messages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [thinkingHint, setThinkingHint] = useState<string | null>(null);
+  const [thinkingSeconds, setThinkingSeconds] = useState(0);
+  const [contextTokens, setContextTokens] = useState<{ used: number; window: number } | null>(null);
   const [citationResults, setCitationResults] = useState<CitationResult[] | null>(null);
   const [isCiteMode, setIsCiteMode] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const savedInputRef = useRef("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<boolean>(false);
   const localMessagesRef = useRef(localMessages);
   localMessagesRef.current = localMessages;
 
   // ── Toolbar state ──────────────────────────────────────────────────────
-  const [effort, setEffort] = useState<Effort>("high");
+  const [effort, setEffort] = useState<Effort>("medium");
   const [thinking, setThinking] = useState(false);
   const [chatMode, setChatMode] = useState<ChatMode>("plan");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -118,6 +139,7 @@ export function AIChatPanel() {
     setLocalMessages(activeSession?.messages ?? []);
     setCitationResults(null);
     setIsCiteMode(false);
+    setHistoryIndex(-1);
   }, [activeChatSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Commit local messages back to the store when streaming finishes or on unmount
@@ -133,9 +155,16 @@ export function AIChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [localMessages, citationResults]);
 
-  // ── Ensure there is always an active session ───────────────────────────
   useEffect(() => {
-    if (!activeChatSessionId) createChatSession();
+    if (!isLoading) { setThinkingSeconds(0); return; }
+    setThinkingSeconds(0);
+    const interval = setInterval(() => setThinkingSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  // ── Always start with a fresh session on mount ────────────────────────
+  useEffect(() => {
+    createChatSession();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNewSession = () => {
@@ -183,13 +212,19 @@ export function AIChatPanel() {
     (sum, m) => sum + Math.ceil(m.content.length / 4),
     0
   );
-  const contextPct = Math.min(99, Math.round(estimatedTokens / 2000)); // 200k token window
+  const contextPct = contextTokens
+    ? (contextTokens.used / contextTokens.window) * 100
+    : (estimatedTokens / 200_000) * 100;
+  const contextPctDisplay = contextPct < 1
+    ? contextPct.toFixed(1)
+    : Math.min(99, Math.round(contextPct)).toString();
 
   // ── Send message ───────────────────────────────────────────────────────
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     setInput("");
+    setHistoryIndex(-1);
 
     // Citation search
     if (trimmed.startsWith("/cite ")) {
@@ -197,7 +232,8 @@ export function AIChatPanel() {
       if (!query) return;
       setIsCiteMode(true);
       setCitationResults(null);
-      const next: AiMessage[] = [...localMessages, { role: "user", content: trimmed }];
+      const now = Date.now();
+      const next: AiMessage[] = [...localMessages, { role: "user", content: trimmed, timestamp: now }];
       setLocalMessages(next);
       setIsLoading(true);
       try {
@@ -210,13 +246,14 @@ export function AIChatPanel() {
             content: results.length === 0
               ? "No results found."
               : `Found ${results.length} papers, ranked by citation count.`,
+            timestamp: Date.now(),
           },
         ];
         setLocalMessages(withReply);
         commitMessages(withReply);
       } catch (e) {
         setCitationResults([]);
-        const withErr: AiMessage[] = [...next, { role: "assistant", content: `Citation search failed: ${String(e)}` }];
+        const withErr: AiMessage[] = [...next, { role: "assistant", content: `Citation search failed: ${String(e)}`, timestamp: Date.now() }];
         setLocalMessages(withErr);
         commitMessages(withErr);
       } finally {
@@ -245,12 +282,13 @@ export function AIChatPanel() {
       contextualContent = `Selected text:\n\`\`\`\n${selectedText}\n\`\`\`\n\n${trimmed}`;
     }
 
-    const withUser: AiMessage[] = [...localMessages, { role: "user", content: trimmed }];
+    const withUser: AiMessage[] = [...localMessages, { role: "user", content: trimmed, timestamp: Date.now() }];
     const withPlaceholder: AiMessage[] = [...withUser, { role: "assistant", content: "" }];
     setLocalMessages(withPlaceholder);
 
     setIsLoading(true);
     abortRef.current = false;
+    setThinkingHint(null);
 
     try {
       if (aiProvider === "ollama") {
@@ -292,6 +330,18 @@ export function AIChatPanel() {
           });
         };
 
+        const onStatus = new Channel<string>();
+        onStatus.onmessage = (msg: string) => {
+          if (abortRef.current) return;
+          try {
+            const ev = JSON.parse(msg) as { t: string; text?: string; used?: number; window?: number };
+            if (ev.t === "thinking" && ev.text) setThinkingHint(ev.text);
+            else if (ev.t === "usage" && ev.used && ev.window) setContextTokens({ used: ev.used, window: ev.window });
+          } catch {
+            setThinkingHint(msg);
+          }
+        };
+
         const returnedSessionId = await invoke<string | null>("stream_claude_cli", {
           sessionId: activeSession?.claudeSessionId ?? null,
           message: contextualContent,
@@ -300,6 +350,7 @@ export function AIChatPanel() {
           effort,
           thinking,
           onChunk,
+          onStatus,
         });
 
         if (returnedSessionId && activeChatSessionId) {
@@ -307,23 +358,30 @@ export function AIChatPanel() {
         }
       }
 
-      commitMessages(localMessagesRef.current);
+      const finishedAt = Date.now();
+      const finalMsgs = localMessagesRef.current.map((m, i, arr) =>
+        i === arr.length - 1 && m.role === "assistant" && !m.timestamp
+          ? { ...m, timestamp: finishedAt }
+          : m
+      );
+      setLocalMessages(finalMsgs);
+      commitMessages(finalMsgs);
 
       if (chatMode === "action") {
-        const msgs = localMessagesRef.current;
-        const last = msgs[msgs.length - 1];
+        const last = finalMsgs[finalMsgs.length - 1];
         if (last?.role === "assistant" && last.content) {
           insertAtCursor(last.content);
         }
       }
     } catch (e: unknown) {
       if (!abortRef.current) {
-        setLocalMessages((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = { role: "assistant", content: `Error: ${String(e)}` };
-          return copy;
-        });
-        commitMessages(localMessagesRef.current);
+        const errMsgs = localMessagesRef.current.map((m, i, arr) =>
+          i === arr.length - 1 && m.role === "assistant"
+            ? { ...m, content: `Error: ${String(e)}`, timestamp: Date.now() }
+            : m
+        );
+        setLocalMessages(errMsgs);
+        commitMessages(errMsgs);
       }
     } finally {
       setIsLoading(false);
@@ -334,6 +392,31 @@ export function AIChatPanel() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+      return;
+    }
+
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const el = e.currentTarget;
+      const userMessages = localMessages.filter((m) => m.role === "user").map((m) => m.content);
+      if (userMessages.length === 0) return;
+
+      if (e.key === "ArrowUp" && el.selectionStart === 0) {
+        e.preventDefault();
+        if (historyIndex === -1) savedInputRef.current = input;
+        const newIdx = historyIndex === -1 ? userMessages.length - 1 : Math.max(0, historyIndex - 1);
+        setHistoryIndex(newIdx);
+        setInput(userMessages[newIdx]);
+      } else if (e.key === "ArrowDown" && historyIndex !== -1) {
+        e.preventDefault();
+        const newIdx = historyIndex + 1;
+        if (newIdx >= userMessages.length) {
+          setHistoryIndex(-1);
+          setInput(savedInputRef.current);
+        } else {
+          setHistoryIndex(newIdx);
+          setInput(userMessages[newIdx]);
+        }
+      }
     }
   };
 
@@ -507,23 +590,51 @@ export function AIChatPanel() {
           </div>
         )}
 
-        {localMessages.map((msg, i) => (
-          <div key={i} className={`ai-chat-message ai-chat-message--${msg.role}`}>
-            <div className="ai-chat-message-body">{msg.content}</div>
-            {msg.role === "assistant" &&
-              msg.content &&
-              !msg.content.startsWith("Found ") &&
-              !msg.content.startsWith("No results") && (
-                <button
-                  className="ai-chat-insert-btn"
-                  onClick={() => insertAtCursor(msg.content)}
-                  title="Insert response at cursor position"
-                >
-                  Insert at cursor
-                </button>
+        {localMessages.map((msg, i) => {
+          const isThinking =
+            isLoading &&
+            i === localMessages.length - 1 &&
+            msg.role === "assistant" &&
+            msg.content === "";
+          const showFooter = msg.role === "assistant" && msg.content && !isThinking;
+          return (
+            <div key={i} className={`ai-chat-message ai-chat-message--${msg.role}`}>
+              {isThinking ? (
+                <div className="ai-chat-message-body ai-thinking-body">
+                  <div className="ai-thinking-label">Thinking {thinkingSeconds}s</div>
+                  {thinkingHint && (
+                    <div className="ai-thinking-hint">{thinkingHint}{thinkingHint.length >= 200 ? "…" : ""}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="ai-chat-message-body">{msg.content}</div>
               )}
-          </div>
-        ))}
+              {showFooter && (
+                <div className="ai-msg-footer">
+                  <span className="ai-msg-time">{msg.timestamp ? formatTime(msg.timestamp) : ""}</span>
+                  <div className="ai-msg-actions">
+                    <button
+                      className="ai-msg-action-btn"
+                      onClick={() => navigator.clipboard.writeText(msg.content)}
+                      title="Copy"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    </button>
+                    {!msg.content.startsWith("Found ") && !msg.content.startsWith("No results") && (
+                      <button
+                        className="ai-msg-action-btn"
+                        onClick={() => insertAtCursor(msg.content)}
+                        title="Insert at cursor"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {isCiteMode && citationResults && citationResults.length > 0 && (
           <div className="ai-cite-results">
@@ -636,8 +747,13 @@ export function AIChatPanel() {
             ◑
           </button>
 
-          <span className="ai-toolbar-tokens" title="Estimated context usage">
-            {contextPct}%
+          <span
+            className="ai-toolbar-tokens"
+            data-tooltip={contextTokens
+              ? `${Math.round(contextTokens.used / 1000)}k / ${Math.round(contextTokens.window / 1000)}k tokens`
+              : `~${Math.round(estimatedTokens / 1000)}k / 200k tokens`}
+          >
+            {contextPctDisplay}%
           </span>
 
           <span className="ai-toolbar-spacer" />
@@ -655,9 +771,9 @@ export function AIChatPanel() {
           <span className="ai-toolbar-sep" />
 
           {isLoading ? (
-            <button className="ai-chat-btn ai-chat-btn--stop" onClick={handleStop}>Stop</button>
+            <button className="ai-chat-btn ai-chat-btn--stop" style={{ minWidth: BTN_MIN_WIDTH }} onClick={handleStop}>Stop</button>
           ) : (
-            <button className="ai-chat-btn ai-chat-btn--send" onClick={handleSend} disabled={!input.trim()}>
+            <button className="ai-chat-btn ai-chat-btn--send" style={{ minWidth: BTN_MIN_WIDTH }} onClick={handleSend} disabled={!input.trim()}>
               Send
             </button>
           )}

@@ -73,6 +73,7 @@ pub async fn stream_claude_cli(
     effort: Option<String>,
     thinking: bool,
     on_chunk: Channel<String>,
+    on_status: Channel<String>,
     cancel: tauri::State<'_, AiCancelFlag>,
 ) -> Result<Option<String>, String> {
     cancel.0.store(false, Ordering::Relaxed);
@@ -80,6 +81,7 @@ pub async fn stream_claude_cli(
     cmd.env("PATH", extended_path())
         .arg("--output-format")
         .arg("stream-json")
+        .arg("--verbose")
         .arg("-p")
         .arg(&message);
 
@@ -110,7 +112,6 @@ pub async fn stream_claude_cli(
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
 
-    // Collect stderr in background so it doesn't block
     let stderr_task = tokio::spawn(async move {
         let mut out = String::new();
         BufReader::new(stderr).read_to_string(&mut out).await.ok();
@@ -125,34 +126,57 @@ pub async fn stream_claude_cli(
             let _ = child.kill().await;
             return Err("cancelled".to_string());
         }
-        if line.is_empty() {
-            continue;
-        }
-        let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
-        };
+        if line.is_empty() { continue; }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
 
         match event["type"].as_str() {
-            Some("stream_event") => {
-                let ev = &event["event"];
-                if ev["type"] == "content_block_delta" && ev["delta"]["type"] == "text_delta" {
-                    if let Some(text) = ev["delta"]["text"].as_str() {
-                        on_chunk.send(text.to_string()).map_err(|e| e.to_string())?;
+            Some("assistant") => {
+                if let Some(content) = event["message"]["content"].as_array() {
+                    for block in content {
+                        match block["type"].as_str() {
+                            Some("thinking") => {
+                                if let Some(t) = block["thinking"].as_str() {
+                                    let hint: String = t.chars().take(200).collect();
+                                    let text_json = serde_json::to_string(&hint).unwrap_or_default();
+                                    let _ = on_status.send(format!(r#"{{"t":"thinking","text":{text_json}}}"#));
+                                }
+                            }
+                            Some("text") => {
+                                if let Some(text) = block["text"].as_str() {
+                                    if !text.is_empty() {
+                                        on_chunk.send(text.to_string()).map_err(|e| e.to_string())?;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
-            Some("system") => {
+            Some("system") | Some("result") => {
                 if let Some(sid) = event["session_id"].as_str() {
                     new_session_id = Some(sid.to_string());
                 }
-            }
-            Some("result") => {
-                if let Some(sid) = event["session_id"].as_str() {
-                    new_session_id = Some(sid.to_string());
-                }
-                if event["subtype"].as_str().map_or(false, |s| s != "success") {
-                    let msg = event["error"].as_str().unwrap_or("Claude CLI returned an error");
-                    return Err(msg.to_string());
+                if event["type"].as_str() == Some("result") {
+                    if event["subtype"].as_str().map_or(false, |s| s != "success") {
+                        let msg = event["error"].as_str().unwrap_or("Claude CLI returned an error");
+                        return Err(msg.to_string());
+                    }
+                    // Emit actual token usage so the frontend can show a real context %
+                    let u = &event["usage"];
+                    let used = u["input_tokens"].as_u64().unwrap_or(0)
+                        + u["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                        + u["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                    let window = event["modelUsage"]
+                        .as_object()
+                        .and_then(|m| m.values().next())
+                        .and_then(|v| v["contextWindow"].as_u64())
+                        .unwrap_or(200_000);
+                    if used > 0 {
+                        let _ = on_status.send(
+                            format!(r#"{{"t":"usage","used":{used},"window":{window}}}"#)
+                        );
+                    }
                 }
             }
             _ => {}
@@ -163,7 +187,7 @@ pub async fn stream_claude_cli(
     let stderr_output = stderr_task.await.unwrap_or_default();
 
     if !status.success() && new_session_id.is_none() {
-        return Err(if stderr_output.is_empty() {
+        return Err(if stderr_output.trim().is_empty() {
             "Claude CLI failed. Make sure you are authenticated — run `claude` in your terminal.".to_string()
         } else {
             stderr_output.trim().to_string()

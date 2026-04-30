@@ -5,6 +5,7 @@ import type { LspStatus } from "../components/Editor/lsp-client";
 export interface AiMessage {
   role: "user" | "assistant";
   content: string;
+  timestamp?: number;
 }
 
 export interface AiChatSession {

@@ -54,6 +54,24 @@ const THEME_TITLE: Record<AppTheme, string> = {
 };
 const NEXT_THEME:  Record<AppTheme, AppTheme> = { dark: "claude", claude: "dark" };
 
+function RobotIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden>
+      <rect x="5" y="0" width="4" height="1" />
+      <rect x="6" y="1" width="2" height="3" />
+      <rect x="1" y="4"  width="12" height="1" />
+      <rect x="1" y="5"  width="1"  height="8" />
+      <rect x="12" y="5" width="1"  height="8" />
+      <rect x="1" y="13" width="12" height="1" />
+      <rect x="0" y="7"  width="1" height="2" />
+      <rect x="13" y="7" width="1" height="2" />
+      <rect x="3" y="6" width="3" height="2" />
+      <rect x="8" y="6" width="3" height="2" />
+      <rect x="4" y="10" width="6" height="1" />
+    </svg>
+  );
+}
+
 function PanelLeftIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -80,6 +98,8 @@ interface ToolbarProps {
   sidebarWidth: number;
   previewOpen: boolean;
   onTogglePreview: () => void;
+  showAiPanel: boolean;
+  onToggleAiPanel: () => void;
   tabBar?: ReactNode;
   onExplorerNewFile?: () => void;
   onExplorerNewFolder?: () => void;
@@ -87,7 +107,7 @@ interface ToolbarProps {
   onExplorerOpenFolder?: () => void;
 }
 
-export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, sidebarWidth, previewOpen, onTogglePreview, tabBar, onExplorerNewFile, onExplorerNewFolder, onExplorerRefresh, onExplorerOpenFolder }: ToolbarProps) {
+export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, sidebarWidth, previewOpen, onTogglePreview, showAiPanel, onToggleAiPanel, tabBar, onExplorerNewFile, onExplorerNewFolder, onExplorerRefresh, onExplorerOpenFolder }: ToolbarProps) {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const isDirty = useEditorStore((s) => {
@@ -167,6 +187,13 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
           title="Export PDF"
         >
           ⬇
+        </button>
+        <button
+          className={`toolbar-btn-icon${showAiPanel ? " toolbar-btn-icon--active" : ""}`}
+          onClick={onToggleAiPanel}
+          title={showAiPanel ? "Close AI assistant" : "Open AI assistant"}
+        >
+          <RobotIcon />
         </button>
         <button
           className={`toolbar-btn-icon${previewOpen ? "" : " toolbar-btn-icon--active"}`}
