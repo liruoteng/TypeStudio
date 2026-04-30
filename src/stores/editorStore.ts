@@ -6,6 +6,7 @@ export interface AiMessage {
   role: "user" | "assistant";
   content: string;
   timestamp?: number;
+  elapsed?: number;
 }
 
 export interface AiChatSession {

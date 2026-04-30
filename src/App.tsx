@@ -487,7 +487,13 @@ export default function App() {
         previewOpen={previewWidth > 0}
         onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
         showAiPanel={showAiPanel}
-        onToggleAiPanel={() => { setShowAiPanel((v) => !v); setShowToc(false); }}
+        onToggleAiPanel={() => {
+          setShowAiPanel((v) => {
+            const next = !v;
+            if (next && previewWidth === 0) setPreviewWidth(PREVIEW_DEFAULT);
+            return next;
+          });
+        }}
         tabBar={<TabBar />}
         onExplorerNewFile={() => fileTreeRef.current?.newFile()}
         onExplorerNewFolder={() => fileTreeRef.current?.newFolder()}
@@ -768,20 +774,24 @@ const PreviewHeader = memo(function PreviewHeader({
             <span className="preview-zoom-sep" />
           </>
         )}
-        <button
-          className={`preview-icon-btn${!showToc && !showAiPanel ? " preview-icon-btn--active" : ""}`}
-          onClick={onShowPreview}
-          title="Show preview"
-        >
-          <PageIcon />
-        </button>
-        <button
-          className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
-          onClick={onToggleToc}
-          title={showToc ? "Show preview" : "Show table of contents"}
-        >
-          ☰
-        </button>
+        {!showAiPanel && (
+          <>
+            <button
+              className={`preview-icon-btn${!showToc ? " preview-icon-btn--active" : ""}`}
+              onClick={onShowPreview}
+              title="Show preview"
+            >
+              <PageIcon />
+            </button>
+            <button
+              className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
+              onClick={onToggleToc}
+              title={showToc ? "Show preview" : "Show table of contents"}
+            >
+              ☰
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

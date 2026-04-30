@@ -97,6 +97,7 @@ export function AIChatPanel() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const savedInputRef = useRef("");
+  const requestStartRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<boolean>(false);
   const localMessagesRef = useRef(localMessages);
@@ -144,8 +145,13 @@ export function AIChatPanel() {
 
   // Commit local messages back to the store when streaming finishes or on unmount
   const commitMessages = useCallback((msgs: AiMessage[]) => {
-    if (activeChatSessionId) updateChatSession(activeChatSessionId, msgs);
-  }, [activeChatSessionId, updateChatSession]);
+    if (!activeChatSessionId) return;
+    if (msgs.length === 0) {
+      deleteChatSession(activeChatSessionId);
+    } else {
+      updateChatSession(activeChatSessionId, msgs);
+    }
+  }, [activeChatSessionId, updateChatSession, deleteChatSession]);
 
   useEffect(() => {
     return () => { commitMessages(localMessagesRef.current); };
@@ -208,8 +214,10 @@ export function AIChatPanel() {
     }
   };
 
-  const estimatedTokens = localMessages.reduce(
-    (sum, m) => sum + Math.ceil(m.content.length / 4),
+  // Estimate: ~4 chars/token for English, +4 tokens/message for role overhead, +system prompt
+  const systemTokens = Math.ceil(SYSTEM_PROMPT.length / 4);
+  const estimatedTokens = systemTokens + localMessages.reduce(
+    (sum, m) => sum + Math.ceil(m.content.length / 4) + 4,
     0
   );
   const contextPct = contextTokens
@@ -289,6 +297,7 @@ export function AIChatPanel() {
     setIsLoading(true);
     abortRef.current = false;
     setThinkingHint(null);
+    requestStartRef.current = Date.now();
 
     try {
       if (aiProvider === "ollama") {
@@ -359,9 +368,10 @@ export function AIChatPanel() {
       }
 
       const finishedAt = Date.now();
+      const elapsed = finishedAt - requestStartRef.current;
       const finalMsgs = localMessagesRef.current.map((m, i, arr) =>
         i === arr.length - 1 && m.role === "assistant" && !m.timestamp
-          ? { ...m, timestamp: finishedAt }
+          ? { ...m, timestamp: finishedAt, elapsed }
           : m
       );
       setLocalMessages(finalMsgs);
@@ -611,7 +621,10 @@ export function AIChatPanel() {
               )}
               {showFooter && (
                 <div className="ai-msg-footer">
-                  <span className="ai-msg-time">{msg.timestamp ? formatTime(msg.timestamp) : ""}</span>
+                  <span className="ai-msg-time">
+                    {msg.timestamp ? formatTime(msg.timestamp) : ""}
+                    {msg.elapsed != null ? ` · ${(msg.elapsed / 1000).toFixed(1)}s` : ""}
+                  </span>
                   <div className="ai-msg-actions">
                     <button
                       className="ai-msg-action-btn"
