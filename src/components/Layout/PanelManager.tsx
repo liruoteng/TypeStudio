@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./PanelManager.css";
 
@@ -10,11 +10,11 @@ interface PanelDef {
   desc: string;
 }
 
-const ALL_PANELS: PanelDef[] = [
-  { id: "editor",  label: "Editor",      desc: "Monaco source editor" },
-  { id: "preview", label: "PDF Preview", desc: "Live compiled output"  },
-  { id: "diff",    label: "Diff",        desc: "AI edits vs. original" },
-  { id: "outline", label: "Outline",     desc: "Document structure"    },
+export const ALL_PANELS: PanelDef[] = [
+  { id: "editor",  label: "Editor",  desc: "Monaco source editor"  },
+  { id: "preview", label: "Preview", desc: "Live compiled output"   },
+  { id: "diff",    label: "Diff",    desc: "AI edits vs. original"  },
+  { id: "outline", label: "Outline", desc: "Document structure"     },
 ];
 
 export interface PanelContents {
@@ -26,26 +26,24 @@ export interface PanelContents {
 
 interface PanelManagerProps {
   contents: PanelContents;
-  /** Title shown in the diff panel header (e.g. "§2.3 citation fix") */
   diffTitle?: string;
+  /** Called when the user closes the last remaining panel. */
+  onCollapse?: () => void;
 }
 
-// ── Grid layout helper ────────────────────────────────────────────────────────
-// Returns whether panel at `idx` spans both columns (only true for the 3rd
-// panel in a 3-panel layout).
+// ── Grid layout helpers ───────────────────────────────────────────────────────
 function isWide(idx: number, total: number) {
   return total === 1 || (total === 3 && idx === 2);
 }
-
 function gridCols(total: number) {
   return total <= 1 ? "1fr" : "1fr 1fr";
 }
 
-// ── Drag state (module-level to survive re-renders during the drag) ───────────
+// ── Drag state ────────────────────────────────────────────────────────────────
 let dragFromIdx = -1;
 let dragOverIdx = -1;
 
-// ── Panel component ───────────────────────────────────────────────────────────
+// ── Individual panel ──────────────────────────────────────────────────────────
 interface PanelProps {
   id: PanelId;
   idx: number;
@@ -60,15 +58,9 @@ interface PanelProps {
   onDragEnd:   (e: React.DragEvent) => void;
 }
 
-function Panel({
-  id, idx, total, label, wide, children,
-  onClose, onDragStart, onDragOver, onDrop, onDragEnd,
-}: PanelProps) {
-  // Diff panel: choose inline vs side-by-side based on computed width.
-  // We derive "wide enough for side-by-side" from the layout: a panel is wide
-  // when it's the only panel or it spans both columns in a 3-panel layout.
+function Panel({ id, idx, total, label, wide, children,
+  onClose, onDragStart, onDragOver, onDrop, onDragEnd }: PanelProps) {
   const diffMode = id === "diff" ? (wide ? "sbs" : "inline") : undefined;
-
   return (
     <div
       className="pm-panel"
@@ -78,36 +70,17 @@ function Panel({
       onDragOver={(e) => onDragOver(e, idx)}
       onDrop={(e) => onDrop(e, idx)}
     >
-      {/* ── Header (drag handle) ──────────────────────────────── */}
-      <div
-        className="pm-panel-header"
-        draggable
-        onDragStart={(e) => onDragStart(e, idx)}
-        onDragEnd={onDragEnd}
-      >
+      <div className="pm-panel-header" draggable onDragStart={(e) => onDragStart(e, idx)} onDragEnd={onDragEnd}>
         <GripIcon />
         <span className="pm-panel-title">
           {label}
-          {diffMode && (
-            <span className="pm-panel-subtitle">
-              {diffMode === "sbs" ? " — side by side" : " — inline"}
-            </span>
-          )}
+          {diffMode && <span className="pm-panel-subtitle">{diffMode === "sbs" ? " — side by side" : " — inline"}</span>}
         </span>
-        <button
-          className="pm-panel-close"
-          onClick={() => onClose(idx)}
-          title={`Close ${label}`}
-          aria-label={`Close ${label} panel`}
-        >
+        <button className="pm-panel-close" onClick={() => onClose(idx)} title={`Close ${label}`} aria-label={`Close ${label} panel`}>
           ✕
         </button>
       </div>
-
-      {/* ── Content ───────────────────────────────────────────── */}
-      <div className="pm-panel-body">
-        {children}
-      </div>
+      <div className="pm-panel-body">{children}</div>
     </div>
   );
 }
@@ -125,31 +98,31 @@ function GripIcon() {
   );
 }
 
-// ── Panel dropdown ────────────────────────────────────────────────────────────
-interface PanelDropdownProps {
+// ── Panel selector dropdown ───────────────────────────────────────────────────
+export interface PanelSelectorProps {
   activePanels: string[];
   onToggle: (id: PanelId) => void;
   onClose: () => void;
 }
 
-function PanelDropdown({ activePanels, onToggle, onClose }: PanelDropdownProps) {
+export function PanelSelector({ activePanels, onToggle, onClose }: PanelSelectorProps) {
   return (
-    <div className="pm-dropdown" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="pm-dropdown-header">Add a panel</div>
+    <div className="pm-selector" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="pm-selector-header">Panels</div>
       {ALL_PANELS.map((p) => {
         const active = activePanels.includes(p.id);
         return (
           <button
             key={p.id}
-            className={`pm-dropdown-item${active ? " pm-dropdown-item--on" : ""}`}
+            className={`pm-selector-item${active ? " pm-selector-item--on" : ""}`}
             onClick={() => { onToggle(p.id); onClose(); }}
           >
-            <span className={`pm-dd-check${active ? " pm-dd-check--on" : ""}`}>
+            <span className={`pm-selector-check${active ? " pm-selector-check--on" : ""}`}>
               {active && "✓"}
             </span>
-            <span className="pm-dd-info">
-              <span className="pm-dd-label">{p.label}</span>
-              <span className="pm-dd-desc">{p.desc}</span>
+            <span className="pm-selector-info">
+              <span className="pm-selector-label">{p.label}</span>
+              <span className="pm-selector-desc">{p.desc}</span>
             </span>
           </button>
         );
@@ -159,18 +132,13 @@ function PanelDropdown({ activePanels, onToggle, onClose }: PanelDropdownProps) 
 }
 
 // ── PanelManager ──────────────────────────────────────────────────────────────
-export function PanelManager({ contents, diffTitle }: PanelManagerProps) {
-  const activePanels  = useEditorStore((s) => s.activePanels);
+export function PanelManager({ contents, diffTitle, onCollapse }: PanelManagerProps) {
+  const activePanels    = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
-
-  const [ddOpen, setDdOpen] = useState(false);
-
-  // Snap-to-grid drop — swap two panels in the active list.
   const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
     dragFromIdx = idx;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", String(idx));
-    // Defer adding the class so the ghost image captures the un-dimmed state.
     const el = (e.currentTarget as HTMLElement).closest(".pm-panel") as HTMLElement | null;
     if (el) setTimeout(() => el.classList.add("pm-panel--dragging"), 0);
   }, []);
@@ -198,79 +166,22 @@ export function PanelManager({ contents, diffTitle }: PanelManagerProps) {
     clearDrag();
   }, [activePanels, setActivePanels]);
 
-  const handleDragEnd = useCallback((_e: React.DragEvent) => {
-    clearDrag();
-  }, []);
+  const handleDragEnd = useCallback((_e: React.DragEvent) => { clearDrag(); }, []);
 
   const closePanel = useCallback((idx: number) => {
-    if (activePanels.length <= 1) return;
+    if (activePanels.length <= 1) { onCollapse?.(); return; }
     setActivePanels(activePanels.filter((_, i) => i !== idx));
-  }, [activePanels, setActivePanels]);
-
-  const togglePanel = useCallback((id: PanelId) => {
-    if (activePanels.includes(id)) {
-      if (activePanels.length <= 1) return;
-      setActivePanels(activePanels.filter((p) => p !== id));
-    } else {
-      if (activePanels.length >= 4) return;
-      setActivePanels([...activePanels, id]);
-    }
-  }, [activePanels, setActivePanels]);
+  }, [activePanels, setActivePanels, onCollapse]);
 
   const n = activePanels.length;
 
   return (
     <div className="pm-root">
-      {/* ── Toolbar ─────────────────────────────────────────── */}
-      <div className="pm-toolbar">
-        {/* Active panel tags */}
-        <div className="pm-tags">
-          {activePanels.map((id, idx) => {
-            const def = ALL_PANELS.find((p) => p.id === id);
-            return (
-              <span key={id} className="pm-tag">
-                {def?.label ?? id}
-                <button
-                  className="pm-tag-close"
-                  onClick={() => closePanel(idx)}
-                  aria-label={`Remove ${def?.label ?? id} panel`}
-                >✕</button>
-              </span>
-            );
-          })}
-        </div>
-
-        {/* Add-panel button */}
-        <div className="pm-add-wrap">
-          <button
-            className={`pm-add-btn${ddOpen ? " pm-add-btn--open" : ""}`}
-            onClick={() => setDdOpen((v) => !v)}
-          >
-            + Panel ▾
-          </button>
-          {ddOpen && (
-            <PanelDropdown
-              activePanels={activePanels}
-              onToggle={togglePanel}
-              onClose={() => setDdOpen(false)}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* ── Panel grid ──────────────────────────────────────── */}
-      <div
-        className="pm-grid"
-        style={{ gridTemplateColumns: gridCols(n) }}
-        onClick={() => ddOpen && setDdOpen(false)}
-      >
+      <div className="pm-grid" style={{ gridTemplateColumns: gridCols(n) }}>
         {activePanels.map((id, idx) => {
-          const def  = ALL_PANELS.find((p) => p.id === id)!;
-          const wide = isWide(idx, n);
-          const label = id === "diff" && diffTitle
-            ? `Diff — ${diffTitle}`
-            : def.label;
-
+          const def   = ALL_PANELS.find((p) => p.id === id)!;
+          const wide  = isWide(idx, n);
+          const label = id === "diff" && diffTitle ? `Diff — ${diffTitle}` : def.label;
           return (
             <Panel
               key={id}
@@ -285,9 +196,6 @@ export function PanelManager({ contents, diffTitle }: PanelManagerProps) {
               onDrop={handleDrop}
               onDragEnd={handleDragEnd}
             >
-              {/* Mount all panel types but hide inactive ones so Monaco doesn't
-                  remount (it keeps editor state). Only diff/outline are cheap to
-                  unmount since they're pure display. */}
               <div className="pm-panel-content-wrap" style={{ display: id === "editor" || id === "preview" ? "flex" : undefined }}>
                 {contents[id as PanelId]}
               </div>
@@ -295,11 +203,6 @@ export function PanelManager({ contents, diffTitle }: PanelManagerProps) {
           );
         })}
       </div>
-
-      {/* Close dropdown on outside click */}
-      {ddOpen && (
-        <div className="pm-dd-overlay" onClick={() => setDdOpen(false)} />
-      )}
     </div>
   );
 }

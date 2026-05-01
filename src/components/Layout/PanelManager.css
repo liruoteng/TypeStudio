@@ -151,6 +151,104 @@
   z-index: 190;
 }
 
+/* ── Floating panel-selector button ─────────────────────────────────────── */
+.pm-selector-wrap {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 100;
+}
+
+.pm-selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+}
+.pm-selector-btn:hover,
+.pm-selector-btn--open {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.pm-selector {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 200px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+}
+
+.pm-selector-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 12px 5px;
+}
+
+.pm-selector-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border: none;
+  border-top: 1px solid var(--border-dim);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  transition: background 0.1s;
+}
+.pm-selector-item:hover { background: var(--bg-hover); }
+.pm-selector-item--on   { color: var(--text); }
+
+.pm-selector-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 9px;
+  color: transparent;
+}
+.pm-selector-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pm-selector-info { display: flex; flex-direction: column; gap: 1px; }
+.pm-selector-label { font-size: 12px; }
+.pm-selector-desc  { font-size: 10px; color: var(--text-dim); }
+
+.pm-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+}
+
 /* ── Panel grid ──────────────────────────────────────────────────────────── */
 .pm-grid {
   flex: 1;
@@ -248,6 +346,13 @@
 .pm-panel-close:hover {
   background: var(--bg-btn-hover);
   color: var(--text);
+}
+
+/* Shift close button left on panels in the rightmost column so it doesn't
+   overlap the floating layout button anchored to the top-right corner. */
+.pm-panel:only-child .pm-panel-close,
+.pm-panel:nth-child(2) .pm-panel-close {
+  margin-right: 28px;
 }
 
 /* ── Panel body + content ─────────────────────────────────────────────────── */

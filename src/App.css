@@ -112,76 +112,152 @@
   display: flex;
   flex: 1;
   overflow: hidden;
-  position: relative; /* FloatingSidebar anchors to this */
 }
 
-/* ── Main content (AI column + panel grid) ───────────────────────────────── */
+/* ── Main content (AI column + panel area) ───────────────────────────────── */
 .main-content {
   display: flex;
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  position: relative;  /* anchor for panel-selector-anchor */
 }
 
-/* ── AI session column (center, fixed width) ─────────────────────────────── */
-.ai-column {
-  width: 280px;
+/* ── Panel selector floating anchor (top-right, always visible) ──────────── */
+.panel-selector-anchor {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 300;
+}
+
+/* ── Panel area (tab strip + PanelManager) ───────────────────────────────── */
+.panel-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Layout dropdown ─────────────────────────────────────────────────────── */
+.layout-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 210px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.layout-dd-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 12px 4px;
+}
+
+.layout-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  border-top: 1px solid var(--border-dim);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.layout-dd-item:hover:not(:disabled) { background: var(--bg-hover); }
+.layout-dd-item--on   { color: var(--text); }
+.layout-dd-item--sub  { padding-left: 20px; }
+.layout-dd-item:disabled { opacity: 0.35; cursor: default; }
+
+.layout-dd-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  font-size: 9px;
+  color: transparent;
+}
+.layout-dd-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.layout-dd-label { flex: 1; }
+.layout-dd-desc  { font-size: 10px; color: var(--text-dim); }
+
+/* ── AI session column (width set via inline style; adjustable) ──────────── */
+.ai-column {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-surface);
-  border-right: 1px solid var(--border);
 }
 
-.ai-column-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px 0 4px;
-  height: 36px;
+/* ── Resize handle between AI column and panel area ─────────────────────── */
+.ai-resize-handle {
   flex-shrink: 0;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-dim);
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border-dim);
+  transition: background 0.15s;
+  z-index: 10;
+}
+.ai-resize-handle:hover,
+.ai-resize-handle:active {
+  background: var(--accent);
 }
 
-.ai-menu-btn {
+/* ── Expand strip shown when panels are collapsed ────────────────────────── */
+.panel-expand-strip {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: pointer;
+  background: var(--border-dim);
+  transition: background 0.15s;
+  z-index: 10;
+}
+.panel-expand-strip:hover {
+  background: var(--accent);
+}
+
+
+.ai-column-action {
   background: none;
   border: none;
   color: var(--text-muted);
   font-size: 14px;
   line-height: 1;
-  padding: 3px 5px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
-}
-.ai-menu-btn:hover { background: var(--bg-btn-hover); color: var(--text); }
-
-.ai-column-label {
-  flex: 1;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.ai-column-collapse {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
   padding: 0 6px;
   cursor: pointer;
   border-radius: 4px;
   flex-shrink: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
   transition: background 0.12s, color 0.12s;
 }
-.ai-column-collapse:hover { background: var(--bg-btn-hover); color: var(--text); }
+.ai-column-action:hover { background: var(--bg-btn-hover); color: var(--text); }
+.ai-column-action--active { color: var(--accent-bright); }
 
 .ai-column-body {
   flex: 1;
