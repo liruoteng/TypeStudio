@@ -1,0 +1,268 @@
+/* ── Root ─────────────────────────────────────────────────────────────────── */
+.pm-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.pm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  height: 36px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.pm-tags {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow: hidden;
+  align-items: center;
+}
+
+.pm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pm-tag-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-family: inherit;
+}
+.pm-tag-close:hover { color: var(--text); background: var(--bg-elevated); }
+
+/* ── Add-panel button ────────────────────────────────────────────────────── */
+.pm-add-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.pm-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+.pm-add-btn:hover,
+.pm-add-btn--open {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── Dropdown ─────────────────────────────────────────────────────────────── */
+.pm-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 210px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.pm-dropdown-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 12px 5px;
+}
+
+.pm-dropdown-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border: none;
+  border-top: 1px solid var(--border-dim);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  transition: background 0.1s;
+}
+.pm-dropdown-item:hover { background: var(--bg-hover); }
+.pm-dropdown-item--on   { color: var(--text); }
+
+.pm-dd-check {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  border: 1px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 9px;
+  color: transparent;
+}
+.pm-dd-check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pm-dd-info { display: flex; flex-direction: column; gap: 1px; }
+.pm-dd-label { font-size: 12px; }
+.pm-dd-desc  { font-size: 10px; color: var(--text-dim); }
+
+.pm-dd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+}
+
+/* ── Panel grid ──────────────────────────────────────────────────────────── */
+.pm-grid {
+  flex: 1;
+  display: grid;
+  min-height: 0;
+  background: var(--border-dim);
+  gap: 1px;
+}
+
+/* ── Individual panel ────────────────────────────────────────────────────── */
+.pm-panel {
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+  transition: opacity 0.12s;
+}
+
+.pm-panel--dragging {
+  opacity: 0.35;
+}
+
+.pm-panel--drop-target::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  background: rgba(59, 130, 246, 0.06);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── Panel header ─────────────────────────────────────────────────────────── */
+.pm-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 4px;
+  height: 28px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-elevated);
+  cursor: grab;
+  user-select: none;
+}
+.pm-panel-header:active { cursor: grabbing; }
+
+.pm-grip {
+  color: var(--text-dim);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+.pm-panel:hover .pm-grip,
+.pm-panel--dragging .pm-grip {
+  opacity: 1;
+}
+
+.pm-panel-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-panel-subtitle {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.pm-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.pm-panel-close:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text);
+}
+
+/* ── Panel body + content ─────────────────────────────────────────────────── */
+.pm-panel-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pm-panel-content-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

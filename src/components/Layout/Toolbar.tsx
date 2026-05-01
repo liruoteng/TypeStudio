@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEditorStore } from "../../stores/editorStore";
-import type { AppTheme } from "../../stores/editorStore";
+import type { AppTheme, SidebarTab } from "../../stores/editorStore";
 import "./Toolbar.css";
 
 function NewFileIcon() {
@@ -96,6 +96,7 @@ interface ToolbarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   sidebarWidth: number;
+  sidebarTab: SidebarTab;
   previewOpen: boolean;
   onTogglePreview: () => void;
   showAiPanel: boolean;
@@ -107,7 +108,7 @@ interface ToolbarProps {
   onExplorerOpenFolder?: () => void;
 }
 
-export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, sidebarWidth, previewOpen, onTogglePreview, showAiPanel, onToggleAiPanel, tabBar, onExplorerNewFile, onExplorerNewFolder, onExplorerRefresh, onExplorerOpenFolder }: ToolbarProps) {
+export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSidebar, sidebarWidth, sidebarTab, previewOpen, onTogglePreview, showAiPanel, onToggleAiPanel, tabBar, onExplorerNewFile, onExplorerNewFolder, onExplorerRefresh, onExplorerOpenFolder }: ToolbarProps) {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const isDirty = useEditorStore((s) => {
@@ -128,7 +129,7 @@ export function Toolbar({ onExportPdf, onConvertToTypst, sidebarOpen, onToggleSi
         className="toolbar-left"
         style={sidebarOpen ? { width: sidebarWidth } : undefined}
       >
-        {sidebarOpen && (
+        {sidebarOpen && sidebarTab === "files" && (
           <div className="toolbar-explorer-actions">
             {workspacePath && (
               <>

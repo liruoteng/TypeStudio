@@ -17,6 +17,25 @@ export interface AiChatSession {
   claudeSessionId?: string; // CLI session for --resume
 }
 
+/** A reference paper the user has added — local PDF, .bib entry, or link.
+ *  Persisted alongside other settings so the workspace remembers them. */
+export interface Reference {
+  id: string;
+  name: string;          // display label (filename or title)
+  kind: "pdf" | "bib" | "link";
+  path?: string;         // absolute path on disk for PDFs / bib files
+  url?: string;          // external link, optional
+  bibKey?: string;       // citation key (e.g. "smith2024")
+  bibEntry?: string;     // raw BibTeX text, when known
+  title?: string;
+  authors?: string[];
+  year?: number;
+  abstract?: string;
+  addedAt: number;
+}
+
+export type SidebarTab = "files" | "references";
+
 export interface Tab {
   path: string;
   name: string;
@@ -123,6 +142,24 @@ interface EditorState {
   writingMode: boolean;
   setWritingMode: (v: boolean) => void;
 
+  // Reference papers (drop-zone library)
+  references: Reference[];
+  addReference: (ref: Omit<Reference, "id" | "addedAt">) => void;
+  removeReference: (id: string) => void;
+  clearReferences: () => void;
+
+  // Sidebar tab + AI dock height (UI layout)
+  sidebarTab: SidebarTab;
+  setSidebarTab: (tab: SidebarTab) => void;
+  aiDockHeight: number;
+  setAiDockHeight: (h: number) => void;
+
+  // Floating sidebar + panel grid
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  activePanels: string[];   // ordered list: 'editor' | 'preview' | 'diff' | 'outline'
+  setActivePanels: (panels: string[]) => void;
+
   // Metrics
   lastEditTime: number | null;
   setLastEditTime: (t: number) => void;
@@ -159,6 +196,9 @@ const PERSISTED_KEYS = [
   "chatSessions",
   "activeChatSessionId",
   "writingMode",
+  "references",
+  "sidebarTab",
+  "aiDockHeight",
 ] as const;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -416,6 +456,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (Array.isArray(parsed.chatSessions)) patch.chatSessions = parsed.chatSessions as AiChatSession[];
       if (typeof parsed.activeChatSessionId === "string") patch.activeChatSessionId = parsed.activeChatSessionId;
       if (typeof parsed.writingMode === "boolean") patch.writingMode = parsed.writingMode;
+      if (Array.isArray(parsed.references)) patch.references = parsed.references as Reference[];
+      if (parsed.sidebarTab === "files" || parsed.sidebarTab === "references") {
+        patch.sidebarTab = parsed.sidebarTab;
+      }
+      if (typeof parsed.aiDockHeight === "number") patch.aiDockHeight = parsed.aiDockHeight;
       set(patch);
     } catch (e) {
       console.error("hydrateSettings failed", e);
@@ -424,6 +469,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   writingMode: false,
   setWritingMode: (v) => { set({ writingMode: v }); schedulePersist(get); },
+
+  references: [],
+  addReference: (ref) => {
+    const full: Reference = {
+      ...ref,
+      id: `ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      addedAt: Date.now(),
+    };
+    set((s) => ({ references: [full, ...s.references] }));
+    schedulePersist(get);
+  },
+  removeReference: (id) => {
+    set((s) => ({ references: s.references.filter((r) => r.id !== id) }));
+    schedulePersist(get);
+  },
+  clearReferences: () => {
+    set({ references: [] });
+    schedulePersist(get);
+  },
+
+  sidebarTab: "files",
+  setSidebarTab: (tab) => { set({ sidebarTab: tab }); schedulePersist(get); },
+  aiDockHeight: 280,
+  setAiDockHeight: (h) => { set({ aiDockHeight: Math.max(0, h) }); schedulePersist(get); },
+
+  sidebarOpen: false,
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  activePanels: ["editor", "preview"],
+  setActivePanels: (panels) => set({ activePanels: panels }),
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),

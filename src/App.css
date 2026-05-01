@@ -107,11 +107,108 @@
   font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* ── Main body (three panels) ─────────────────────────────────────────────── */
+/* ── Main body ────────────────────────────────────────────────────────────── */
 .app-body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative; /* FloatingSidebar anchors to this */
+}
+
+/* ── Main content (AI column + panel grid) ───────────────────────────────── */
+.main-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── AI session column (center, fixed width) ─────────────────────────────── */
+.ai-column {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+}
+
+.ai-column-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 4px;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.ai-menu-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.ai-menu-btn:hover { background: var(--bg-btn-hover); color: var(--text); }
+
+.ai-column-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ai-column-collapse {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.ai-column-collapse:hover { background: var(--bg-btn-hover); color: var(--text); }
+
+.ai-column-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Preview panel wrapper (header + content) ────────────────────────────── */
+.preview-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Panel placeholder ───────────────────────────────────────────────────── */
+.pm-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  user-select: none;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
@@ -120,6 +217,73 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.sidebar-tabs {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-dim);
+  padding: 4px 4px 0;
+  gap: 2px;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+}
+.sidebar-tab:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.sidebar-tab--active {
+  background: var(--bg-base);
+  color: var(--text);
+}
+.sidebar-tab--active::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 6px; right: 6px;
+  height: 2px;
+  background: var(--accent-tab-bar);
+  border-radius: 2px 2px 0 0;
+}
+
+.sidebar-tab-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  padding: 1px 6px;
+  border-radius: 9px;
+  min-width: 18px;
+  text-align: center;
+}
+.sidebar-tab--active .sidebar-tab-count {
+  color: var(--accent-bright);
+  background: var(--bg-active-item);
+}
+
+.sidebar-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ── Editor column ────────────────────────────────────────────────────────── */
@@ -136,7 +300,74 @@
   overflow: hidden;
 }
 
-/* ── Preview column ───────────────────────────────────────────────────────── */
+/* ── Right column (preview + AI dock stacked vertically) ───────────────────── */
+.right-column {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+/* The preview occupies whatever vertical space the AI dock doesn't claim. */
+.preview-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* AI dock: docked below the preview, height controlled inline in JSX. */
+.ai-dock {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-base);
+  border-top: 1px solid var(--border);
+}
+
+.ai-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-dim);
+}
+.ai-dock-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.ai-dock-collapse {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.ai-dock-collapse:hover { background: var(--bg-btn-hover); color: var(--text); }
+
+.ai-dock-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Legacy alias kept so any straggling references still find the layout. */
 .preview-column {
   flex-shrink: 0;
   display: flex;

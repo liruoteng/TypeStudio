@@ -1,11 +1,44 @@
 .preview-panel {
   display: flex;
+  flex-direction: row;
   height: 100%;
   min-height: 0;
   background: var(--bg-preview);
-  overflow-y: scroll;
-  overflow-x: auto;  /* allow horizontal scroll when pages are wider than panel (zoom > 100%) */
+  overflow: hidden;
   position: relative;
+}
+
+/* Inner scroll area — sits next to the thumbnail strip when present.
+   This is the actual scroll container used for vertical paging and the
+   horizontal scroll used by zoom > 100%. */
+.preview-pages-scroll {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-y: scroll;
+  overflow-x: auto;
+  /* Subtle "paper-on-desk" texture over the panel's base colour. */
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0) 60%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.012) 0,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+}
+
+[data-theme="claude"] .preview-pages-scroll {
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(0, 0, 0, 0.025) 0%, rgba(0, 0, 0, 0) 60%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(0, 0, 0, 0.014) 0,
+      rgba(0, 0, 0, 0.014) 1px,
+      transparent 1px,
+      transparent 6px
+    );
 }
 
 /* ── States ──────────────────────────────────────────────────────────────── */
@@ -118,29 +151,26 @@
 }
 
 /* ── Page list ───────────────────────────────────────────────────────────── */
-/* Inner zoomable wrapper — separate from the scroll container so the
-   scrollbar stays at native size while only the pages scale. */
+/* Inner zoomable wrapper — direct child of .preview-pages-scroll. */
 .preview-pages-content {
   display: flex;
   flex-direction: column;
-  /* flex-start so that when pages are wider than the panel (zoom > 1) the
-     left edge stays at the scroll origin (scrollLeft = 0) and is always
-     reachable. align-items: center would push the overflow equally left and
-     right, making the left half inaccessible since scrollLeft can't go
-     negative. Pages are still visually centred via margin: auto (see below). */
+  /* flex-start so when zoomed pages exceed the scroll container width, the
+     left edge stays at scrollLeft = 0 (always reachable). Pages are still
+     visually centred via margin: auto on .preview-page. */
   align-items: flex-start;
-  padding: 20px 16px 32px;
-  gap: 20px;
-  /* min-width: 100% keeps the container at least as wide as the panel so
-     auto margins on pages produce centering when zoom < 1. When zoom > 1,
-     pages overflow to the right and the panel's overflow-x: auto scrollbar
-     appears. */
+  padding: 28px 24px 40px;
+  gap: 24px;
   min-width: 100%;
 }
 
 .preview-page {
   position: relative;
-  box-shadow: rgba(0, 0, 0, 0.08) 0px 4px 6px, rgba(0, 0, 0, 0.06) 0px 1px 3px;
+  /* Stronger, more layered shadow for the "paper on a desk" feel. */
+  box-shadow:
+    rgba(0, 0, 0, 0.18) 0 24px 38px -16px,
+    rgba(0, 0, 0, 0.10) 0 8px 14px -8px,
+    rgba(0, 0, 0, 0.06) 0 2px 3px;
   border-radius: 3px;
   background: #ffffff;
   flex-shrink: 0;
@@ -153,6 +183,14 @@
      margins collapse to 0 and the left edge stays at the padding boundary. */
   margin-left: auto;
   margin-right: auto;
+  transition: box-shadow 0.18s ease;
+}
+
+.preview-page:hover {
+  box-shadow:
+    rgba(0, 0, 0, 0.22) 0 30px 44px -18px,
+    rgba(0, 0, 0, 0.12) 0 10px 16px -10px,
+    rgba(0, 0, 0, 0.07) 0 2px 3px;
 }
 
 .preview-page-inner {
@@ -186,3 +224,126 @@
   pointer-events: none;
   user-select: none;
 }
+
+/* ── Thumbnail strip (left column, scrolls independently) ─────────────── */
+.preview-thumbs {
+  flex-shrink: 0;
+  width: 88px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  border-right: 1px solid var(--border-dim);
+}
+
+[data-theme="claude"] .preview-thumbs {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.preview-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.preview-thumb:hover { background: rgba(255, 255, 255, 0.06); }
+[data-theme="claude"] .preview-thumb:hover { background: rgba(0, 0, 0, 0.05); }
+.preview-thumb--active { background: var(--bg-active-item); }
+
+.preview-thumb-page {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: block;
+  /* When the SVG hasn't loaded yet aspectRatio comes from the JS prop. */
+}
+.preview-thumb--active .preview-thumb-page {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.preview-thumb-inner {
+  width: 100%;
+  height: 100%;
+  line-height: 0;
+}
+.preview-thumb-inner svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  /* Disable text events inside thumbnails — they're for navigation only. */
+  pointer-events: none;
+}
+
+.preview-thumb-num {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.preview-thumb--active .preview-thumb-num { color: var(--accent-bright); font-weight: 600; }
+
+/* ── Floating zoom controls ────────────────────────────────────────────── */
+/* Sticky positioning inside .preview-pages-scroll keeps the controls
+   pinned to the bottom-right of the visible viewport while pages scroll. */
+.preview-pages-scroll .preview-zoom-floating {
+  position: sticky;
+  bottom: 16px;
+  margin-left: auto;
+  margin-right: 16px;
+  margin-top: -42px;          /* sit on top of the last page's bottom margin */
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+
+.preview-floating-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.preview-floating-btn:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text);
+}
+
+.preview-floating-pct {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 8px;
+  min-width: 40px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.preview-floating-pct:hover { color: var(--text); }

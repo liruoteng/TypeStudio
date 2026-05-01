@@ -1,0 +1,245 @@
+/* ── Backdrop ─────────────────────────────────────────────────────────────── */
+.fsb-backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+  z-index: 40;
+  transition: background 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fsb-backdrop--open {
+  background: rgba(0, 0, 0, 0.32);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+/* ── Floating sidebar panel ───────────────────────────────────────────────── */
+.fsb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.22);
+  transform: translateX(-220px);
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+.fsb--open {
+  transform: translateX(0);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.fsb-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  height: 38px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-toolbar);
+}
+.fsb-brand {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.fsb-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.fsb-close-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* ── Generic section ─────────────────────────────────────────────────────── */
+.fsb-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+.fsb-section--grow {
+  flex: 1;
+  min-height: 0;
+  flex-shrink: 1;
+  border-bottom: none;
+}
+
+.fsb-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 5px;
+}
+.fsb-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fsb-section-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s, color 0.12s;
+}
+.fsb-section-action:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* ── Drop zone ───────────────────────────────────────────────────────────── */
+.fsb-drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border: 1.5px dashed var(--border-medium);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  user-select: none;
+}
+.fsb-drop-zone:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  background: var(--bg-active-item);
+}
+
+/* ── Open-files list ─────────────────────────────────────────────────────── */
+.fsb-file-list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+.fsb-empty-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 12px 4px;
+}
+.fsb-file-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-right: 2px solid transparent;
+  transition: background 0.1s, color 0.1s;
+  width: 100%;
+}
+.fsb-file-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fsb-file-item--active {
+  background: var(--bg-active-item);
+  color: var(--text);
+  border-right-color: var(--accent);
+}
+.fsb-file-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.fsb-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fsb-file-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dirty);
+  flex-shrink: 0;
+}
+
+/* ── Workspace section ───────────────────────────────────────────────────── */
+.fsb-workspace-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.fsb-workspace-item--active {
+  color: var(--text);
+}
+.fsb-workspace-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.fsb-workspace-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.fsb-open-folder-btn {
+  margin: 0 10px 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.fsb-open-folder-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* ── Explorer section ────────────────────────────────────────────────────── */
+.fsb-explorer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}

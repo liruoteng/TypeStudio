@@ -4,7 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import { TabBar } from "./components/Layout/TabBar";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { Toolbar } from "./components/Layout/Toolbar";
-import { FileTree, type FileTreeHandle } from "./components/FileExplorer/FileTree";
+import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
+import { PanelManager } from "./components/Layout/PanelManager";
+import type { PanelId } from "./components/Layout/PanelManager";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
@@ -16,22 +18,21 @@ import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
 
-const MIN_SIDEBAR = 140;
-const SIDEBAR_COLLAPSE = 80;      // px — snap shut below this width
-const PREVIEW_SNAP_CLOSE = 80;   // px — snap shut below this width
-const PREVIEW_DEFAULT = 380;      // px — restored width when expanding
+const AI_DOCK_DEFAULT = 280;      // px — used when restoring AI column
 
 export default function App() {
-  const [sidebarWidth, setSidebarWidth] = useState(220);
-  const [previewWidth, setPreviewWidth] = useState(380);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const fileTreeRef = useRef<FileTreeHandle>(null);
-
   const markTabClean = useEditorStore((s) => s.markTabClean);
   const lspStatus = useEditorStore((s) => s.lspStatus);
   const theme = useEditorStore((s) => s.theme);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const writingMode = useEditorStore((s) => s.writingMode);
+  const sidebarTab = useEditorStore((s) => s.sidebarTab);
+  const aiDockHeight = useEditorStore((s) => s.aiDockHeight);
+  const setAiDockHeight = useEditorStore((s) => s.setAiDockHeight);
+  const sidebarOpen = useEditorStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useEditorStore((s) => s.setSidebarOpen);
+  const activePanels = useEditorStore((s) => s.activePanels);
+  const setActivePanels = useEditorStore((s) => s.setActivePanels);
 
   // Track save events so usePreview re-compiles on every save of a .typ file
   const [saveEvent, setSaveEvent] = useState<SaveEvent | null>(null);
@@ -60,18 +61,12 @@ export default function App() {
     };
   }, []);
 
-  // ── Native menu event listeners ───────────────────────────────────────────
-  // Wired below in a separate effect so closures capture the right callbacks.
-
   // History panel
   const [showHistory, setShowHistory] = useState(false);
   const [restoreState, setRestoreState] = useState<{ content: string; seq: number } | null>(null);
 
-  // Table of Contents toggle
+  // Table of Contents toggle (inside the preview panel)
   const [showToc, setShowToc] = useState(false);
-
-  // AI chat panel toggle
-  const [showAiPanel, setShowAiPanel] = useState(false);
 
   // Settings dialog
   const [showSettings, setShowSettings] = useState(false);
@@ -88,57 +83,6 @@ export default function App() {
   useEffect(() => {
     useEditorStore.getState().hydrateSettings();
   }, []);
-
-  // While a splitter is being dragged we render a full-window overlay. This
-  // (a) keeps the cursor as col-resize everywhere, and (b) prevents child
-  // frames like the sidecar preview <iframe> or the Monaco editor from
-  // swallowing mousemove events — without the overlay the drag stalls as
-  // soon as the cursor crosses into the iframe.
-  const [isResizing, setIsResizing] = useState(false);
-
-  // ── Resizable sidebar ─────────────────────────────────────────────────────
-  const startSidebarResize = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizing(true);
-      const startX = e.clientX;
-      const startW = sidebarWidth === 0 ? MIN_SIDEBAR : sidebarWidth;
-      const onMove = (ev: MouseEvent) => {
-        const next = startW + (ev.clientX - startX);
-        setSidebarWidth(next < SIDEBAR_COLLAPSE ? 0 : Math.max(next, MIN_SIDEBAR));
-      };
-      const onUp = () => {
-        setIsResizing(false);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [sidebarWidth]
-  );
-
-  // ── Resizable / collapsible preview ──────────────────────────────────────
-  const startPreviewResize = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizing(true);
-      const startX = e.clientX;
-      const startW = previewWidth === 0 ? PREVIEW_DEFAULT : previewWidth;
-      const onMove = (ev: MouseEvent) => {
-        const next = startW + (startX - ev.clientX);
-        setPreviewWidth(next < PREVIEW_SNAP_CLOSE ? 0 : Math.max(next, PREVIEW_SNAP_CLOSE));
-      };
-      const onUp = () => {
-        setIsResizing(false);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [previewWidth]
-  );
 
   // ── Open Folder ──────────────────────────────────────────────────────────
   const handleOpenFolder = useCallback(async () => {
@@ -179,13 +123,12 @@ export default function App() {
     if (!isTyp && !isMd) return;
     try {
       const { save } = await import("@tauri-apps/plugin-dialog");
-      // Suggest a default filename derived from the source file
       const defaultName = tab.path.split("/").pop()?.replace(/\.(typ|md|markdown)$/, ".pdf") ?? "output.pdf";
       const destPath = await save({
         defaultPath: defaultName,
         filters: [{ name: "PDF", extensions: ["pdf"] }],
       });
-      if (!destPath) return; // user cancelled
+      if (!destPath) return;
 
       await invoke("write_file", { path: tab.path, contents: tab.content });
       markTabClean(tab.path);
@@ -204,7 +147,6 @@ export default function App() {
     const isMd = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
     if (!isMd) return;
     try {
-      // Persist current content so the backend converter reads fresh input.
       if (!tab.path.startsWith("__temp__")) {
         await invoke("write_file", { path: tab.path, contents: tab.content });
         markTabClean(tab.path);
@@ -218,11 +160,7 @@ export default function App() {
       if (!destPath) return;
 
       const typstContent = tab.path.startsWith("__temp__")
-        ? // Temp tabs aren't on disk — convert via a transient write or skip backend.
-          // Simplest: write temp content to the dest path as a .md copy, convert, overwrite.
-          (await (async () => {
-            // Since convert_to_typst reads from disk, for a temp .md we write
-            // a sibling .md next to the chosen .typ, convert it, then delete.
+        ? (await (async () => {
             const tmpMd = destPath.replace(/\.typ$/, ".__tmp__.md");
             await invoke("write_file", { path: tmpMd, contents: tab.content });
             try {
@@ -262,7 +200,6 @@ export default function App() {
   // ── Save: write file → mark clean → trigger preview compile ──────────────
   const handleSave = useCallback(async (path: string, content: string, isExplicit: boolean = false) => {
     const tab = useEditorStore.getState().tabs.find((t) => t.path === path);
-    // Explicit Cmd+S on a temp file: prompt for a real destination
     if (isExplicit && tab?.isTemp) {
       try {
         const { save } = await import("@tauri-apps/plugin-dialog");
@@ -306,7 +243,7 @@ export default function App() {
     });
   }, []);
 
-  const previewOpen = previewWidth > 0;
+  const previewOpen = activePanels.includes("preview");
 
   // ── Recompile when switching to a .typ/.md file with preview open ─────────
   const prevActiveTabRef = useRef<string | null>(null);
@@ -321,38 +258,40 @@ export default function App() {
   }, [activeTabPath, previewOpen, handlePreviewTrigger]);
 
   // ── Collapse preview when writing mode is active, restore on exit ─────────
-  const savedPreviewWidthRef = useRef(0);
+  const savedPreviewPanelRef = useRef(false);
   useEffect(() => {
     if (writingMode) {
-      if (previewWidth > 0) {
-        savedPreviewWidthRef.current = previewWidth;
-        setPreviewWidth(0);
+      const panels = useEditorStore.getState().activePanels;
+      if (panels.includes("preview")) {
+        savedPreviewPanelRef.current = true;
+        useEditorStore.getState().setActivePanels(panels.filter((p) => p !== "preview"));
       }
     } else {
-      if (savedPreviewWidthRef.current > 0) {
-        setPreviewWidth(savedPreviewWidthRef.current);
-        savedPreviewWidthRef.current = 0;
+      if (savedPreviewPanelRef.current) {
+        savedPreviewPanelRef.current = false;
+        const panels = useEditorStore.getState().activePanels;
+        if (!panels.includes("preview")) {
+          useEditorStore.getState().setActivePanels([...panels, "preview"]);
+        }
       }
     }
-  // previewWidth intentionally excluded — we only react to writingMode changes
+  // writingMode only — intentional
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingMode]);
 
-  // ── Recompile when preview panel is unfolded ──────────────────────────────
-  const prevPreviewWidthRef = useRef(previewWidth);
+  // ── Recompile when preview panel is added ────────────────────────────────
+  const prevPreviewOpenRef = useRef(previewOpen);
   useEffect(() => {
-    if (previewWidth > 0 && prevPreviewWidthRef.current === 0) {
+    if (previewOpen && !prevPreviewOpenRef.current) {
       const tab = useEditorStore.getState().activeTab();
       if (tab && (tab.path.endsWith(".typ") || tab.path.endsWith(".md") || tab.path.endsWith(".markdown"))) {
         handlePreviewTrigger(tab.path, tab.content);
       }
     }
-    prevPreviewWidthRef.current = previewWidth;
-  }, [previewWidth, handlePreviewTrigger]);
+    prevPreviewOpenRef.current = previewOpen;
+  }, [previewOpen, handlePreviewTrigger]);
 
   // ── Native menu wiring ───────────────────────────────────────────────────
-  // Store is authoritative: Monaco mirrors every keystroke into the tab's
-  // content, so menu-triggered saves read the latest text from the store.
   useEffect(() => {
     const unlisteners: Promise<() => void>[] = [];
 
@@ -397,15 +336,26 @@ export default function App() {
     unlisteners.push(listen("menu:export-pdf", () => handleExportPdf()));
 
     unlisteners.push(listen("menu:toggle-sidebar", () => {
-      setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0));
+      const { sidebarOpen: open, setSidebarOpen: setOpen } = useEditorStore.getState();
+      setOpen(!open);
     }));
 
     unlisteners.push(listen("menu:toggle-preview", () => {
-      setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0));
+      const { activePanels: panels, setActivePanels: setPanels } = useEditorStore.getState();
+      if (panels.includes("preview")) {
+        if (panels.length > 1) setPanels(panels.filter((p) => p !== "preview"));
+      } else {
+        if (panels.length < 4) setPanels([...panels, "preview"]);
+      }
     }));
 
     unlisteners.push(listen("menu:toggle-outline", () => {
-      setShowToc((v) => !v);
+      const { activePanels: panels, setActivePanels: setPanels } = useEditorStore.getState();
+      if (panels.includes("outline")) {
+        if (panels.length > 1) setPanels(panels.filter((p) => p !== "outline"));
+      } else {
+        if (panels.length < 4) setPanels([...panels, "outline"]);
+      }
     }));
 
     unlisteners.push(listen("menu:toggle-writing-mode", () => {
@@ -431,7 +381,6 @@ export default function App() {
         });
         if (typeof zipPath !== "string") return;
 
-        // Destination: new sub-folder in workspace if set, else sibling of zip.
         const workspace = useEditorStore.getState().workspacePath;
         let destDir: string;
         if (workspace) {
@@ -451,12 +400,11 @@ export default function App() {
           notes: string[];
         }>("import_latex_template", { zipPath, destDir });
 
-        // Open the converted main.typ.
         const content = await invoke<string>("read_file", { path: result.main_typ });
         const name = result.main_typ.split("/").pop() ?? "main.typ";
         useEditorStore.getState().openTab(result.main_typ, name, content);
         if (workspace) {
-          useEditorStore.getState().setWorkspacePath(workspace); // refresh file tree
+          useEditorStore.getState().setWorkspacePath(workspace);
         }
 
         setImportResult({
@@ -476,29 +424,38 @@ export default function App() {
     };
   }, [handleNewFile, handleSave, handleSnapshot, handleExportPdf, handleOpenFolder]);
 
+  // Toggle a panel in activePanels
+  const togglePanel = useCallback((id: PanelId) => {
+    const panels = useEditorStore.getState().activePanels;
+    if (panels.includes(id)) {
+      if (panels.length <= 1) return;
+      setActivePanels(panels.filter((p) => p !== id));
+    } else {
+      if (panels.length >= 4) return;
+      setActivePanels([...panels, id]);
+    }
+  }, [setActivePanels]);
+
   return (
     <div className="app" data-theme={theme === "dark" ? undefined : theme}>
       <Toolbar
         onExportPdf={handleExportPdf}
         onConvertToTypst={handleConvertToTypst}
-        sidebarOpen={sidebarWidth > 0}
-        onToggleSidebar={() => setSidebarWidth((w) => (w === 0 ? MIN_SIDEBAR : 0))}
-        sidebarWidth={sidebarWidth}
-        previewOpen={previewWidth > 0}
-        onTogglePreview={() => setPreviewWidth((w) => (w === 0 ? PREVIEW_DEFAULT : 0))}
-        showAiPanel={showAiPanel}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        sidebarWidth={0}
+        sidebarTab={sidebarTab}
+        previewOpen={previewOpen}
+        onTogglePreview={() => togglePanel("preview")}
+        showAiPanel={aiDockHeight > 0}
         onToggleAiPanel={() => {
-          setShowAiPanel((v) => {
-            const next = !v;
-            if (next && previewWidth === 0) setPreviewWidth(PREVIEW_DEFAULT);
-            return next;
-          });
+          if (aiDockHeight > 0) {
+            setAiDockHeight(0);
+          } else {
+            setAiDockHeight(AI_DOCK_DEFAULT);
+          }
         }}
         tabBar={<TabBar />}
-        onExplorerNewFile={() => fileTreeRef.current?.newFile()}
-        onExplorerNewFolder={() => fileTreeRef.current?.newFolder()}
-        onExplorerRefresh={() => fileTreeRef.current?.refresh()}
-        onExplorerOpenFolder={handleOpenFolder}
       />
       {showHistory && activeTabPath && (
         <HistoryPanel
@@ -507,59 +464,73 @@ export default function App() {
           onClose={() => setShowHistory(false)}
         />
       )}
-      <div className="app-body" ref={containerRef}>
-        {sidebarWidth === 0 ? (
-          <div
-            className="sidebar-collapsed-strip"
-            title="Expand sidebar"
-            onClick={() => setSidebarWidth(MIN_SIDEBAR)}
-          >
-            ›
-          </div>
-        ) : (
-          <>
-            <div className="sidebar" style={{ width: sidebarWidth }}>
-              <FileTree ref={fileTreeRef} onOpenFolder={handleOpenFolder} />
-            </div>
-            <div className="resize-handle resize-handle-v" onMouseDown={startSidebarResize} />
-          </>
-        )}
 
-        <div className="editor-column">
-          <div className="editor-area">
-            <MonacoEditor
-              onSave={handleSave}
-              onSnapshot={handleSnapshot}
-              onNewFile={handleNewFile}
-              onPreviewTrigger={handlePreviewTrigger}
-              externalContent={restoreState ?? undefined}
-            />
-          </div>
+      {/* ── Main body ──────────────────────────────────────────── */}
+      <div className="app-body">
+        <FloatingSidebar onOpenFolder={handleOpenFolder} />
+
+        <div className="main-content">
+          {/* AI session column — center, fixed width */}
+          {aiDockHeight > 0 && (
+            <div className="ai-column">
+              <div className="ai-column-header">
+                <button
+                  className="ai-menu-btn"
+                  onClick={() => setSidebarOpen(true)}
+                  title="Open sidebar"
+                  aria-label="Open sidebar"
+                >
+                  ☰
+                </button>
+                <span className="ai-column-label">Session</span>
+                <button
+                  className="ai-column-collapse"
+                  onClick={() => setAiDockHeight(0)}
+                  title="Hide AI assistant"
+                  aria-label="Hide AI assistant"
+                >
+                  −
+                </button>
+              </div>
+              <div className="ai-column-body">
+                <AIChatPanel />
+              </div>
+            </div>
+          )}
+
+          {/* Panel grid — editor / preview / diff / outline */}
+          <PanelManager
+            contents={{
+              editor: (
+                <MonacoEditor
+                  onSave={handleSave}
+                  onSnapshot={handleSnapshot}
+                  onNewFile={handleNewFile}
+                  onPreviewTrigger={handlePreviewTrigger}
+                  externalContent={restoreState ?? undefined}
+                />
+              ),
+              preview: (
+                <div className="preview-panel-wrap">
+                  <PreviewHeader
+                    showToc={showToc}
+                    onToggleToc={() => setShowToc((v) => !v)}
+                    onShowPreview={() => setShowToc(false)}
+                  />
+                  <div className="preview-area">
+                    {showToc ? <TableOfContents /> : <PreviewBody />}
+                  </div>
+                </div>
+              ),
+              diff: (
+                <div className="pm-placeholder">
+                  Diff view — coming soon
+                </div>
+              ),
+              outline: <TableOfContents />,
+            }}
+          />
         </div>
-
-        <div className="resize-handle resize-handle-v" onMouseDown={startPreviewResize} />
-
-        {previewOpen ? (
-          <div className="preview-column" style={{ width: previewWidth }}>
-            <PreviewHeader
-              showToc={showToc}
-              onToggleToc={() => { setShowToc((v) => !v); setShowAiPanel(false); }}
-              showAiPanel={showAiPanel}
-              onShowPreview={() => { setShowToc(false); setShowAiPanel(false); }}
-            />
-            <div className="preview-area">
-              {showAiPanel ? <AIChatPanel /> : showToc ? <TableOfContents /> : <PreviewBody />}
-            </div>
-          </div>
-        ) : (
-          <div
-            className="preview-collapsed-strip"
-            title="Expand preview"
-            onClick={() => setPreviewWidth(PREVIEW_DEFAULT)}
-          >
-            ‹
-          </div>
-        )}
       </div>
 
       <StatusBar lspStatus={lspStatus} onShowHistory={() => setShowHistory((v) => !v)} />
@@ -580,26 +551,11 @@ export default function App() {
           onClose={() => setImportResult(null)}
         />
       )}
-      {isResizing && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            cursor: "col-resize",
-            // Transparent but hit-testable — swallows mousemove so iframes
-            // and the editor don't steal the drag.
-            background: "transparent",
-          }}
-        />
-      )}
     </div>
   );
 }
 
-/** Chooses sidecar iframe vs in-process SVG preview based on store flag.
- *  .md files always use the in-process path — tinymist's sidecar compiles
- *  from disk and doesn't understand Markdown. */
+/** Chooses sidecar iframe vs in-process SVG preview based on store flag. */
 const PreviewBody = memo(function PreviewBody() {
   const useSidecar = useEditorStore((s) => s.useSidecarPreview);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
@@ -698,16 +654,14 @@ function PageIcon() {
   );
 }
 
-/** Preview column header: recompile button, page count, zoom controls, ToC toggle, and preview toggle. */
+/** Preview panel header: recompile button, page count, zoom controls, ToC toggle. */
 const PreviewHeader = memo(function PreviewHeader({
   showToc,
   onToggleToc,
-  showAiPanel,
   onShowPreview,
 }: {
   showToc: boolean;
   onToggleToc: () => void;
-  showAiPanel: boolean;
   onShowPreview: () => void;
 }) {
   const pageCount     = useEditorStore((s) => s.previewPages.length);
@@ -745,15 +699,15 @@ const PreviewHeader = memo(function PreviewHeader({
 
   return (
     <div className="preview-header">
-      <span className="preview-header-label">{showAiPanel ? "AI ASSISTANT" : showToc ? "OUTLINE" : "PREVIEW"}</span>
-      {!showToc && !showAiPanel && pageCount > 0 && (
+      <span className="preview-header-label">{showToc ? "OUTLINE" : "PREVIEW"}</span>
+      {!showToc && pageCount > 0 && (
         <span className="preview-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"}
         </span>
       )}
 
       <div className="preview-zoom-controls">
-        {!showToc && !showAiPanel && (
+        {!showToc && (
           <>
             <button
               className={`preview-run-btn preview-run-btn--${runStatus}`}
@@ -774,24 +728,20 @@ const PreviewHeader = memo(function PreviewHeader({
             <span className="preview-zoom-sep" />
           </>
         )}
-        {!showAiPanel && (
-          <>
-            <button
-              className={`preview-icon-btn${!showToc ? " preview-icon-btn--active" : ""}`}
-              onClick={onShowPreview}
-              title="Show preview"
-            >
-              <PageIcon />
-            </button>
-            <button
-              className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
-              onClick={onToggleToc}
-              title={showToc ? "Show preview" : "Show table of contents"}
-            >
-              ☰
-            </button>
-          </>
-        )}
+        <button
+          className={`preview-icon-btn${!showToc ? " preview-icon-btn--active" : ""}`}
+          onClick={onShowPreview}
+          title="Show preview"
+        >
+          <PageIcon />
+        </button>
+        <button
+          className={`preview-icon-btn${showToc ? " preview-icon-btn--active" : ""}`}
+          onClick={onToggleToc}
+          title={showToc ? "Show preview" : "Show table of contents"}
+        >
+          ☰
+        </button>
       </div>
     </div>
   );

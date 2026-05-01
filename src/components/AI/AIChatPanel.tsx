@@ -214,12 +214,37 @@ export function AIChatPanel() {
     }
   };
 
-  // Estimate: ~4 chars/token for English, +4 tokens/message for role overhead, +system prompt
-  const systemTokens = Math.ceil(SYSTEM_PROMPT.length / 4);
-  const estimatedTokens = systemTokens + localMessages.reduce(
-    (sum, m) => sum + Math.ceil(m.content.length / 4) + 4,
-    0
-  );
+  // Estimate tokens in a string: newlines are their own token in BPE tokenizers;
+  // remaining characters use the ~4 chars/token rule of thumb.
+  const estTokens = (text: string) => {
+    const newlines = (text.match(/\n/g) ?? []).length;
+    return newlines + Math.ceil((text.length - newlines) / 4);
+  };
+
+  // total tokens = input tokens + output tokens
+  //   input  = system prompt + user messages (+ 4 per message for role/format overhead)
+  //   output = assistant completions (+ 4 per message for role/format overhead)
+  const inputTokens =
+    estTokens(SYSTEM_PROMPT) +
+    localMessages
+      .filter((m) => m.role === "user")
+      .reduce((sum, m) => sum + estTokens(m.content) + 4, 0);
+  const outputTokens =
+    localMessages
+      .filter((m) => m.role === "assistant")
+      .reduce((sum, m) => sum + estTokens(m.content) + 4, 0);
+
+  // Thinking blocks returned in conversation history count toward the next input.
+  // Estimate ~50% of the effort budget per completed assistant turn as an average.
+  const THINKING_BUDGET: Record<Effort, number> = {
+    low: 500, medium: 2_500, high: 5_000, xhigh: 10_000, max: 16_000,
+  };
+  const completedAssistantTurns = localMessages.filter(
+    (m) => m.role === "assistant" && m.content.length > 0
+  ).length;
+  const thinkingTokens = thinking ? completedAssistantTurns * THINKING_BUDGET[effort] : 0;
+
+  const estimatedTokens = inputTokens + outputTokens + thinkingTokens;
   const contextPct = contextTokens
     ? (contextTokens.used / contextTokens.window) * 100
     : (estimatedTokens / 200_000) * 100;
@@ -763,8 +788,8 @@ export function AIChatPanel() {
           <span
             className="ai-toolbar-tokens"
             data-tooltip={contextTokens
-              ? `${Math.round(contextTokens.used / 1000)}k / ${Math.round(contextTokens.window / 1000)}k tokens`
-              : `~${Math.round(estimatedTokens / 1000)}k / 200k tokens`}
+              ? `${Math.round(contextTokens.used / 1000)}k / ${Math.round(contextTokens.window / 1000)}k tokens (API)`
+              : `~${Math.round(estimatedTokens / 1000)}k / 200k tokens (est.${thinking && thinkingTokens > 0 ? ` incl. ~${Math.round(thinkingTokens / 1000)}k thinking` : ""})`}
           >
             {contextPctDisplay}%
           </span>
