@@ -2,7 +2,7 @@ import { useCallback, type ReactNode } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./PanelManager.css";
 
-export type PanelId = "editor" | "preview" | "diff" | "outline";
+export type PanelId = "editor" | "preview" | "diff" | "outline" | "ai";
 
 interface PanelDef {
   id: PanelId;
@@ -11,13 +11,15 @@ interface PanelDef {
 }
 
 export const ALL_PANELS: PanelDef[] = [
-  { id: "editor",  label: "Editor",  desc: "Monaco source editor"  },
-  { id: "preview", label: "Preview", desc: "Live compiled output"   },
-  { id: "diff",    label: "Diff",    desc: "AI edits vs. original"  },
-  { id: "outline", label: "Outline", desc: "Document structure"     },
+  { id: "ai",      label: "AI",      desc: "AI writing assistant"   },
+  { id: "editor",  label: "Editor",  desc: "Monaco source editor"   },
+  { id: "preview", label: "Preview", desc: "Live compiled output"    },
+  { id: "diff",    label: "Diff",    desc: "AI edits vs. original"   },
+  { id: "outline", label: "Outline", desc: "Document structure"      },
 ];
 
 export interface PanelContents {
+  ai:      ReactNode;
   editor:  ReactNode;
   preview: ReactNode;
   diff:    ReactNode;
@@ -26,17 +28,21 @@ export interface PanelContents {
 
 interface PanelManagerProps {
   contents: PanelContents;
+  headerExtras?: Partial<Record<PanelId, ReactNode>>;
+  titleSuffixes?: Partial<Record<PanelId, ReactNode>>;
   diffTitle?: string;
   /** Called when the user closes the last remaining panel. */
   onCollapse?: () => void;
 }
 
 // ── Grid layout helpers ───────────────────────────────────────────────────────
-function isWide(idx: number, total: number) {
-  return total === 1 || (total === 3 && idx === 2);
+function isWide(idx: number, total: number, layout: "vertical" | "horizontal") {
+  if (layout === "vertical") return false;
+  return total === 1 || (total === 3 && idx === 2) || (total === 5 && idx === 4);
 }
-function gridCols(total: number) {
-  return total <= 1 ? "1fr" : "1fr 1fr";
+function gridCols(total: number, layout: "vertical" | "horizontal") {
+  if (layout === "vertical" || total <= 1) return "1fr";
+  return "1fr 1fr";
 }
 
 // ── Drag state ────────────────────────────────────────────────────────────────
@@ -50,6 +56,8 @@ interface PanelProps {
   total: number;
   label: string;
   wide: boolean;
+  titleSuffix?: ReactNode;
+  headerExtra?: ReactNode;
   children: ReactNode;
   onClose: (idx: number) => void;
   onDragStart: (e: React.DragEvent, idx: number) => void;
@@ -58,9 +66,12 @@ interface PanelProps {
   onDragEnd:   (e: React.DragEvent) => void;
 }
 
-function Panel({ id, idx, total, label, wide, children,
+function Panel({ id, idx, total, label, wide, titleSuffix, headerExtra, children,
   onClose, onDragStart, onDragOver, onDrop, onDragEnd }: PanelProps) {
+  const panelLayout = useEditorStore((s) => s.panelLayout);
   const diffMode = id === "diff" ? (wide ? "sbs" : "inline") : undefined;
+  // Top-right panel shares its corner with the floating selector button.
+  const isTopRight = total === 1 || (panelLayout === "horizontal" ? idx === 1 : idx === 0);
   return (
     <div
       className="pm-panel"
@@ -70,12 +81,20 @@ function Panel({ id, idx, total, label, wide, children,
       onDragOver={(e) => onDragOver(e, idx)}
       onDrop={(e) => onDrop(e, idx)}
     >
-      <div className="pm-panel-header" draggable onDragStart={(e) => onDragStart(e, idx)} onDragEnd={onDragEnd}>
+      <div
+        className="pm-panel-header"
+        style={isTopRight ? { paddingRight: 36 } : undefined}
+        draggable
+        onDragStart={(e) => onDragStart(e, idx)}
+        onDragEnd={onDragEnd}
+      >
         <GripIcon />
         <span className="pm-panel-title">
           {label}
           {diffMode && <span className="pm-panel-subtitle">{diffMode === "sbs" ? " — side by side" : " — inline"}</span>}
+          {titleSuffix}
         </span>
+        {headerExtra}
         <button className="pm-panel-close" onClick={() => onClose(idx)} title={`Close ${label}`} aria-label={`Close ${label} panel`}>
           ✕
         </button>
@@ -132,9 +151,10 @@ export function PanelSelector({ activePanels, onToggle, onClose }: PanelSelector
 }
 
 // ── PanelManager ──────────────────────────────────────────────────────────────
-export function PanelManager({ contents, diffTitle, onCollapse }: PanelManagerProps) {
+export function PanelManager({ contents, headerExtras, titleSuffixes, diffTitle, onCollapse }: PanelManagerProps) {
   const activePanels    = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
+  const panelLayout     = useEditorStore((s) => s.panelLayout);
   const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
     dragFromIdx = idx;
     e.dataTransfer.effectAllowed = "move";
@@ -177,10 +197,10 @@ export function PanelManager({ contents, diffTitle, onCollapse }: PanelManagerPr
 
   return (
     <div className="pm-root">
-      <div className="pm-grid" style={{ gridTemplateColumns: gridCols(n) }}>
+      <div className="pm-grid" style={{ gridTemplateColumns: gridCols(n, panelLayout) }}>
         {activePanels.map((id, idx) => {
           const def   = ALL_PANELS.find((p) => p.id === id)!;
-          const wide  = isWide(idx, n);
+          const wide  = isWide(idx, n, panelLayout);
           const label = id === "diff" && diffTitle ? `Diff — ${diffTitle}` : def.label;
           return (
             <Panel
@@ -190,6 +210,8 @@ export function PanelManager({ contents, diffTitle, onCollapse }: PanelManagerPr
               total={n}
               label={label}
               wide={wide}
+              titleSuffix={titleSuffixes?.[id as PanelId]}
+              headerExtra={headerExtras?.[id as PanelId]}
               onClose={closePanel}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}

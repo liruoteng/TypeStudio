@@ -7,6 +7,15 @@ interface FloatingSidebarProps {
   onOpenFolder: () => void;
 }
 
+function SidebarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="5.5" y1="1.5" x2="5.5" y2="14.5" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 function UserIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
@@ -79,7 +88,7 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
       style={sidebarOpen ? { width: sidebarWidth } : undefined}
       aria-label="Sidebar"
     >
-      {/* ── Top bar: ☰ toggle (replaces × when open) ────────── */}
+      {/* ── Top bar: sidebar toggle ─────────────────────────── */}
       <div className="fsb-topbar">
         <span className="fsb-brand">type-studio</span>
         <button
@@ -88,14 +97,14 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
           title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           aria-label="Toggle sidebar"
         >
-          ☰
+          <SidebarIcon />
         </button>
       </div>
 
       {/* ── Section 1: Open files + drop zone ───────────────── */}
       <div className="fsb-section">
         <div className="fsb-section-head">
-          <span className="fsb-section-title">Files</span>
+          <span className="fsb-section-title">References</span>
         </div>
 
         <label className="fsb-drop-zone" htmlFor="fsb-file-input">

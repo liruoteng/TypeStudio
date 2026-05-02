@@ -217,7 +217,7 @@ export function registerTypstLanguage(monaco: typeof Monaco) {
       { token: "variable.math", foreground: "1D6BB3" },
     ],
     colors: {
-      "editor.background": "#FAF9F6",
+      "editor.background": "#ffffff",
       "editor.foreground": "#1C1C1C",
       "editorLineNumber.foreground": "#ABA59A",
       "editorLineNumber.activeForeground": "#4A4846",

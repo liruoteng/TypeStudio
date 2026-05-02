@@ -157,8 +157,10 @@ interface EditorState {
   // Floating sidebar + panel grid
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  activePanels: string[];   // ordered list: 'editor' | 'preview' | 'diff' | 'outline'
+  activePanels: string[];   // ordered list: 'editor' | 'preview' | 'diff' | 'outline' | 'ai'
   setActivePanels: (panels: string[]) => void;
+  panelLayout: "vertical" | "horizontal";
+  setPanelLayout: (layout: "vertical" | "horizontal") => void;
 
   // Metrics
   lastEditTime: number | null;
@@ -496,8 +498,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   sidebarOpen: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  activePanels: ["editor", "preview"],
+  activePanels: ["ai", "editor"],
   setActivePanels: (panels) => set({ activePanels: panels }),
+  panelLayout: "horizontal",
+  setPanelLayout: (layout) => set({ panelLayout: layout }),
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),

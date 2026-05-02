@@ -126,7 +126,7 @@
 /* ── Panel selector floating anchor (top-right, always visible) ──────────── */
 .panel-selector-anchor {
   position: absolute;
-  top: 6px;
+  top: 5px;   /* (36px header - 26px button) / 2 = 5px, vertically centered in panel header */
   right: 8px;
   z-index: 300;
 }
@@ -204,6 +204,7 @@
 
 .layout-dd-label { flex: 1; }
 .layout-dd-desc  { font-size: 10px; color: var(--text-dim); }
+.layout-dd-divider { height: 1px; background: var(--border-dim); margin: 4px 0; }
 
 /* ── AI session column (width set via inline style; adjustable) ──────────── */
 .ai-column {
@@ -268,14 +269,6 @@
 }
 
 /* ── Preview panel wrapper (header + content) ────────────────────────────── */
-.preview-panel-wrap {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 /* ── Panel placeholder ───────────────────────────────────────────────────── */
 .pm-placeholder {
   flex: 1;
@@ -453,35 +446,17 @@
   border-left: 1px solid var(--border);
 }
 
-.preview-header {
-  height: 38px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 4px;
-  color: var(--text-header);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-dim);
-  flex-shrink: 0;
-}
-
-.preview-header-label {
-  letter-spacing: 0.06em;
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
 .preview-page-count {
   font-weight: 400;
-  opacity: 0.6;
-  margin-left: 4px;
-  letter-spacing: normal;
   font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: normal;
+  text-transform: none;
+  margin-left: 6px;
+  opacity: 0.8;
 }
 
-/* Shared style for small icon buttons in the preview header (zoom +/-) */
+/* Shared style for small icon buttons in the preview panel header (zoom +/-) */
 .preview-icon-btn {
   background: none;
   border: none;
@@ -553,7 +528,6 @@
 
 /* Zoom cluster */
 .preview-zoom-controls {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 1px;
@@ -576,12 +550,6 @@
 .preview-zoom-pct:hover {
   background: var(--bg-btn-hover);
   color: var(--text);
-}
-
-.preview-area {
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
 }
 
 /* ── Collapsed preview strip ──────────────────────────────────────────────── */

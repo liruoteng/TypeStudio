@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, memo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { TabBar } from "./components/Layout/TabBar";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
 import { PanelManager, ALL_PANELS } from "./components/Layout/PanelManager";
@@ -25,46 +24,23 @@ export default function App() {
   const writingMode = useEditorStore((s) => s.writingMode);
   const activePanels    = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
+  const panelLayout     = useEditorStore((s) => s.panelLayout);
+  const setPanelLayout  = useEditorStore((s) => s.setPanelLayout);
 
-
-  // AI column width (resizable)
-  const [aiWidth, setAiWidth] = useState(280);
-  const aiWidthRef = useRef(280);
-
-  // Panel area visibility
-  const [panelsOpen, setPanelsOpen] = useState(true);
 
   // Panel selector dropdown
   const [selectorOpen, setSelectorOpen] = useState(false);
+
   const togglePanelId = useCallback((id: PanelId) => {
     const panels = useEditorStore.getState().activePanels;
     if (panels.includes(id)) {
-      if (panels.length <= 1) { setPanelsOpen(false); return; }
+      if (panels.length <= 1) return; // keep at least one panel
       setActivePanels(panels.filter((p) => p !== id));
     } else {
-      if (!panelsOpen) setPanelsOpen(true);
-      if (panels.length >= 4) return;
+      if (panels.length >= 5) return;
       setActivePanels([...panels, id]);
     }
-  }, [setActivePanels, panelsOpen]);
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = aiWidthRef.current;
-    const containerW = (e.currentTarget as HTMLElement).closest(".main-content")?.clientWidth ?? window.innerWidth;
-    const onMove = (ev: MouseEvent) => {
-      const w = Math.max(120, Math.min(containerW - 120, startWidth + ev.clientX - startX));
-      aiWidthRef.current = w;
-      setAiWidth(w);
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, []);
+  }, [setActivePanels]);
 
 
   // Track save events so usePreview re-compiles on every save of a .typ file
@@ -429,38 +405,14 @@ export default function App() {
         <FloatingSidebar onOpenFolder={handleOpenFolder} />
 
         <div className="main-content" onClick={() => selectorOpen && setSelectorOpen(false)}>
-          {/* AI session column — primary panel, always visible */}
-          <div
-            className="ai-column"
-            style={panelsOpen ? { width: aiWidth, flexShrink: 0 } : { flex: 1 }}
-          >
-            <div className="ai-column-body">
-              <AIChatPanel />
-            </div>
-          </div>
-
-          {/* Resize handle when panels open; expand strip when collapsed */}
-          {panelsOpen ? (
-            <div className="ai-resize-handle" onMouseDown={handleResizeMouseDown} />
-          ) : (
-            <div
-              className="panel-expand-strip"
-              onClick={() => setPanelsOpen(true)}
-              title="Show panels"
-              aria-label="Show panels"
-            />
-          )}
-
-          {/* Panel area: tab bar + panel grid */}
-          <div
-            className="panel-area"
-            style={panelsOpen ? {} : { width: 0, flex: "0 0 0", overflow: "hidden" }}
-          >
-            <TabBar />
-
+          {/* Panel area: full width panel grid */}
+          <div className="panel-area">
             <PanelManager
-              onCollapse={() => setPanelsOpen(false)}
+              onCollapse={undefined}
+              titleSuffixes={{ preview: <PreviewPageCount /> }}
+              headerExtras={{ preview: <PreviewPanelControls onExportPdf={handleExportPdf} /> }}
               contents={{
+                ai: <AIChatPanel />,
                 editor: (
                   <MonacoEditor
                     onSave={handleSave}
@@ -470,14 +422,7 @@ export default function App() {
                     externalContent={restoreState ?? undefined}
                   />
                 ),
-                preview: (
-                  <div className="preview-panel-wrap">
-                    <PreviewHeader onExportPdf={handleExportPdf} />
-                    <div className="preview-area">
-                      <PreviewBody />
-                    </div>
-                  </div>
-                ),
+                preview: <PreviewBody />,
                 diff: (
                   <div className="pm-placeholder">
                     Diff view — coming soon
@@ -502,8 +447,8 @@ export default function App() {
               <LayoutDropdown
                 activePanels={activePanels}
                 onTogglePanel={togglePanelId}
-                panelsOpen={panelsOpen}
-                onTogglePanels={() => setPanelsOpen((v) => !v)}
+                panelLayout={panelLayout}
+                onToggleLayout={() => setPanelLayout(panelLayout === "horizontal" ? "vertical" : "horizontal")}
                 onClose={() => setSelectorOpen(false)}
               />
             )}
@@ -538,34 +483,26 @@ export default function App() {
 function LayoutDropdown({
   activePanels,
   onTogglePanel,
-  panelsOpen,
-  onTogglePanels,
+  panelLayout,
+  onToggleLayout,
   onClose,
 }: {
   activePanels: string[];
   onTogglePanel: (id: PanelId) => void;
-  panelsOpen: boolean;
-  onTogglePanels: () => void;
+  panelLayout: "horizontal" | "vertical";
+  onToggleLayout: () => void;
   onClose: () => void;
 }) {
   return (
     <div className="layout-dropdown" onMouseDown={(e) => e.stopPropagation()}>
       <div className="layout-dd-header">Panels</div>
-      <button
-        className={`layout-dd-item${panelsOpen ? " layout-dd-item--on" : ""}`}
-        onClick={() => { onTogglePanels(); onClose(); }}
-      >
-        <span className={`layout-dd-check${panelsOpen ? " layout-dd-check--on" : ""}`}>{panelsOpen && "✓"}</span>
-        <span className="layout-dd-label">Show panels</span>
-      </button>
       {ALL_PANELS.map((p) => {
         const active = activePanels.includes(p.id);
         return (
           <button
             key={p.id}
-            className={`layout-dd-item layout-dd-item--sub${active ? " layout-dd-item--on" : ""}`}
-            onClick={() => onTogglePanel(p.id)}
-            disabled={!panelsOpen}
+            className={`layout-dd-item${active ? " layout-dd-item--on" : ""}`}
+            onClick={() => { onTogglePanel(p.id); onClose(); }}
           >
             <span className={`layout-dd-check${active ? " layout-dd-check--on" : ""}`}>{active && "✓"}</span>
             <span className="layout-dd-label">{p.label}</span>
@@ -573,6 +510,24 @@ function LayoutDropdown({
           </button>
         );
       })}
+      <div className="layout-dd-divider" />
+      <div className="layout-dd-header">Arrangement</div>
+      <button
+        className={`layout-dd-item${panelLayout === "horizontal" ? " layout-dd-item--on" : ""}`}
+        onClick={() => { if (panelLayout !== "horizontal") onToggleLayout(); onClose(); }}
+      >
+        <span className={`layout-dd-check${panelLayout === "horizontal" ? " layout-dd-check--on" : ""}`}>{panelLayout === "horizontal" && "✓"}</span>
+        <span className="layout-dd-label">Side by side</span>
+        <span className="layout-dd-desc">Panels arranged in columns</span>
+      </button>
+      <button
+        className={`layout-dd-item${panelLayout === "vertical" ? " layout-dd-item--on" : ""}`}
+        onClick={() => { if (panelLayout !== "vertical") onToggleLayout(); onClose(); }}
+      >
+        <span className={`layout-dd-check${panelLayout === "vertical" ? " layout-dd-check--on" : ""}`}>{panelLayout === "vertical" && "✓"}</span>
+        <span className="layout-dd-label">Stacked</span>
+        <span className="layout-dd-desc">Panels arranged in rows</span>
+      </button>
     </div>
   );
 }
@@ -675,13 +630,22 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4;
 
-/** Preview panel header: label, page count, compile button, download, zoom. */
-const PreviewHeader = memo(function PreviewHeader({
+const PreviewPageCount = memo(function PreviewPageCount() {
+  const pageCount = useEditorStore((s) => s.previewPages.length);
+  if (pageCount === 0) return null;
+  return (
+    <span className="preview-page-count">
+      {pageCount} {pageCount === 1 ? "page" : "pages"}
+    </span>
+  );
+});
+
+/** Preview panel header controls: compile button, download, zoom. */
+const PreviewPanelControls = memo(function PreviewPanelControls({
   onExportPdf,
 }: {
   onExportPdf: () => void;
 }) {
-  const pageCount     = useEditorStore((s) => s.previewPages.length);
   const loading       = useEditorStore((s) => s.previewLoading);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const zoom          = useEditorStore((s) => s.previewZoom);
@@ -715,40 +679,31 @@ const PreviewHeader = memo(function PreviewHeader({
   const runStatus = loading ? "loading" : compileStatus;
 
   return (
-    <div className="preview-header">
-      <span className="preview-header-label">PREVIEW</span>
-      {pageCount > 0 && (
-        <span className="preview-page-count">
-          {pageCount} {pageCount === 1 ? "page" : "pages"}
-        </span>
+    <div className="preview-zoom-controls">
+      <button
+        className={`preview-run-btn preview-run-btn--${runStatus}`}
+        onClick={handleRefresh}
+        disabled={loading || !isTypst}
+        title="Recompile (Cmd+S also triggers this)"
+      >
+        {loading ? <span className="spin">⟳</span> : "▶"}
+      </button>
+      <button
+        className="preview-icon-btn"
+        onClick={onExportPdf}
+        disabled={!isTypst}
+        title="Export PDF"
+      >
+        ⬇
+      </button>
+      {!useSidecar && (
+        <>
+          <span className="preview-zoom-sep" />
+          <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out">−</button>
+          <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
+          <button className="preview-icon-btn" onClick={zoomIn}  disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
+        </>
       )}
-
-      <div className="preview-zoom-controls">
-        <button
-          className={`preview-run-btn preview-run-btn--${runStatus}`}
-          onClick={handleRefresh}
-          disabled={loading || !isTypst}
-          title="Recompile (Cmd+S also triggers this)"
-        >
-          {loading ? <span className="spin">⟳</span> : "▶"}
-        </button>
-        <button
-          className="preview-icon-btn"
-          onClick={onExportPdf}
-          disabled={!isTypst}
-          title="Export PDF"
-        >
-          ⬇
-        </button>
-        {!useSidecar && (
-          <>
-            <span className="preview-zoom-sep" />
-            <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out">−</button>
-            <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
-            <button className="preview-icon-btn" onClick={zoomIn}  disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
-          </>
-        )}
-      </div>
     </div>
   );
 });

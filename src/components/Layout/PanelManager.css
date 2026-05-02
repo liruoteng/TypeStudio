@@ -289,7 +289,7 @@
   align-items: center;
   gap: 4px;
   padding: 0 8px 0 4px;
-  height: 28px;
+  height: 36px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-dim);
   background: var(--bg-elevated);
@@ -348,12 +348,6 @@
   color: var(--text);
 }
 
-/* Shift close button left on panels in the rightmost column so it doesn't
-   overlap the floating layout button anchored to the top-right corner. */
-.pm-panel:only-child .pm-panel-close,
-.pm-panel:nth-child(2) .pm-panel-close {
-  margin-right: 28px;
-}
 
 /* ── Panel body + content ─────────────────────────────────────────────────── */
 .pm-panel-body {
