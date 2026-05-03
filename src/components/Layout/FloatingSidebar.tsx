@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import { FileTree, type FileTreeHandle } from "../FileExplorer/FileTree";
 import "./FloatingSidebar.css";
@@ -57,8 +57,6 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
   const tabs           = useEditorStore((s) => s.tabs);
   const activeTabPath  = useEditorStore((s) => s.activeTabPath);
   const setActiveTab   = useEditorStore((s) => s.setActiveTab);
-  const workspacePath  = useEditorStore((s) => s.workspacePath);
-
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const widthRef = useRef(220);
@@ -101,70 +99,7 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
         </button>
       </div>
 
-      {/* ── Section 1: Open files + drop zone ───────────────── */}
-      <div className="fsb-section">
-        <div className="fsb-section-head">
-          <span className="fsb-section-title">References</span>
-        </div>
-
-        <label className="fsb-drop-zone" htmlFor="fsb-file-input">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-            <path d="M7 1v8M4 6l3-3 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M2 10v1.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-          Drop files to import
-          <input id="fsb-file-input" type="file" multiple style={{ display: "none" }} />
-        </label>
-
-        <div className="fsb-file-list">
-          {tabs.length === 0 && (
-            <span className="fsb-empty-hint">No files open</span>
-          )}
-          {tabs.map((tab) => {
-            const ext = tab.name.split(".").pop()?.toLowerCase() ?? "";
-            const color = ext === "typ" ? "var(--accent)" : ext === "bib" ? "#c47a15" : ext === "pdf" ? "#d85a30" : "var(--text-muted)";
-            return (
-              <button
-                key={tab.path}
-                className={`fsb-file-item${tab.path === activeTabPath ? " fsb-file-item--active" : ""}`}
-                onClick={() => { setActiveTab(tab.path); toggle(); }}
-                title={tab.path}
-              >
-                <span className="fsb-file-dot" style={{ background: color }} />
-                <span className="fsb-file-name">{tab.name}</span>
-                {tab.isDirty && <span className="fsb-file-dirty" />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Section 2: Workspace / Projects ─────────────────── */}
-      <div className="fsb-section">
-        <div className="fsb-section-head">
-          <span className="fsb-section-title">Workspace</span>
-          <button className="fsb-section-action" onClick={onOpenFolder} title="Open folder">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-              <path d="M1 4h10M1 4v6h10V4M1 4V3a1 1 0 0 1 1-1h2.5l1 1H10a1 1 0 0 1 1 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </div>
-
-        {workspacePath ? (
-          <div className="fsb-workspace-item fsb-workspace-item--active">
-            <span className="fsb-workspace-dot" />
-            <span className="fsb-workspace-name" title={workspacePath}>
-              {workspacePath.split("/").pop() ?? workspacePath}
-            </span>
-          </div>
-        ) : (
-          <button className="fsb-open-folder-btn" onClick={onOpenFolder}>
-            Open a folder…
-          </button>
-        )}
-      </div>
-
-      {/* ── Section 3: File Explorer (fills remaining height) ── */}
+      {/* ── Section 1: File Explorer (fills remaining height) ── */}
       <div className="fsb-section fsb-section--grow">
         <div className="fsb-section-head">
           <span className="fsb-section-title">Explorer</span>
@@ -182,6 +117,13 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
           <FileTree ref={fileTreeRef} onOpenFolder={onOpenFolder} />
         </div>
       </div>
+
+      {/* ── Section 2: Open files + drop zone + URL paste ───── */}
+      <ReferencesSection
+        tabs={tabs}
+        activeTabPath={activeTabPath}
+        onSetActiveTab={(path) => { setActiveTab(path); toggle(); }}
+      />
 
       {/* ── Bottom: profile + theme ──────────────────────────── */}
       <div className="fsb-bottom">
@@ -205,5 +147,88 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
         <div className="fsb-resize-handle" onMouseDown={handleResizeMouseDown} />
       )}
     </aside>
+  );
+}
+
+// ── References section (open tabs + file drop + URL paste) ───────────────────
+interface ReferencesSectionProps {
+  tabs: { path: string; name: string; isDirty: boolean }[];
+  activeTabPath: string | null;
+  onSetActiveTab: (path: string) => void;
+}
+
+function ReferencesSection({ tabs, activeTabPath, onSetActiveTab }: ReferencesSectionProps) {
+  const [urlValue, setUrlValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Accept URL pasted anywhere in the section via a paste listener
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text/plain")?.trim() ?? "";
+      if (text.startsWith("http://") || text.startsWith("https://")) {
+        e.preventDefault();
+        setUrlValue(text);
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  return (
+    <div className="fsb-section">
+      <div className="fsb-section-head">
+        <span className="fsb-section-title">References</span>
+      </div>
+
+      <label className="fsb-drop-zone" htmlFor="fsb-file-input">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+          <path d="M7 1v8M4 6l3-3 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M2 10v1.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        </svg>
+        Drop files or paste URL
+        <input id="fsb-file-input" type="file" multiple style={{ display: "none" }} />
+      </label>
+
+      <div className="fsb-url-row">
+        <input
+          ref={inputRef}
+          className="fsb-url-input"
+          type="url"
+          placeholder="Paste a URL…"
+          value={urlValue}
+          onChange={(e) => setUrlValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && urlValue.trim()) {
+              window.dispatchEvent(new CustomEvent("references:add-url", { detail: urlValue.trim() }));
+              setUrlValue("");
+            }
+            if (e.key === "Escape") setUrlValue("");
+          }}
+        />
+      </div>
+
+      <div className="fsb-file-list">
+        {tabs.length === 0 && (
+          <span className="fsb-empty-hint">No files open</span>
+        )}
+        {tabs.map((tab) => {
+          const ext = tab.name.split(".").pop()?.toLowerCase() ?? "";
+          const color = ext === "typ" ? "var(--accent)" : ext === "bib" ? "#c47a15" : ext === "pdf" ? "#d85a30" : "var(--text-muted)";
+          return (
+            <button
+              key={tab.path}
+              className={`fsb-file-item${tab.path === activeTabPath ? " fsb-file-item--active" : ""}`}
+              onClick={() => onSetActiveTab(tab.path)}
+              title={tab.path}
+            >
+              <span className="fsb-file-dot" style={{ background: color }} />
+              <span className="fsb-file-name">{tab.name}</span>
+              {tab.isDirty && <span className="fsb-file-dirty" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

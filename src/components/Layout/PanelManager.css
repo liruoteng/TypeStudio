@@ -249,14 +249,51 @@
   z-index: 190;
 }
 
-/* ── Panel grid ──────────────────────────────────────────────────────────── */
-.pm-grid {
+/* ── Flex layout containers ──────────────────────────────────────────────── */
+.pm-flex-col {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  display: grid;
   min-height: 0;
-  background: var(--border-dim);
-  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
 }
+
+.pm-flex-row {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Resize handles ──────────────────────────────────────────────────────── */
+.pm-row-handle {
+  height: 4px;
+  flex-shrink: 0;
+  background: var(--border-dim);
+  cursor: row-resize;
+  transition: background 0.12s;
+  z-index: 5;
+}
+.pm-row-handle:hover { background: var(--accent); }
+
+.pm-col-handle {
+  width: 4px;
+  flex-shrink: 0;
+  background: var(--border-dim);
+  cursor: col-resize;
+  transition: background 0.12s;
+  z-index: 5;
+}
+.pm-col-handle:hover { background: var(--accent); }
+
+/* Prevent cursor flicker while dragging */
+body.pm-resizing-col,
+body.pm-resizing-col * { cursor: col-resize !important; user-select: none !important; }
+body.pm-resizing-row,
+body.pm-resizing-row * { cursor: row-resize !important; user-select: none !important; }
 
 /* ── Individual panel ────────────────────────────────────────────────────── */
 .pm-panel {

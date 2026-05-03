@@ -224,7 +224,7 @@ describe("tabs", () => {
   });
 
   it("openTempTab opens an untitled temp tab", () => {
-    useEditorStore.getState().openTempTab("/tmp/type-studio/untitled-1.typ", "untitled-1.typ");
+    useEditorStore.getState().openTempTab("typ", "/tmp/type-studio/untitled-1.typ");
     const s = useEditorStore.getState();
     expect(s.tabs).toHaveLength(1);
     expect(s.tabs[0].isTemp).toBe(true);
@@ -232,13 +232,13 @@ describe("tabs", () => {
   });
 
   it("openTempTab with the same path is deduped", () => {
-    useEditorStore.getState().openTempTab("/tmp/type-studio/untitled-1.typ", "untitled-1.typ");
-    useEditorStore.getState().openTempTab("/tmp/type-studio/untitled-1.typ", "untitled-1.typ");
+    useEditorStore.getState().openTempTab("typ", "/tmp/type-studio/untitled-1.typ");
+    useEditorStore.getState().openTempTab("typ", "/tmp/type-studio/untitled-1.typ");
     expect(useEditorStore.getState().tabs).toHaveLength(1);
   });
 
   it("promoteTempTab swaps a temp tab's path/name and clears the temp flag", () => {
-    useEditorStore.getState().openTempTab("/tmp/type-studio/untitled-1.typ", "untitled-1.typ");
+    useEditorStore.getState().openTempTab("typ", "/tmp/type-studio/untitled-1.typ");
     useEditorStore.getState().promoteTempTab("/tmp/type-studio/untitled-1.typ", "/work/foo.typ", "foo.typ");
     const s = useEditorStore.getState();
     expect(s.tabs[0].path).toBe("/work/foo.typ");

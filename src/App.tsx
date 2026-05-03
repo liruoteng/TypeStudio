@@ -34,7 +34,6 @@ export default function App() {
   const togglePanelId = useCallback((id: PanelId) => {
     const panels = useEditorStore.getState().activePanels;
     if (panels.includes(id)) {
-      if (panels.length <= 1) return; // keep at least one panel
       setActivePanels(panels.filter((p) => p !== id));
     } else {
       if (panels.length >= 5) return;
@@ -103,9 +102,14 @@ export default function App() {
     }
   }, []);
 
-  // ── New File — open a temporary untitled tab immediately ─────────────────
-  const handleNewFile = useCallback((kind: "typ" | "md" = "typ") => {
-    useEditorStore.getState().openTempTab(kind);
+  // ── New File — create a real temp file then open the tab ─────────────────
+  const handleNewFile = useCallback(async (kind: "typ" | "md" = "typ") => {
+    try {
+      const realPath = await invoke<string>("create_temp_file", { extension: kind });
+      useEditorStore.getState().openTempTab(kind, realPath);
+    } catch {
+      useEditorStore.getState().openTempTab(kind);
+    }
   }, []);
 
   // ── Cmd+N — new untitled file ────────────────────────────────────────────
@@ -119,6 +123,20 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [handleNewFile]);
+
+  // ── ⌘1–⌘5 — toggle panels ───────────────────────────────────────────────
+  useEffect(() => {
+    const PANEL_KEYS: Record<string, PanelId> = { "1": "ai", "2": "editor", "3": "preview", "4": "diff", "5": "outline" };
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const id = PANEL_KEYS[e.key];
+      if (!id) return;
+      e.preventDefault();
+      togglePanelId(id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [togglePanelId]);
 
   // ── Export PDF — pick destination, save, compile, then open ─────────────
   const handleExportPdf = useCallback(async () => {
@@ -407,8 +425,10 @@ export default function App() {
         <div className="main-content" onClick={() => selectorOpen && setSelectorOpen(false)}>
           {/* Panel area: full width panel grid */}
           <div className="panel-area">
+            {activePanels.length === 0 ? (
+              <WelcomeScreen onNewFile={handleNewFile} onOpenFolder={handleOpenFolder} />
+            ) : null}
             <PanelManager
-              onCollapse={undefined}
               titleSuffixes={{ preview: <PreviewPageCount /> }}
               headerExtras={{ preview: <PreviewPanelControls onExportPdf={handleExportPdf} /> }}
               contents={{
@@ -506,7 +526,7 @@ function LayoutDropdown({
           >
             <span className={`layout-dd-check${active ? " layout-dd-check--on" : ""}`}>{active && "✓"}</span>
             <span className="layout-dd-label">{p.label}</span>
-            <span className="layout-dd-desc">{p.desc}</span>
+            <span className="layout-dd-desc">{p.shortcut}</span>
           </button>
         );
       })}
@@ -707,3 +727,39 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
     </div>
   );
 });
+
+// ── Welcome screen (shown when all panels are closed) ─────────────────────────
+function WelcomeScreen({ onNewFile, onOpenFolder }: { onNewFile: (kind?: "typ" | "md") => void; onOpenFolder: () => void }) {
+  return (
+    <div className="welcome-screen">
+      <div className="welcome-inner">
+        <h1 className="welcome-title">type-studio</h1>
+        <p className="welcome-subtitle">A Typst writing environment</p>
+        <div className="welcome-actions">
+          <button className="welcome-action" onClick={() => onNewFile("typ")}>
+            <span className="welcome-action-icon">+</span>
+            <span className="welcome-action-text">
+              <span className="welcome-action-label">New Typst file</span>
+              <span className="welcome-action-hint">⌘N</span>
+            </span>
+          </button>
+          <button className="welcome-action" onClick={() => onNewFile("md")}>
+            <span className="welcome-action-icon">+</span>
+            <span className="welcome-action-text">
+              <span className="welcome-action-label">New Markdown file</span>
+              <span className="welcome-action-hint">⌘⇧N</span>
+            </span>
+          </button>
+          <button className="welcome-action" onClick={onOpenFolder}>
+            <span className="welcome-action-icon">⊞</span>
+            <span className="welcome-action-text">
+              <span className="welcome-action-label">Open folder</span>
+              <span className="welcome-action-hint">⌘⇧O</span>
+            </span>
+          </button>
+        </div>
+        <p className="welcome-hint">Use the <span className="welcome-hint-key">⊞</span> layout button (top-right) to reopen panels.</p>
+      </div>
+    </div>
+  );
+}

@@ -300,3 +300,25 @@
 .fsb-resize-handle:active {
   background: var(--accent);
 }
+
+/* ── URL paste row ──────────────────────────────────────────── */
+.fsb-url-row {
+  padding: 0 8px 4px;
+}
+.fsb-url-input {
+  width: 100%;
+  padding: 4px 7px;
+  font-size: 0.78rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  outline: none;
+  transition: border-color 0.12s;
+}
+.fsb-url-input::placeholder {
+  color: var(--text-dim);
+}
+.fsb-url-input:focus {
+  border-color: var(--accent);
+}
