@@ -1,9 +1,169 @@
 use std::collections::HashMap;
 
+// ── Front matter ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Default)]
+pub struct FrontMatter {
+    pub title:     Option<String>,
+    pub authors:   Vec<String>,
+    pub template:  Option<String>,
+    pub abstract_text: Option<String>,
+    pub bibliography: Option<String>,
+}
+
+/// Strip YAML front matter from `content` (the `---…---` block at the top).
+/// Returns `(body, front_matter_yaml)`. If no front matter, body == content.
+pub fn strip_front_matter(content: &str) -> (&str, Option<&str>) {
+    if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
+        return (content, None);
+    }
+    let after_open = if content.starts_with("---\r\n") { &content[5..] } else { &content[4..] };
+    // Find the closing `---` line
+    for (off, _) in after_open.match_indices("\n---") {
+        let rest = &after_open[off + 4..];
+        if rest.starts_with('\n') || rest.starts_with('\r') || rest.is_empty() {
+            let yaml = &after_open[..off];
+            let body_start = off + 4 + if rest.starts_with("\r\n") { 2 } else if rest.starts_with('\n') { 1 } else { 0 };
+            return (&after_open[body_start..], Some(yaml));
+        }
+    }
+    (content, None)
+}
+
+/// Parse the YAML front matter string into a `FrontMatter`.
+/// Best-effort key=value parser — no external YAML crate required.
+pub fn parse_front_matter(yaml: &str) -> FrontMatter {
+    let mut fm = FrontMatter::default();
+    let mut in_authors = false;
+    for line in yaml.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { in_authors = false; continue; }
+        if trimmed.starts_with('-') && in_authors {
+            let author = trimmed.trim_start_matches('-').trim().trim_matches('"').trim_matches('\'').to_string();
+            if !author.is_empty() { fm.authors.push(author); }
+            continue;
+        }
+        in_authors = false;
+        if let Some((key, val)) = trimmed.split_once(':') {
+            let key = key.trim().to_lowercase();
+            let val = val.trim().trim_matches('"').trim_matches('\'').to_string();
+            match key.as_str() {
+                "title"    => fm.title = Some(val),
+                "template" => fm.template = Some(val),
+                "abstract" => fm.abstract_text = if val.is_empty() { None } else { Some(val) },
+                "bibliography" => fm.bibliography = Some(val),
+                "authors" | "author" => {
+                    if !val.is_empty() {
+                        fm.authors.push(val);
+                    } else {
+                        in_authors = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    fm
+}
+
+/// Build a Typst document preamble from the parsed front matter.
+pub fn build_preamble(fm: &FrontMatter) -> String {
+    let template = fm.template.as_deref().unwrap_or("default");
+    match template {
+        "ieee" => build_ieee_preamble(fm),
+        "acm"  => build_acm_preamble(fm),
+        "neurips" => build_neurips_preamble(fm),
+        _ => build_default_preamble(fm),
+    }
+}
+
+fn quote_typst(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn build_default_preamble(fm: &FrontMatter) -> String {
+    // Only emit a preamble when the document has metadata to display.
+    if fm.title.is_none() && fm.authors.is_empty() && fm.abstract_text.is_none() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("#set page(margin: (x: 2.5cm, y: 2.5cm))\n");
+    out.push_str("#set text(font: \"Linux Libertine\", size: 11pt)\n");
+    out.push_str("#set par(justify: true)\n");
+    if let Some(title) = &fm.title {
+        out.push_str(&format!("#align(center, text(size: 18pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+    }
+    if !fm.authors.is_empty() {
+        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(", ");
+        out.push_str(&format!("#align(center)[{}]\n\n", joined));
+    }
+    if let Some(abs) = &fm.abstract_text {
+        out.push_str(&format!("#block(inset: (x: 1.5cm))[*Abstract.* {}]\n\n", quote_typst(abs)));
+    }
+    out
+}
+
+fn build_ieee_preamble(fm: &FrontMatter) -> String {
+    let mut out = String::new();
+    out.push_str("#set page(columns: 2, margin: (x: 1.5cm, y: 2cm))\n");
+    out.push_str("#set text(font: \"Times New Roman\", size: 10pt)\n");
+    out.push_str("#set par(justify: true)\n");
+    if let Some(title) = &fm.title {
+        out.push_str(&format!("#place(top + center, scope: \"parent\", float: true,\n  text(size: 14pt, weight: \"bold\")[{}]\n)\n\n", quote_typst(title)));
+    }
+    if !fm.authors.is_empty() {
+        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" · ");
+        out.push_str(&format!("#place(top + center, scope: \"parent\", float: true,\n  [{}]\n)\n\n", joined));
+    }
+    if let Some(abs) = &fm.abstract_text {
+        out.push_str(&format!("#place(top, scope: \"parent\", float: true,\n  block(width: 100%, inset: 4pt)[\n    *Abstract*---{}\n  ]\n)\n\n", quote_typst(abs)));
+    }
+    out
+}
+
+fn build_acm_preamble(fm: &FrontMatter) -> String {
+    let mut out = String::new();
+    out.push_str("#set page(margin: (x: 2cm, y: 2.5cm))\n");
+    out.push_str("#set text(font: \"Linux Libertine\", size: 10.5pt)\n");
+    out.push_str("#set par(justify: true)\n");
+    if let Some(title) = &fm.title {
+        out.push_str(&format!("#align(center, text(size: 16pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+    }
+    if !fm.authors.is_empty() {
+        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" and ");
+        out.push_str(&format!("#align(center)[{}]\n\n", joined));
+    }
+    if let Some(abs) = &fm.abstract_text {
+        out.push_str(&format!("#block(stroke: (left: 2pt + gray), inset: (left: 8pt))[*ABSTRACT.* {}]\n\n", quote_typst(abs)));
+    }
+    out
+}
+
+fn build_neurips_preamble(fm: &FrontMatter) -> String {
+    let mut out = String::new();
+    out.push_str("#set page(margin: (x: 2cm, y: 2.5cm))\n");
+    out.push_str("#set text(font: \"Linux Libertine\", size: 10pt)\n");
+    out.push_str("#set par(justify: true)\n");
+    if let Some(title) = &fm.title {
+        out.push_str(&format!("#align(center, text(size: 14pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+    }
+    if !fm.authors.is_empty() {
+        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" · ");
+        out.push_str(&format!("#align(center)[{}]\n\n", joined));
+    }
+    if let Some(abs) = &fm.abstract_text {
+        out.push_str("#align(center)[*Abstract*]\n");
+        out.push_str(&format!("{}\n\n", quote_typst(abs)));
+    }
+    out
+}
+
 /// Markdown → Typst conversion (built-in, no external dependencies).
-/// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables.
+/// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables,
+///          `[@cite]` citations, inline math `$...$`, and block math `$$...$$`.
 pub fn markdown_to_typst(content: &str) -> String {
-    let expanded = expand_references(content);
+    let (body, _) = strip_front_matter(content);
+    let expanded = expand_references(body);
     let content = expanded.as_str();
     let mut out = String::with_capacity(content.len());
     let mut in_code_block = false;
@@ -16,6 +176,30 @@ pub fn markdown_to_typst(content: &str) -> String {
 
     while i < lines.len() {
         let line = lines[i];
+
+        // ── Block math: $$...$$  ─────────────────────────────────────────────
+        if line.trim() == "$$" && !in_code_block {
+            let mut math_lines: Vec<&str> = Vec::new();
+            i += 1;
+            while i < lines.len() && lines[i].trim() != "$$" {
+                math_lines.push(lines[i]);
+                i += 1;
+            }
+            if i < lines.len() { i += 1; } // skip closing $$
+            let expr = math_lines.join("\n");
+            out.push_str(&format!("$ {} $\n\n", expr.trim()));
+            prev_blank = true;
+            continue;
+        }
+        // Single-line $$expr$$
+        if let Some(rest) = line.trim().strip_prefix("$$").and_then(|s| s.strip_suffix("$$")) {
+            if !in_code_block {
+                out.push_str(&format!("$ {} $\n\n", rest.trim()));
+                prev_blank = true;
+                i += 1;
+                continue;
+            }
+        }
 
         // ── Fenced code blocks ────────────────────────────────────────────────
         if let Some(rest) = line.strip_prefix("```").or_else(|| line.strip_prefix("~~~")) {
@@ -216,6 +400,39 @@ fn inline(text: &str) -> String {
                 result.push('`');
                 i = end + 1;
                 continue;
+            }
+        }
+
+        // Inline math: $...$ — pass through without processing contents
+        if chars[i] == '$' {
+            let start = i + 1;
+            if let Some(end) = find_closing_char(&chars, start, '$') {
+                if end > start {
+                    let math: String = chars[start..end].iter().collect();
+                    result.push('$');
+                    result.push_str(&math);
+                    result.push('$');
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+
+        // Citation: [@key] or [@key1; @key2] → @key / @key @key2
+        if chars[i] == '[' && i + 1 < chars.len() && chars[i + 1] == '@' {
+            if let Some(close) = find_closing_char(&chars, i + 1, ']') {
+                let inside: String = chars[i + 1..close].iter().collect();
+                let keys: Vec<String> = inside
+                    .split(';')
+                    .map(|k| k.trim().trim_start_matches('@').trim().to_string())
+                    .filter(|k| !k.is_empty())
+                    .collect();
+                if !keys.is_empty() {
+                    let cites = keys.iter().map(|k| format!("@{k}")).collect::<Vec<_>>().join(" ");
+                    result.push_str(&cites);
+                    i = close + 1;
+                    continue;
+                }
             }
         }
 
@@ -753,5 +970,90 @@ mod tests {
         let out = convert("![alt](https://example.com/img.png)\n");
         assert!(out.contains("#link(\"https://example.com/img.png\")[alt]"));
         assert!(!out.contains("#image("));
+    }
+
+    // ── Citations ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn citation_single() {
+        let out = convert("See [@vaswani2017] for details.\n");
+        assert!(out.contains("@vaswani2017"), "got: {out}");
+        assert!(!out.contains("[@vaswani2017]"), "should not contain raw citation: {out}");
+    }
+
+    #[test]
+    fn citation_multi() {
+        let out = convert("See [@smith2020; @jones2021].\n");
+        assert!(out.contains("@smith2020"), "got: {out}");
+        assert!(out.contains("@jones2021"), "got: {out}");
+    }
+
+    // ── Inline math ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn inline_math_passthrough() {
+        let out = convert("We use $E = mc^2$ here.\n");
+        assert!(out.contains("$E = mc^2$"), "got: {out}");
+    }
+
+    #[test]
+    fn inline_math_no_escaped_at() {
+        let out = convert("Formula $\\alpha$ done.\n");
+        assert!(!out.contains("\\@"), "@ should not be escaped inside math: {out}");
+    }
+
+    // ── Block math ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn block_math_fenced() {
+        let md = "$$\nE = mc^2\n$$\n";
+        let out = convert(md);
+        assert!(out.contains("$ E = mc^2 $") || out.contains("$E = mc^2$"), "got: {out}");
+    }
+
+    #[test]
+    fn block_math_inline_double_dollar() {
+        let out = convert("$$x + y = z$$\n");
+        assert!(out.contains("$ x + y = z $") || out.contains("$x + y = z$"), "got: {out}");
+    }
+
+    // ── Front matter ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn front_matter_stripped_from_body() {
+        let md = "---\ntitle: \"My Paper\"\n---\n\n# Introduction\n";
+        let out = convert(md);
+        assert!(!out.contains("title:"), "front matter key should be stripped: {out}");
+        assert!(out.contains("= Introduction"), "body should remain: {out}");
+    }
+
+    #[test]
+    fn strip_front_matter_returns_body() {
+        let md = "---\ntitle: Hello\n---\n\nBody text.\n";
+        let (body, fm) = strip_front_matter(md);
+        assert!(fm.is_some());
+        assert!(body.contains("Body text"), "got: {body}");
+    }
+
+    #[test]
+    fn parse_front_matter_title_and_authors() {
+        let yaml = "title: \"My Paper\"\nauthors:\n  - Alice\n  - Bob\n";
+        let fm = parse_front_matter(yaml);
+        assert_eq!(fm.title.as_deref(), Some("My Paper"));
+        assert_eq!(fm.authors, vec!["Alice", "Bob"]);
+    }
+
+    #[test]
+    fn build_preamble_empty_when_no_metadata() {
+        let fm = FrontMatter::default();
+        assert!(build_preamble(&fm).is_empty());
+    }
+
+    #[test]
+    fn build_preamble_has_title() {
+        let fm = FrontMatter { title: Some("Test".into()), ..Default::default() };
+        let p = build_preamble(&fm);
+        assert!(p.contains("Test"), "got: {p}");
+        assert!(p.contains("#set page"), "got: {p}");
     }
 }

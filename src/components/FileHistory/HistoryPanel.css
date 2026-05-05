@@ -80,3 +80,130 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── Compare mode ─────────────────────────────────────────────────────────── */
+
+.history-panel {
+  max-width: 560px;
+}
+
+.history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-compare-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s, border-color 0.1s;
+}
+.history-compare-btn:hover:not(:disabled) {
+  background: var(--bg-btn-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.history-compare-btn:disabled { opacity: 0.4; cursor: default; }
+.history-compare-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.history-compare-btn--active:hover:not(:disabled) {
+  opacity: 0.85;
+  color: #fff;
+}
+
+.history-compare-hint {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-base);
+}
+
+.history-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-entry-row--selected .history-entry {
+  background: var(--bg-active-item);
+  color: var(--accent-bright, var(--accent));
+}
+
+.history-entry-check {
+  flex-shrink: 0;
+  margin-left: 6px;
+  accent-color: var(--accent);
+}
+
+/* ── Diff view ─────────────────────────────────────────────────────────────── */
+
+.history-diff-wrapper {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.history-diff {
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 8px;
+  gap: 6px;
+}
+
+.diff-prefix {
+  color: var(--text-dim);
+  width: 10px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.diff-text {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.diff-added .diff-prefix { color: #4ade80; }
+.diff-added .diff-text   { color: #bbf7d0; }
+.diff-added              { background: rgba(74, 222, 128, 0.07); }
+
+.diff-removed .diff-prefix { color: #f87171; }
+.diff-removed .diff-text   { color: #fecaca; }
+.diff-removed              { background: rgba(248, 113, 113, 0.07); }
+
+.diff-unchanged .diff-prefix { color: var(--text-dim); }
+.diff-unchanged .diff-text   { color: var(--text-muted); }

@@ -122,6 +122,86 @@ fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+#[derive(Serialize, Clone)]
+pub struct SearchMatch {
+    pub path: String,
+    pub line: usize,
+    pub line_content: String,
+}
+
+/// Recursively search file contents under root_dir for the given query (case-insensitive).
+/// Skips hidden files/dirs, common build dirs, and files > 1 MB.
+#[tauri::command]
+fn search_in_files(root_dir: String, query: String) -> Result<Vec<SearchMatch>, String> {
+    let mut results = Vec::new();
+    let root = Path::new(&root_dir);
+    if !root.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+    let query_lower = query.to_lowercase();
+    search_dir(root, root, &query_lower, &mut results)?;
+    Ok(results)
+}
+
+fn search_dir(
+    base: &Path,
+    dir: &Path,
+    query: &str,
+    results: &mut Vec<SearchMatch>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if let Some(name) = path.file_name() {
+            let name = name.to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            // Skip common build / dependency directories
+            if path.is_dir()
+                && (name.as_ref() == "node_modules"
+                    || name.as_ref() == "target"
+                    || name.as_ref() == ".history")
+            {
+                continue;
+            }
+        }
+
+        if path.is_dir() {
+            let _ = search_dir(base, &path, query, results);
+        } else if path.is_file() {
+            // Skip files larger than 1 MB
+            if let Ok(meta) = path.metadata() {
+                if meta.len() > 1_048_576 {
+                    continue;
+                }
+            }
+            if let Ok(content) = fs::read_to_string(&path) {
+                for (i, line) in content.lines().enumerate() {
+                    if line.to_lowercase().contains(query) {
+                        let line_content = if line.len() > 200 {
+                            format!("{}…", &line[..200])
+                        } else {
+                            line.to_string()
+                        };
+                        results.push(SearchMatch {
+                            path: path.to_string_lossy().to_string(),
+                            line: i + 1,
+                            line_content,
+                        });
+                        if results.len() >= 200 {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Copy the current file into `.history/{stem}/{unix_ts}.{ext}`, keeping ≤ 50 snapshots.
 #[tauri::command]
 fn save_snapshot(path: String) -> Result<(), String> {
@@ -398,19 +478,94 @@ fn is_markdown_path(path: &Path) -> bool {
     )
 }
 
-/// Build the Typst source for a Markdown file by converting the body and
-/// prepending the parent directory's `template.typ` if present.
+/// Build the Typst source for a Markdown file.
+/// Strips YAML front matter, generates a preamble from it, and combines with the body.
+/// If a `template.typ` exists next to the file it takes precedence over the built-in preamble.
 fn compose_markdown_source(md_path: &Path, md_content: &str) -> String {
-    let body = converter::markdown_to_typst(md_content);
-    let template = md_path
+    let (body_md, fm_yaml) = converter::strip_front_matter(md_content);
+    let fm = fm_yaml.map(converter::parse_front_matter).unwrap_or_default();
+    let body = converter::markdown_to_typst(body_md);
+
+    // Explicit template.typ in the same directory wins over built-in preamble.
+    let explicit_template = md_path
         .parent()
         .map(|p| p.join("template.typ"))
         .filter(|p| p.exists())
         .and_then(|p| fs::read_to_string(&p).ok());
-    match template {
+
+    match explicit_template {
         Some(t) => format!("{t}\n\n{body}"),
-        None => body,
+        None => {
+            let preamble = converter::build_preamble(&fm);
+            if preamble.is_empty() {
+                body
+            } else {
+                format!("{preamble}\n{body}")
+            }
+        }
     }
+}
+
+#[tauri::command]
+async fn fetch_doi(doi: String) -> Result<serde_json::Value, String> {
+    let url = format!("https://api.crossref.org/works/{doi}");
+    let client = reqwest::Client::builder()
+        .user_agent("TypeStudio/0.1 (mailto:user@typestudio.app)")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("DOI not found (status {})", resp.status()));
+    }
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let msg = &json["message"];
+
+    let title = msg["title"][0].as_str().unwrap_or("").to_string();
+    let year = msg["published"]["date-parts"][0][0]
+        .as_u64()
+        .unwrap_or(0) as u32;
+    let doi_str = msg["DOI"].as_str().unwrap_or(&doi).to_string();
+    let venue = msg["container-title"][0]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    let authors: Vec<String> = msg["author"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .map(|a| {
+            let given = a["given"].as_str().unwrap_or("");
+            let family = a["family"].as_str().unwrap_or("");
+            if given.is_empty() {
+                family.to_string()
+            } else {
+                format!("{family}, {given}")
+            }
+        })
+        .collect();
+
+    let first_family = msg["author"][0]["family"]
+        .as_str()
+        .unwrap_or("unknown");
+    let bib_key = format!(
+        "{}{}",
+        first_family.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>(),
+        year
+    );
+
+    Ok(serde_json::json!({
+        "bibKey": bib_key,
+        "title": title,
+        "authors": authors,
+        "year": year,
+        "doi": doi_str,
+        "venue": venue,
+    }))
 }
 
 fn hash_svg(s: &str) -> u64 {
@@ -849,6 +1004,7 @@ pub fn run() {
             create_temp_file,
             create_dir,
             list_dir,
+            search_in_files,
             update_preview_source,
             trigger_preview_compile,
             start_sidecar_preview,
@@ -863,6 +1019,7 @@ pub fn run() {
             delete_path,
             reveal_in_finder,
             convert_to_typst,
+            fetch_doi,
             latex_import::import_latex_template,
             read_settings,
             write_settings,

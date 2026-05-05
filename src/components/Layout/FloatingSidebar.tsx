@@ -1,8 +1,14 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore, type FileEntry } from "../../stores/editorStore";
 import { FileTree, type FileTreeHandle } from "../FileExplorer/FileTree";
 import "./FloatingSidebar.css";
+
+interface SearchMatch {
+  path: string;
+  line: number;
+  line_content: string;
+}
 
 interface FloatingSidebarProps {
   onOpenFolder: () => void;
@@ -13,6 +19,15 @@ function SidebarIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
       <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.3" />
       <line x1="5.5" y1="1.5" x2="5.5" y2="14.5" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="9.5" y1="9.5" x2="12.5" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -58,14 +73,85 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
   const tabs           = useEditorStore((s) => s.tabs);
   const activeTabPath  = useEditorStore((s) => s.activeTabPath);
   const setActiveTab   = useEditorStore((s) => s.setActiveTab);
+  const workspacePath  = useEditorStore((s) => s.workspacePath);
+  const openTab        = useEditorStore((s) => s.openTab);
+  const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const widthRef = useRef(220);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchMatch[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const toggle = useCallback(() => setSidebarOpen(!sidebarOpen), [sidebarOpen, setSidebarOpen]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!searchQuery.trim() || !workspacePath) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await invoke<SearchMatch[]>("search_in_files", {
+          rootDir: workspacePath,
+          query: searchQuery.trim(),
+        });
+        setSearchResults(results);
+      } catch (e) {
+        console.error("search error", e);
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, workspacePath]);
+
+  const openSearchResult = useCallback(
+    async (match: SearchMatch) => {
+      const name = match.path.split("/").pop() || match.path.split("\\").pop() || match.path;
+      const path = match.path;
+      // Only open if not already open
+      const existing = tabs.find((t) => t.path === path);
+      if (!existing) {
+        try {
+          const content = await invoke<string>("read_file", { path });
+          openTab(path, name, content);
+        } catch (e) {
+          console.error("read_file error", e);
+          return;
+        }
+      } else {
+        setActiveTab(path);
+      }
+      setScrollToLine(match.line);
+    },
+    [tabs, openTab, setActiveTab, setScrollToLine],
+  );
+
+  const handleSearchToggle = useCallback(() => {
+    const next = !searchOpen;
+    setSearchOpen(next);
+    if (next) {
+      // Focus input on next tick after render
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    } else {
+      setSearchQuery("");
+      setSearchResults([]);
+    }
+  }, [searchOpen]);
+
+  const asideRef = useRef<HTMLElement>(null);
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
+    asideRef.current?.classList.add("fsb--resizing");
     const startX = e.clientX;
     const startWidth = widthRef.current;
     const onMove = (ev: MouseEvent) => {
@@ -74,6 +160,7 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
       setSidebarWidth(w);
     };
     const onUp = () => {
+      asideRef.current?.classList.remove("fsb--resizing");
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -83,22 +170,52 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
 
   return (
     <aside
+      ref={asideRef}
       className={`fsb${sidebarOpen ? " fsb--open" : ""}`}
       style={sidebarOpen ? { width: sidebarWidth } : undefined}
       aria-label="Sidebar"
     >
-      {/* ── Top bar: sidebar toggle ─────────────────────────── */}
+      {/* ── Top bar: brand + actions ──────────────────────────── */}
       <div className="fsb-topbar">
         <span className="fsb-brand">type-studio</span>
-        <button
-          className="fsb-toggle-btn"
-          onClick={toggle}
-          title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-          aria-label="Toggle sidebar"
-        >
-          <SidebarIcon />
-        </button>
+        <div className="fsb-topbar-actions">
+          {sidebarOpen && (
+            <button
+              className={`fsb-topbar-btn${searchOpen ? " fsb-topbar-btn--active" : ""}`}
+              onClick={handleSearchToggle}
+              title="Search in files"
+              aria-label="Search in files"
+            >
+              <SearchIcon />
+            </button>
+          )}
+          <button
+            className="fsb-topbar-btn"
+            onClick={toggle}
+            title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-label="Toggle sidebar"
+          >
+            <SidebarIcon />
+          </button>
+        </div>
       </div>
+
+      {/* ── Search section ──────────────────────────────────────── */}
+      {sidebarOpen && searchOpen && (
+        <SearchSection
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          searching={searching}
+          onSelectResult={openSearchResult}
+          onClose={() => {
+            setSearchOpen(false);
+            setSearchQuery("");
+            setSearchResults([]);
+          }}
+          inputRef={searchInputRef}
+        />
+      )}
 
       {/* ── Section 1: File Explorer (fills remaining height) ── */}
       <div className="fsb-section fsb-section--grow">
@@ -159,6 +276,90 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
         <div className="fsb-resize-handle" onMouseDown={handleResizeMouseDown} />
       )}
     </aside>
+  );
+}
+
+// ── Search Section ──────────────────────────────────────────────────────────
+interface SearchSectionProps {
+  query: string;
+  onQueryChange: (v: string) => void;
+  results: SearchMatch[];
+  searching: boolean;
+  onSelectResult: (match: SearchMatch) => void;
+  onClose: () => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+}
+
+function SearchSection({
+  query,
+  onQueryChange,
+  results,
+  searching,
+  onSelectResult,
+  onClose,
+  inputRef,
+}: SearchSectionProps) {
+  // Group results by file path
+  const grouped = useMemo(() => {
+    const map = new Map<string, SearchMatch[]>();
+    for (const r of results) {
+      const arr = map.get(r.path);
+      if (arr) arr.push(r);
+      else map.set(r.path, [r]);
+    }
+    return [...map.entries()];
+  }, [results]);
+
+  return (
+    <div className="fsb-section fsb-search-section">
+      <div className="fsb-search-header">
+        <input
+          ref={inputRef}
+          className="fsb-search-input"
+          type="text"
+          placeholder="Search in files…"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+          }}
+        />
+        <button className="fsb-search-close" onClick={onClose} aria-label="Close search">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="fsb-search-results">
+        {searching && (
+          <div className="fsb-search-status">Searching…</div>
+        )}
+        {!searching && query && results.length === 0 && (
+          <div className="fsb-search-status">No results</div>
+        )}
+        {!query && (
+          <div className="fsb-search-status">Type to search file contents</div>
+        )}
+        {grouped.map(([filePath, matches]) => (
+          <div key={filePath} className="fsb-search-file-group">
+            <div className="fsb-search-file-path" title={filePath}>
+              {filePath}
+            </div>
+            {matches.map((m, i) => (
+              <button
+                key={`${m.line}-${i}`}
+                className="fsb-search-result-row"
+                onClick={() => onSelectResult(m)}
+              >
+                <span className="fsb-search-line-num">{m.line}</span>
+                <span className="fsb-search-line-content">{m.line_content}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
 import { PanelManager, ALL_PANELS } from "./components/Layout/PanelManager";
 import type { PanelId } from "./components/Layout/PanelManager";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
+import { WritingModeEditor } from "./components/Editor/WritingModeEditor";
 import { PreviewPanel } from "./components/Preview/PreviewPanel";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
@@ -23,10 +24,11 @@ export default function App() {
   const theme = useEditorStore((s) => s.theme);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const writingMode = useEditorStore((s) => s.writingMode);
-  const activePanels    = useEditorStore((s) => s.activePanels);
+  const isMdFile = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
+  const activePanels = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
-  const panelLayout     = useEditorStore((s) => s.panelLayout);
-  const setPanelLayout  = useEditorStore((s) => s.setPanelLayout);
+  const panelLayout = useEditorStore((s) => s.panelLayout);
+  const setPanelLayout = useEditorStore((s) => s.setPanelLayout);
 
 
   // Panel selector dropdown
@@ -144,7 +146,7 @@ export default function App() {
     const tab = useEditorStore.getState().activeTab();
     if (!tab) return;
     const isTyp = tab.path.endsWith(".typ");
-    const isMd  = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
+    const isMd = tab.path.endsWith(".md") || tab.path.endsWith(".markdown");
     if (!isTyp && !isMd) return;
     try {
       const { save } = await import("@tauri-apps/plugin-dialog");
@@ -260,8 +262,8 @@ export default function App() {
         }
       }
     }
-  // writingMode only — intentional
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // writingMode only — intentional
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingMode]);
 
   // ── Recompile when preview panel is added ────────────────────────────────
@@ -431,8 +433,9 @@ export default function App() {
             ) : null}
             <PanelManager
               titleSuffixes={{ preview: <PreviewPageCount /> }}
-              headerExtras={{ 
+              headerExtras={{
                 preview: <PreviewPanelControls onExportPdf={handleExportPdf} />,
+                editor: <EditorModeBadge />,
                 ai: <AiHeaderControls />
               }}
               headerExtrasLeft={{
@@ -440,7 +443,14 @@ export default function App() {
               }}
               contents={{
                 ai: <AIChatPanel />,
-                editor: (
+                editor: isMdFile ? (
+                  <WritingModeEditor
+                    onSave={handleSave}
+                    onSnapshot={handleSnapshot}
+                    onPreviewTrigger={handlePreviewTrigger}
+                    externalContent={restoreState ?? undefined}
+                  />
+                ) : (
                   <MonacoEditor
                     onSave={handleSave}
                     onSnapshot={handleSnapshot}
@@ -538,6 +548,24 @@ function LayoutDropdown({
           </button>
         );
       })}
+      <div className="layout-dd-divider" />
+      <div className="layout-dd-header">Arrangement</div>
+      <button
+        className={`layout-dd-item${panelLayout === "horizontal" ? " layout-dd-item--on" : ""}`}
+        onClick={() => { if (panelLayout !== "horizontal") onToggleLayout(); onClose(); }}
+      >
+        <span className={`layout-dd-check${panelLayout === "horizontal" ? " layout-dd-check--on" : ""}`}>{panelLayout === "horizontal" && "✓"}</span>
+        <span className="layout-dd-label">Side by side</span>
+        <span className="layout-dd-desc">Panels arranged in columns</span>
+      </button>
+      <button
+        className={`layout-dd-item${panelLayout === "vertical" ? " layout-dd-item--on" : ""}`}
+        onClick={() => { if (panelLayout !== "vertical") onToggleLayout(); onClose(); }}
+      >
+        <span className={`layout-dd-check${panelLayout === "vertical" ? " layout-dd-check--on" : ""}`}>{panelLayout === "vertical" && "✓"}</span>
+        <span className="layout-dd-label">Stacked</span>
+        <span className="layout-dd-desc">Panels arranged in rows</span>
+      </button>
     </div>
   );
 }
@@ -546,8 +574,8 @@ function LayoutIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
       <rect x="0.7" y="0.7" width="12.6" height="5.4" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="0.7" y="7.9" width="5.4"  height="5.4" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="7.9" y="7.9" width="5.4"  height="5.4" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="0.7" y="7.9" width="5.4" height="5.4" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="7.9" y="7.9" width="5.4" height="5.4" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }
@@ -637,8 +665,19 @@ function LatexImportResultDialog({
 }
 
 const ZOOM_STEP = 0.25;
-const ZOOM_MIN  = 0.25;
-const ZOOM_MAX  = 4;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4;
+
+const EditorModeBadge = memo(function EditorModeBadge() {
+  const activeTabPath = useEditorStore((s) => s.activeTabPath);
+  if (!activeTabPath) return null;
+  const isMd = activeTabPath.endsWith(".md") || activeTabPath.endsWith(".markdown");
+  return (
+    <span className={`editor-mode-badge editor-mode-badge--${isMd ? "writing" : "typst"}`}>
+      {isMd ? "Writing" : "Typst"}
+    </span>
+  );
+});
 
 const PreviewPageCount = memo(function PreviewPageCount() {
   const pageCount = useEditorStore((s) => s.previewPages.length);
@@ -670,17 +709,17 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
 }: {
   onExportPdf: () => void;
 }) {
-  const loading       = useEditorStore((s) => s.previewLoading);
+  const loading = useEditorStore((s) => s.previewLoading);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  const zoom          = useEditorStore((s) => s.previewZoom);
-  const setZoom       = useEditorStore((s) => s.setPreviewZoom);
+  const zoom = useEditorStore((s) => s.previewZoom);
+  const setZoom = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
-  const useSidecar    = useEditorStore((s) => s.useSidecarPreview);
-  const isMd          = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
-  const isTypst       = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
+  const useSidecar = useEditorStore((s) => s.useSidecarPreview);
+  const isMd = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
+  const isTypst = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
-  const zoomOut   = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
-  const zoomIn    = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomOut = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
+  const zoomIn = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
   const zoomReset = useCallback(() => setZoom(1), [setZoom]);
 
   const handleRefresh = useCallback(async () => {
@@ -725,7 +764,7 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
           <span className="preview-zoom-sep" />
           <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out">−</button>
           <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
-          <button className="preview-icon-btn" onClick={zoomIn}  disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
+          <button className="preview-icon-btn" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
         </>
       )}
     </div>

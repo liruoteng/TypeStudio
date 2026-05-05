@@ -3,11 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore, type Reference } from "../../stores/editorStore";
 import "./ReferencesPanel.css";
 
-// Parse a single .bib file's text into one or more references.
-// Best-effort regex parser — handles standard @article{}/@inproceedings{}/etc.
+// ── BibTeX parser ─────────────────────────────────────────────────────────────
+
 function parseBibtex(text: string): Omit<Reference, "id" | "addedAt">[] {
   const entries: Omit<Reference, "id" | "addedAt">[] = [];
-  // Matches "@type{key, ... }" with brace balancing approximated by lazy match.
   const entryRe = /@(\w+)\s*\{\s*([^,\s]+)\s*,([^@]*)\}/g;
   let m: RegExpExecArray | null;
   while ((m = entryRe.exec(text)) !== null) {
@@ -33,7 +32,6 @@ function parseBibtex(text: string): Omit<Reference, "id" | "addedAt">[] {
 
 function parseBibFields(body: string): Record<string, string> {
   const out: Record<string, string> = {};
-  // field = "value" | {value} | bare
   const fieldRe = /(\w+)\s*=\s*(\{((?:[^{}]|\{[^{}]*\})*)\}|"([^"]*)"|([^,\n]+))\s*,?/g;
   let m: RegExpExecArray | null;
   while ((m = fieldRe.exec(body)) !== null) {
@@ -47,7 +45,6 @@ function parseBibFields(body: string): Record<string, string> {
 function shortAuthors(authors?: string[]): string {
   if (!authors || authors.length === 0) return "";
   const lastNames = authors.map((a) => {
-    // Authors in BibTeX often "Last, First" — take the part before the comma.
     if (a.includes(",")) return a.split(",")[0].trim();
     const parts = a.trim().split(/\s+/);
     return parts[parts.length - 1];
@@ -68,6 +65,132 @@ function formatBibEntry(ref: Reference): string {
   ].filter(Boolean).join(",\n");
   return `@misc{${key},\n${fields}\n}`;
 }
+
+// ── Add citation panel ────────────────────────────────────────────────────────
+
+interface AddCitationPanelProps {
+  onAdd: (ref: Omit<Reference, "id" | "addedAt">) => void;
+}
+
+function AddCitationPanel({ onAdd }: AddCitationPanelProps) {
+  const [mode, setMode] = useState<"closed" | "doi" | "manual">("closed");
+  const [doi, setDoi] = useState("");
+  const [doiLoading, setDoiLoading] = useState(false);
+  const [doiErr, setDoiErr] = useState<string | null>(null);
+
+  const [manualKey, setManualKey] = useState("");
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualAuthors, setManualAuthors] = useState("");
+  const [manualYear, setManualYear] = useState("");
+  const [manualVenue, setManualVenue] = useState("");
+
+  const handleDoi = useCallback(async () => {
+    if (!doi.trim()) return;
+    setDoiLoading(true);
+    setDoiErr(null);
+    try {
+      const result = await invoke<{
+        bibKey: string;
+        title: string;
+        authors: string[];
+        year: number;
+        doi: string;
+        venue: string;
+      }>("fetch_doi", { doi: doi.trim() });
+      onAdd({
+        kind: "bib",
+        name: result.title || result.doi,
+        bibKey: result.bibKey,
+        title: result.title,
+        authors: result.authors,
+        year: result.year || undefined,
+      });
+      setDoi("");
+      setMode("closed");
+    } catch (e) {
+      setDoiErr(String(e));
+    } finally {
+      setDoiLoading(false);
+    }
+  }, [doi, onAdd]);
+
+  const handleManual = useCallback(() => {
+    const key = manualKey.trim() || manualTitle.toLowerCase().replace(/\s+/g, "").slice(0, 20);
+    if (!key) return;
+    const authors = manualAuthors
+      ? manualAuthors.split(",").map((a) => a.trim()).filter(Boolean)
+      : undefined;
+    onAdd({
+      kind: "bib",
+      name: manualTitle || key,
+      bibKey: key,
+      title: manualTitle || undefined,
+      authors,
+      year: manualYear ? Number(manualYear) || undefined : undefined,
+    });
+    setManualKey("");
+    setManualTitle("");
+    setManualAuthors("");
+    setManualYear("");
+    setManualVenue("");
+    setMode("closed");
+  }, [manualKey, manualTitle, manualAuthors, manualYear, manualVenue, onAdd]);
+
+  if (mode === "closed") {
+    return (
+      <div className="ref-add-bar">
+        <button className="ref-add-btn" onClick={() => setMode("doi")}>+ DOI</button>
+        <button className="ref-add-btn" onClick={() => setMode("manual")}>+ Manual</button>
+      </div>
+    );
+  }
+
+  if (mode === "doi") {
+    return (
+      <div className="ref-add-form">
+        <div className="ref-add-form-header">
+          <span>Fetch by DOI</span>
+          <button className="ref-add-form-close" onClick={() => { setMode("closed"); setDoiErr(null); }}>✕</button>
+        </div>
+        <div className="ref-add-row">
+          <input
+            className="ref-add-input"
+            placeholder="10.1234/example or full DOI URL"
+            value={doi}
+            onChange={(e) => setDoi(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleDoi()}
+            autoFocus
+          />
+          <button className="ref-add-submit" onClick={handleDoi} disabled={doiLoading || !doi.trim()}>
+            {doiLoading ? "…" : "Fetch"}
+          </button>
+        </div>
+        {doiErr && <div className="ref-add-error">{doiErr}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="ref-add-form">
+      <div className="ref-add-form-header">
+        <span>Manual entry</span>
+        <button className="ref-add-form-close" onClick={() => setMode("closed")}>✕</button>
+      </div>
+      <input className="ref-add-input" placeholder="Citation key (e.g. smith2024)" value={manualKey} onChange={(e) => setManualKey(e.target.value)} />
+      <input className="ref-add-input" placeholder="Title" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} />
+      <input className="ref-add-input" placeholder="Authors (comma-separated)" value={manualAuthors} onChange={(e) => setManualAuthors(e.target.value)} />
+      <div className="ref-add-row">
+        <input className="ref-add-input" placeholder="Year" value={manualYear} onChange={(e) => setManualYear(e.target.value)} style={{ width: 80 }} />
+        <input className="ref-add-input" placeholder="Venue / journal" value={manualVenue} onChange={(e) => setManualVenue(e.target.value)} style={{ flex: 1 }} />
+      </div>
+      <button className="ref-add-submit ref-add-submit--full" onClick={handleManual} disabled={!manualTitle && !manualKey}>
+        Add citation
+      </button>
+    </div>
+  );
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
 
 interface DroppedFile {
   name: string;
@@ -124,7 +247,6 @@ export function ReferencesPanel() {
           } else if (lower.endsWith(".pdf")) {
             const dropped = await readDroppedFile(f);
             let path: string | undefined;
-            // Prefer copying into the workspace so the path is stable across sessions.
             if (workspacePath) {
               const refDir = `${workspacePath}/references`;
               try { await invoke("create_dir", { path: refDir }); } catch { /* may already exist */ }
@@ -133,19 +255,12 @@ export function ReferencesPanel() {
             }
             const stem = f.name.replace(/\.pdf$/i, "");
             const bibKey = stem.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "ref";
-            addReference({
-              kind: "pdf",
-              name: f.name,
-              path,
-              bibKey,
-              title: stem,
-            });
+            addReference({ kind: "pdf", name: f.name, path, bibKey, title: stem });
           } else {
             setErrMsg(`Unsupported file type: ${f.name} (drop .pdf or .bib)`);
           }
         }
       } catch (err) {
-        console.error("references drop error", err);
         setErrMsg(String(err));
       } finally {
         setBusy(false);
@@ -154,10 +269,11 @@ export function ReferencesPanel() {
     [addReference, workspacePath]
   );
 
+  // Dispatch [@key] so the writing editor handles it as a Pandoc-style citation
   const insertCite = useCallback((ref: Reference) => {
     const key = ref.bibKey;
     if (!key) return;
-    window.dispatchEvent(new CustomEvent("editor:insert", { detail: `@${key}` }));
+    window.dispatchEvent(new CustomEvent("editor:insert", { detail: `[@${key}]` }));
   }, []);
 
   const copyBibEntry = useCallback(async (ref: Reference) => {
@@ -198,6 +314,8 @@ export function ReferencesPanel() {
         </div>
       </div>
 
+      <AddCitationPanel onAdd={addReference} />
+
       {errMsg && (
         <div className="references-error" onClick={() => setErrMsg(null)} title="Click to dismiss">
           {errMsg}
@@ -209,7 +327,7 @@ export function ReferencesPanel() {
           <div className="references-empty">
             <p>No references yet.</p>
             <p className="references-empty-hint">
-              Drop PDFs or .bib files above. Click a card's <code>@cite</code> to insert at cursor.
+              Drop PDFs or .bib files above, fetch by DOI, or add manually. Click <code>Cite</code> to insert <code>[@key]</code> at cursor.
             </p>
           </div>
         ) : (
@@ -221,7 +339,7 @@ export function ReferencesPanel() {
                 <button
                   className="reference-card-remove"
                   onClick={() => removeReference(ref.id)}
-                  title="Remove from references"
+                  title="Remove"
                   aria-label="Remove"
                 >
                   ×
@@ -237,27 +355,14 @@ export function ReferencesPanel() {
                 </div>
               )}
               <div className="reference-card-actions">
-                <button
-                  className="reference-action"
-                  onClick={() => insertCite(ref)}
-                  disabled={!ref.bibKey}
-                  title="Insert citation at cursor"
-                >
+                <button className="reference-action" onClick={() => insertCite(ref)} disabled={!ref.bibKey} title="Insert [@key] at cursor">
                   Cite
                 </button>
-                <button
-                  className="reference-action"
-                  onClick={() => copyBibEntry(ref)}
-                  title="Copy BibTeX entry"
-                >
+                <button className="reference-action" onClick={() => copyBibEntry(ref)} title="Copy BibTeX entry">
                   {copiedKey === ref.id ? "Copied" : "BibTeX"}
                 </button>
                 {ref.kind === "pdf" && ref.path && (
-                  <button
-                    className="reference-action"
-                    onClick={() => openPdf(ref)}
-                    title="Open PDF in default viewer"
-                  >
+                  <button className="reference-action" onClick={() => openPdf(ref)} title="Open PDF">
                     Open
                   </button>
                 )}

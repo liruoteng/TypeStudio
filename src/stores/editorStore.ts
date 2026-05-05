@@ -506,7 +506,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   aiDockHeight: 280,
   setAiDockHeight: (h) => { set({ aiDockHeight: Math.max(0, h) }); schedulePersist(get); },
 
-  sidebarOpen: false,
+  sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   activePanels: ["ai", "editor"],
   setActivePanels: (panels) => set({ activePanels: panels }),

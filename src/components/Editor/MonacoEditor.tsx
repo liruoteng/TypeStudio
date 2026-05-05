@@ -324,7 +324,16 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   // Scroll editor to line when preview requests it
   useEffect(() => {
     if (scrollToLine === null || !editorRef.current) return;
-    editorRef.current.revealLineInCenter(scrollToLine);
+    const editor = editorRef.current;
+    const line = scrollToLine;
+    editor.revealLineInCenter(line);
+    editor.setSelection({
+      startLineNumber: line,
+      startColumn: 1,
+      endLineNumber: line,
+      endColumn: 1,
+    });
+    editor.focus();
     setScrollToLine(null);
   }, [scrollToLine, setScrollToLine]);
 

@@ -45,7 +45,16 @@
   display: block;
 }
 
-.fsb-toggle-btn {
+.fsb-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.fsb:not(.fsb--open) .fsb-topbar-actions {
+  justify-content: center;
+}
+
+.fsb-topbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,7 +70,7 @@
   transition: background 0.12s, color 0.12s;
   font-family: inherit;
 }
-.fsb-toggle-btn:hover {
+.fsb-topbar-btn:hover {
   background: var(--bg-elevated);
   color: var(--text);
 }
@@ -284,6 +293,11 @@
   display: none;
 }
 
+/* Disable transition during drag-resize for instant feedback */
+.fsb--resizing {
+  transition: none !important;
+}
+
 /* ── Resize handle (right edge, open only) ───────────────────────────────── */
 .fsb-resize-handle {
   position: absolute;
@@ -321,4 +335,126 @@
 }
 .fsb-url-input:focus {
   border-color: var(--accent);
+}
+
+/* ── Search section ──────────────────────────────────────────── */
+.fsb-search-section {
+  border-bottom: 1px solid var(--border-dim);
+  max-height: 50%;
+  display: flex;
+  flex-direction: column;
+}
+
+.fsb-search-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 4px;
+}
+
+.fsb-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  font-size: 0.78rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.12s;
+}
+.fsb-search-input::placeholder {
+  color: var(--text-dim);
+}
+.fsb-search-input:focus {
+  border-color: var(--accent);
+}
+
+.fsb-search-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.fsb-search-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.fsb-search-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px 10px;
+}
+
+.fsb-search-results {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.fsb-search-file-group {
+  padding-bottom: 4px;
+}
+
+.fsb-search-file-path {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 4px 10px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fsb-search-result-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.fsb-search-result-row:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.fsb-search-line-num {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-family: monospace;
+  min-width: 28px;
+  text-align: right;
+}
+
+.fsb-search-line-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Active state for the search topbar button ──────────────── */
+.fsb-topbar-btn--active {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
