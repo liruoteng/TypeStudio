@@ -1,0 +1,277 @@
+.pdf-viewer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* ── Root layout ── */
+.pdf-viewer-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Toolbar ── */
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-elevated, #252525);
+  border-bottom: 1px solid var(--border-dim, #333);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.pdf-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-medium, #444);
+  margin: 0 2px;
+}
+
+.pdf-btn {
+  background: var(--bg-surface, #333);
+  border: 1px solid var(--border-medium, #444);
+  border-radius: 4px;
+  color: var(--text, #ccc);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 7px;
+  min-width: 26px;
+  line-height: 1.5;
+}
+.pdf-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #3a3a3a);
+  color: var(--text-bright, #fff);
+}
+.pdf-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pdf-page-input {
+  background: var(--bg-input, #2a2a2a);
+  border: 1px solid var(--border-medium, #444);
+  border-radius: 4px;
+  color: var(--text, #ccc);
+  font-size: 12px;
+  padding: 2px 4px;
+  text-align: center;
+  width: 40px;
+}
+.pdf-page-input:focus {
+  outline: none;
+  border-color: var(--accent, #666);
+}
+/* Hide spinner arrows */
+.pdf-page-input::-webkit-inner-spin-button,
+.pdf-page-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.pdf-page-of {
+  font-size: 12px;
+  color: var(--text-dim, #888);
+  white-space: nowrap;
+}
+
+.pdf-zoom-label {
+  font-size: 12px;
+  min-width: 36px;
+  text-align: center;
+  color: var(--text-secondary, #aaa);
+}
+
+.pdf-filename {
+  font-size: 11px;
+  color: var(--text-dim, #666);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+/* ── Scrollable page area ── */
+.pdf-viewer-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: var(--bg-canvas, #3a3a3a);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ── Individual page ── */
+.pdf-page-wrapper {
+  position: relative;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+/* ── Text layer — essential rules from pdf.js (replaces pdf_viewer.css import) ── */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  z-index: 0;
+  /* invisible but selectable; citations override below */
+  opacity: 0.2;
+  pointer-events: none;
+  /* css vars needed by pdf.js TextLayer class */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor, 1) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  pointer-events: all;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+/* re-enable pointer events on citation highlights inside the dim text layer */
+.textLayer .pdf-citation-highlight {
+  pointer-events: all;
+}
+
+/* ── Citation highlights ── */
+.pdf-citation-highlight {
+  background-color: rgba(255, 220, 0, 0.35);
+  cursor: pointer;
+  pointer-events: all;
+  border-bottom: 1px solid rgba(200, 180, 0, 0.7);
+  border-radius: 2px;
+}
+.pdf-citation-highlight:hover {
+  background-color: rgba(255, 220, 0, 0.7);
+}
+
+/* ── Citation popup ── */
+.pdf-citation-popup {
+  position: fixed;
+  background: var(--bg-elevated, #1e1e1e);
+  border: 1px solid var(--border-medium, #444);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  width: 320px;
+  z-index: 9999;
+  font-size: 12px;
+  color: var(--text, #ccc);
+  overflow: hidden;
+}
+
+.pdf-citation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 8px 12px;
+  background: var(--bg-surface, #252525);
+  border-bottom: 1px solid var(--border-dim, #333);
+  color: var(--text, #ddd);
+}
+
+.pdf-popup-close {
+  background: none;
+  border: none;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.pdf-popup-close:hover {
+  color: var(--text, #ccc);
+}
+
+.pdf-citation-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdf-ref-text {
+  color: var(--text-secondary, #aaa);
+  font-size: 11px;
+  line-height: 1.5;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-dim, #333);
+}
+
+.pdf-scholar-status {
+  color: var(--text-dim, #888);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.pdf-scholar-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-scholar-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text, #ddd);
+  line-height: 1.4;
+}
+.pdf-scholar-title a {
+  color: var(--accent, #6ca0dc);
+  text-decoration: none;
+}
+.pdf-scholar-title a:hover {
+  text-decoration: underline;
+}
+
+.pdf-scholar-meta {
+  font-size: 11px;
+  color: var(--text-dim, #888);
+}
+
+.pdf-scholar-abstract {
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pdf-no-ref {
+  color: var(--text-dim, #888);
+  font-style: italic;
+}

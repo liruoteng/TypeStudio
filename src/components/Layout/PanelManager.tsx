@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, type RefObject, type ReactNode } from "r
 import { useEditorStore } from "../../stores/editorStore";
 import "./PanelManager.css";
 
-export type PanelId = "editor" | "preview" | "diff" | "outline" | "ai";
+export type PanelId = "editor" | "preview" | "diff" | "outline" | "ai" | "pdf";
 
 interface PanelDef {
   id: PanelId;
@@ -16,6 +16,7 @@ export const ALL_PANELS: PanelDef[] = [
   { id: "preview", label: "Preview", shortcut: "⌘3" },
   { id: "diff",    label: "Diff",    shortcut: "⌘4" },
   { id: "outline", label: "Outline", shortcut: "⌘5" },
+  { id: "pdf",     label: "PDF Viewer", shortcut: "⌘6" },
 ];
 
 export interface PanelContents {
@@ -24,11 +25,13 @@ export interface PanelContents {
   preview: ReactNode;
   diff:    ReactNode;
   outline: ReactNode;
+  pdf:     ReactNode;
 }
 
 interface PanelManagerProps {
   contents: PanelContents;
   headerExtras?: Partial<Record<PanelId, ReactNode>>;
+  headerExtrasLeft?: Partial<Record<PanelId, ReactNode>>;
   titleSuffixes?: Partial<Record<PanelId, ReactNode>>;
   diffTitle?: string;
 }
@@ -46,6 +49,7 @@ interface PanelProps {
   isSideBySide: boolean;
   titleSuffix?: ReactNode;
   headerExtra?: ReactNode;
+  headerExtraLeft?: ReactNode;
   children: ReactNode;
   style?: React.CSSProperties;
   onClose: (idx: number) => void;
@@ -55,7 +59,7 @@ interface PanelProps {
   onDragEnd:   (e: React.DragEvent) => void;
 }
 
-function Panel({ id, idx, label, isTopRight, isSideBySide, titleSuffix, headerExtra,
+function Panel({ id, idx, label, isTopRight, isSideBySide, titleSuffix, headerExtra, headerExtraLeft,
   children, style, onClose, onDragStart, onDragOver, onDrop, onDragEnd }: PanelProps) {
   const diffMode = id === "diff" ? (isSideBySide ? "sbs" : "inline") : undefined;
   return (
@@ -69,21 +73,26 @@ function Panel({ id, idx, label, isTopRight, isSideBySide, titleSuffix, headerEx
     >
       <div
         className="pm-panel-header"
-        style={isTopRight ? { paddingRight: 36 } : undefined}
+        style={isTopRight ? { paddingRight: 48 } : undefined}
         draggable
         onDragStart={(e) => onDragStart(e, idx)}
         onDragEnd={onDragEnd}
       >
-        <GripIcon />
+        <div className="pm-panel-header-left">
+          <GripIcon />
+          {headerExtraLeft}
+        </div>
         <span className="pm-panel-title">
           {label}
           {diffMode && <span className="pm-panel-subtitle">{diffMode === "sbs" ? " — side by side" : " — inline"}</span>}
           {titleSuffix}
         </span>
-        {headerExtra}
-        <button className="pm-panel-close" onClick={() => onClose(idx)} title={`Close ${label}`} aria-label={`Close ${label} panel`}>
-          ✕
-        </button>
+        <div className="pm-panel-header-right">
+          {headerExtra}
+          <button className="pm-panel-close" onClick={() => onClose(idx)} title={`Close ${label}`} aria-label={`Close ${label} panel`}>
+            ✕
+          </button>
+        </div>
       </div>
       <div className="pm-panel-body">{children}</div>
     </div>
@@ -146,10 +155,11 @@ export function PanelSelector({ activePanels, onToggle, onClose }: PanelSelector
 }
 
 // ── PanelManager ──────────────────────────────────────────────────────────────
-export function PanelManager({ contents, headerExtras, titleSuffixes, diffTitle }: PanelManagerProps) {
+export function PanelManager({ contents, headerExtras, headerExtrasLeft, titleSuffixes, diffTitle }: PanelManagerProps) {
   const activePanels    = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
   const panelLayout     = useEditorStore((s) => s.panelLayout);
+  const setPanelLayout  = useEditorStore((s) => s.setPanelLayout);
 
   // Panel sizes as flex-grow values, keyed by panel ID (or "__top__" for the two-col section)
   const [panelSizes, setPanelSizes] = useState<Record<string, number>>({});
@@ -174,25 +184,52 @@ export function PanelManager({ contents, headerExtras, titleSuffixes, diffTitle 
   const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
     e.preventDefault();
     if (dragFromIdx < 0 || dragFromIdx === idx) return;
+
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const w = rect.width;
+    const h = rect.height;
+    
+    const isHorizontal = Math.min(x, w - x) < Math.min(y, h - y);
+
     if (dragOverIdx !== idx) {
       document.querySelectorAll<HTMLElement>(".pm-panel--drop-target")
-        .forEach((el) => el.classList.remove("pm-panel--drop-target"));
+        .forEach((elem) => {
+          elem.classList.remove("pm-panel--drop-target", "pm-panel--drop-horizontal", "pm-panel--drop-vertical");
+        });
       const panels = document.querySelectorAll<HTMLElement>(".pm-panel");
       if (panels[idx]) panels[idx].classList.add("pm-panel--drop-target");
       dragOverIdx = idx;
+    }
+    
+    const panels = document.querySelectorAll<HTMLElement>(".pm-panel");
+    if (panels[idx]) {
+      if (isHorizontal) {
+        panels[idx].classList.add("pm-panel--drop-horizontal");
+        panels[idx].classList.remove("pm-panel--drop-vertical");
+      } else {
+        panels[idx].classList.add("pm-panel--drop-vertical");
+        panels[idx].classList.remove("pm-panel--drop-horizontal");
+      }
     }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent, idx: number) => {
     e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const isHorizontal = el.classList.contains("pm-panel--drop-horizontal");
+
     const from = dragFromIdx;
     if (from >= 0 && from !== idx) {
       const next = [...activePanels];
       [next[from], next[idx]] = [next[idx], next[from]];
       setActivePanels(next);
+      setPanelLayout(isHorizontal ? "horizontal" : "vertical");
     }
     clearDrag();
-  }, [activePanels, setActivePanels]);
+  }, [activePanels, setActivePanels, setPanelLayout]);
 
   const handleDragEnd = useCallback(() => { clearDrag(); }, []);
 
@@ -267,6 +304,7 @@ export function PanelManager({ contents, headerExtras, titleSuffixes, diffTitle 
         isSideBySide={isSideBySide}
         titleSuffix={titleSuffixes?.[id as PanelId]}
         headerExtra={headerExtras?.[id as PanelId]}
+        headerExtraLeft={headerExtrasLeft?.[id as PanelId]}
         onClose={closePanel}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
@@ -352,7 +390,7 @@ function clearDrag() {
   document.querySelectorAll<HTMLElement>(".pm-panel--dragging")
     .forEach((el) => el.classList.remove("pm-panel--dragging"));
   document.querySelectorAll<HTMLElement>(".pm-panel--drop-target")
-    .forEach((el) => el.classList.remove("pm-panel--drop-target"));
+    .forEach((el) => el.classList.remove("pm-panel--drop-target", "pm-panel--drop-horizontal", "pm-panel--drop-vertical"));
   dragFromIdx = -1;
   dragOverIdx = -1;
 }

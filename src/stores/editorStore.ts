@@ -117,6 +117,10 @@ interface EditorState {
   updateTabContent: (path: string, content: string) => void;
   markTabClean: (path: string) => void;
 
+  // Active PDF Panel Path
+  activePdfPath: string | null;
+  setActivePdfPath: (path: string | null) => void;
+
   // Editor settings
   editorFontSize: number;
   setEditorFontSize: (size: number) => void;
@@ -161,6 +165,9 @@ interface EditorState {
   setActivePanels: (panels: string[]) => void;
   panelLayout: "vertical" | "horizontal";
   setPanelLayout: (layout: "vertical" | "horizontal") => void;
+
+  showAiSessions: boolean;
+  setShowAiSessions: (v: boolean) => void;
 
   // Metrics
   lastEditTime: number | null;
@@ -406,6 +413,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ),
     })),
 
+  activePdfPath: null,
+  setActivePdfPath: (path) => set({ activePdfPath: path }),
+
   editorFontSize: 14,
   setEditorFontSize: (size) => {
     set({ editorFontSize: Math.min(32, Math.max(8, size)) });
@@ -502,6 +512,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setActivePanels: (panels) => set({ activePanels: panels }),
   panelLayout: "horizontal",
   setPanelLayout: (layout) => set({ panelLayout: layout }),
+
+  showAiSessions: false,
+  setShowAiSessions: (v) => set({ showAiSessions: v }),
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),
