@@ -314,17 +314,26 @@ body.pm-resizing-row * { cursor: row-resize !important; user-select: none !impor
   content: "";
   position: absolute;
   inset: 0;
-  border: 2px solid var(--accent);
-  background: rgba(59, 130, 246, 0.06);
   pointer-events: none;
   z-index: 10;
+}
+
+.pm-panel--drop-horizontal::after {
+  border-left: 4px solid var(--accent);
+  border-right: 4px solid var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.pm-panel--drop-vertical::after {
+  border-top: 4px solid var(--accent);
+  border-bottom: 4px solid var(--accent);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 /* ── Panel header ─────────────────────────────────────────────────────────── */
 .pm-panel-header {
   display: flex;
   align-items: center;
-  gap: 4px;
   padding: 0 8px 0 4px;
   height: 36px;
   flex-shrink: 0;
@@ -332,22 +341,41 @@ body.pm-resizing-row * { cursor: row-resize !important; user-select: none !impor
   background: var(--bg-elevated);
   cursor: grab;
   user-select: none;
+  position: relative;
 }
 .pm-panel-header:active { cursor: grabbing; }
 
+.pm-panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 1;
+}
+
+.pm-panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  z-index: 2;
+}
+
 .pm-grip {
   color: var(--text-dim);
-  opacity: 0;
-  flex-shrink: 0;
+  opacity:0;
+  flex-shrink:0;
   transition: opacity 0.1s;
 }
 .pm-panel:hover .pm-grip,
 .pm-panel--dragging .pm-grip {
-  opacity: 1;
+  opacity:1;
 }
 
 .pm-panel-title {
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -357,6 +385,7 @@ body.pm-resizing-row * { cursor: row-resize !important; user-select: none !impor
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 
 .pm-panel-subtitle {
@@ -370,11 +399,15 @@ body.pm-resizing-row * { cursor: row-resize !important; user-select: none !impor
 .pm-panel-close {
   background: none;
   border: none;
-  color: var(--text-dim);
-  font-size: 11px;
-  line-height: 1;
-  padding: 2px 3px;
-  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
   flex-shrink: 0;

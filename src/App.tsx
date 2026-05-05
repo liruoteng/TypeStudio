@@ -12,6 +12,7 @@ import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { SettingsDialog } from "./components/Settings/SettingsDialog";
 import { AIChatPanel } from "./components/AI/AIChatPanel";
+import { PDFViewerPanel } from "./components/PdfViewer/PDFViewerPanel";
 import { useEditorStore } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
@@ -430,7 +431,13 @@ export default function App() {
             ) : null}
             <PanelManager
               titleSuffixes={{ preview: <PreviewPageCount /> }}
-              headerExtras={{ preview: <PreviewPanelControls onExportPdf={handleExportPdf} /> }}
+              headerExtras={{ 
+                preview: <PreviewPanelControls onExportPdf={handleExportPdf} />,
+                ai: <AiHeaderControls />
+              }}
+              headerExtrasLeft={{
+                ai: <AiHeaderControlsLeft />
+              }}
               contents={{
                 ai: <AIChatPanel />,
                 editor: (
@@ -449,6 +456,7 @@ export default function App() {
                   </div>
                 ),
                 outline: <TableOfContents />,
+                pdf: <PDFViewerPanel />,
               }}
             />
           </div>
@@ -530,24 +538,6 @@ function LayoutDropdown({
           </button>
         );
       })}
-      <div className="layout-dd-divider" />
-      <div className="layout-dd-header">Arrangement</div>
-      <button
-        className={`layout-dd-item${panelLayout === "horizontal" ? " layout-dd-item--on" : ""}`}
-        onClick={() => { if (panelLayout !== "horizontal") onToggleLayout(); onClose(); }}
-      >
-        <span className={`layout-dd-check${panelLayout === "horizontal" ? " layout-dd-check--on" : ""}`}>{panelLayout === "horizontal" && "✓"}</span>
-        <span className="layout-dd-label">Side by side</span>
-        <span className="layout-dd-desc">Panels arranged in columns</span>
-      </button>
-      <button
-        className={`layout-dd-item${panelLayout === "vertical" ? " layout-dd-item--on" : ""}`}
-        onClick={() => { if (panelLayout !== "vertical") onToggleLayout(); onClose(); }}
-      >
-        <span className={`layout-dd-check${panelLayout === "vertical" ? " layout-dd-check--on" : ""}`}>{panelLayout === "vertical" && "✓"}</span>
-        <span className="layout-dd-label">Stacked</span>
-        <span className="layout-dd-desc">Panels arranged in rows</span>
-      </button>
     </div>
   );
 }
@@ -657,6 +647,20 @@ const PreviewPageCount = memo(function PreviewPageCount() {
     <span className="preview-page-count">
       {pageCount} {pageCount === 1 ? "page" : "pages"}
     </span>
+  );
+});
+
+const AiHeaderControls = memo(function AiHeaderControls() {
+  return (
+    <button onClick={() => window.dispatchEvent(new CustomEvent("ai:new-session"))} title="New chat" style={{ fontSize: '16px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }}>+</button>
+  );
+});
+
+const AiHeaderControlsLeft = memo(function AiHeaderControlsLeft() {
+  const setShowAiSessions = useEditorStore((s) => s.setShowAiSessions);
+
+  return (
+    <button onClick={() => setShowAiSessions(true)} title="All sessions" style={{ fontSize: '14px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }}>☰</button>
   );
 });
 

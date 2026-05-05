@@ -80,7 +80,8 @@ export function AIChatPanel() {
   const activeSession = chatSessions.find((s) => s.id === activeChatSessionId) ?? null;
 
   // ── Local view state ───────────────────────────────────────────────────
-  const [showSessions, setShowSessions] = useState(false);
+  const showAiSessions = useEditorStore((s) => s.showAiSessions);
+  const setShowAiSessions = useEditorStore((s) => s.setShowAiSessions);
   const [sessionSearch, setSessionSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -173,16 +174,22 @@ export function AIChatPanel() {
     createChatSession();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleNewSession = () => {
+  const handleNewSession = useCallback(() => {
     commitMessages(localMessagesRef.current);
     createChatSession();
-    setShowSessions(false);
-  };
+    setShowAiSessions(false);
+  }, [commitMessages, createChatSession, setShowAiSessions]);
+
+  useEffect(() => {
+    const onNewSession = () => handleNewSession();
+    window.addEventListener("ai:new-session", onNewSession);
+    return () => window.removeEventListener("ai:new-session", onNewSession);
+  }, [handleNewSession]);
 
   const handleSwitchSession = (id: string) => {
     commitMessages(localMessagesRef.current);
     setActiveChatSession(id);
-    setShowSessions(false);
+    setShowAiSessions(false);
   };
 
   const insertAtCursor = useCallback((text: string) => {
@@ -490,11 +497,11 @@ export function AIChatPanel() {
   };
 
   // ── Sessions list view ─────────────────────────────────────────────────
-  if (showSessions) {
+  if (showAiSessions) {
     return (
       <div className="ai-chat-panel">
         <div className="ai-sessions-header">
-          <button className="ai-sessions-back" onClick={() => setShowSessions(false)}>← Back</button>
+          <button className="ai-sessions-back" onClick={() => setShowAiSessions(false)}>← Back</button>
           <span className="ai-sessions-header-title">Chats</span>
           <button className="ai-chat-btn ai-chat-btn--send ai-sessions-new" onClick={handleNewSession}>+ New</button>
         </div>
@@ -568,7 +575,7 @@ export function AIChatPanel() {
                     <div className="ai-session-item-actions" onClick={(e) => e.stopPropagation()}>
                       <button
                         className="ai-session-action-btn"
-                        onClick={() => { forkChatSession(sess.id); setShowSessions(false); }}
+                        onClick={() => { forkChatSession(sess.id); setShowAiSessions(false); }}
                         title="Fork session"
                       >
                         ⎇
@@ -594,12 +601,6 @@ export function AIChatPanel() {
   // ── Chat view ──────────────────────────────────────────────────────────
   return (
     <div className="ai-chat-panel">
-      <div className="ai-chat-topbar">
-        <button className="ai-topbar-btn" onClick={() => setShowSessions(true)} title="All sessions">☰</button>
-        <span className="ai-topbar-title">{activeSession?.title ?? "New chat"}</span>
-        <button className="ai-topbar-btn" onClick={handleNewSession} title="New chat">+</button>
-      </div>
-
       {aiProvider === "claude-cli" && cliStatus !== "ready" && (
         <div className={`ai-cli-banner ai-cli-banner--${cliStatus}`}>
           {cliStatus === "checking" ? "Checking Claude CLI…" : (

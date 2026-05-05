@@ -338,12 +338,10 @@ function FileNode({ path, name, depth, onRefreshParent, highlighted, onClearDirS
 
   const openFile = useCallback(async () => {
     if (path.endsWith(".pdf")) {
-      try {
-        const { openPath } = await import("@tauri-apps/plugin-opener");
-        await openPath(path);
-      } catch (e) {
-        console.error("openPath error:", e);
-        alert(`Failed to open PDF: ${e}`);
+      const store = useEditorStore.getState();
+      store.setActivePdfPath(path);
+      if (!store.activePanels.includes("pdf")) {
+        store.setActivePanels([...store.activePanels, "pdf"]);
       }
       return;
     }
@@ -686,9 +684,6 @@ function FileTree({ onOpenFolder }, ref) {
 
   return (
     <div className="file-tree">
-      <div className="file-tree-header">
-        <span className="file-tree-title">EXPLORER</span>
-      </div>
       <div
         className={`file-tree-body${bodyDropHover ? " drop-target" : ""}`}
         ref={bodyRef}

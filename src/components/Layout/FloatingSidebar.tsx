@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useEditorStore } from "../../stores/editorStore";
+import { invoke } from "@tauri-apps/api/core";
+import { useEditorStore, type FileEntry } from "../../stores/editorStore";
 import { FileTree, type FileTreeHandle } from "../FileExplorer/FileTree";
 import "./FloatingSidebar.css";
 
@@ -103,27 +104,38 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
       <div className="fsb-section fsb-section--grow">
         <div className="fsb-section-head">
           <span className="fsb-section-title">Explorer</span>
-          <button
-            className="fsb-section-action"
-            title="New file"
-            onClick={() => fileTreeRef.current?.newFile()}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-              <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-          </button>
+          <div className="fsb-section-actions" style={{ display: 'flex', gap: '4px' }}>
+            <button
+              className="fsb-section-action"
+              title="New file"
+              onClick={() => fileTreeRef.current?.newFile()}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <button
+              className="fsb-section-action"
+              title="New folder"
+              onClick={() => fileTreeRef.current?.newFolder()}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M1 3C1 2.44772 1.44772 2 2 2H6L7.5 4H14C14.5523 4 15 4.44772 15 5V13C15 13.5523 14.5523 14 14 14H2C1.44772 14 1 13.5523 1 13V3Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M8 7v4M6 9h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="fsb-explorer-body">
           <FileTree ref={fileTreeRef} onOpenFolder={onOpenFolder} />
         </div>
       </div>
 
-      {/* ── Section 2: Open files + drop zone + URL paste ───── */}
-      <ReferencesSection
-        tabs={tabs}
-        activeTabPath={activeTabPath}
-        onSetActiveTab={(path) => { setActiveTab(path); toggle(); }}
-      />
+      {/* ── Section 2: Media Management ── */}
+      <MediaSection />
+
+      {/* ── Section 3: References (drop zone + URL paste) ───── */}
+      <ReferencesSection />
 
       {/* ── Bottom: profile + theme ──────────────────────────── */}
       <div className="fsb-bottom">
@@ -150,14 +162,7 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
   );
 }
 
-// ── References section (open tabs + file drop + URL paste) ───────────────────
-interface ReferencesSectionProps {
-  tabs: { path: string; name: string; isDirty: boolean }[];
-  activeTabPath: string | null;
-  onSetActiveTab: (path: string) => void;
-}
-
-function ReferencesSection({ tabs, activeTabPath, onSetActiveTab }: ReferencesSectionProps) {
+function ReferencesSection() {
   const [urlValue, setUrlValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -207,27 +212,114 @@ function ReferencesSection({ tabs, activeTabPath, onSetActiveTab }: ReferencesSe
           }}
         />
       </div>
+    </div>
+  );
+}
 
+// ── Media Management Section ──────────────────────────────────────────────────────
+function MediaSection() {
+  const workspacePath = useEditorStore((s) => s.workspacePath);
+  const [mediaFiles, setMediaFiles] = useState<FileEntry[]>([]);
+
+  const loadMedia = useCallback(async () => {
+    if (!workspacePath) return;
+    const mediaDir = `${workspacePath}/assets`;
+    try {
+      const exists = await invoke<boolean>("path_exists", { path: mediaDir });
+      if (!exists) {
+        setMediaFiles([]);
+        return;
+      }
+      const entries = await invoke<FileEntry[]>("list_dir", { path: mediaDir });
+      setMediaFiles(entries.filter(e => !e.is_dir && /\.(png|jpg|jpeg|gif|svg|webp|mp4|webm|mov)$/i.test(e.name)));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [workspacePath]);
+
+  useEffect(() => {
+    loadMedia();
+  }, [loadMedia]);
+
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!workspacePath) return;
+    const mediaDir = `${workspacePath}/assets`;
+    try {
+      const exists = await invoke<boolean>("path_exists", { path: mediaDir });
+      if (!exists) {
+        await invoke("create_dir", { path: mediaDir });
+      }
+      const files = Array.from(e.dataTransfer.files);
+      for (const f of files) {
+        if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) continue;
+        const dest = `${mediaDir}/${f.name}`;
+        const buf = new Uint8Array(await f.arrayBuffer());
+        await invoke("write_file_bytes", { path: dest, bytes: Array.from(buf) });
+      }
+      loadMedia();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const onClickUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/*,video/*';
+    input.onchange = async (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (!files || !workspacePath) return;
+      const mediaDir = `${workspacePath}/assets`;
+      try {
+        const exists = await invoke<boolean>("path_exists", { path: mediaDir });
+        if (!exists) {
+          await invoke("create_dir", { path: mediaDir });
+        }
+        for (const f of Array.from(files)) {
+          const dest = `${mediaDir}/${f.name}`;
+          const buf = new Uint8Array(await f.arrayBuffer());
+          await invoke("write_file_bytes", { path: dest, bytes: Array.from(buf) });
+        }
+        loadMedia();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    input.click();
+  };
+
+  return (
+    <div className="fsb-section">
+      <div className="fsb-section-head">
+        <span className="fsb-section-title">Media</span>
+        <button className="fsb-section-action" title="Upload Media" onClick={onClickUpload}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div 
+        className="fsb-drop-zone" 
+        onDragOver={(e) => e.preventDefault()} 
+        onDrop={onDrop}
+        style={{ marginTop: 0 }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+          <path d="M7 1v8M4 6l3-3 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M2 10v1.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        </svg>
+        Drop images/videos here
+      </div>
       <div className="fsb-file-list">
-        {tabs.length === 0 && (
-          <span className="fsb-empty-hint">No files open</span>
-        )}
-        {tabs.map((tab) => {
-          const ext = tab.name.split(".").pop()?.toLowerCase() ?? "";
-          const color = ext === "typ" ? "var(--accent)" : ext === "bib" ? "#c47a15" : ext === "pdf" ? "#d85a30" : "var(--text-muted)";
-          return (
-            <button
-              key={tab.path}
-              className={`fsb-file-item${tab.path === activeTabPath ? " fsb-file-item--active" : ""}`}
-              onClick={() => onSetActiveTab(tab.path)}
-              title={tab.path}
-            >
-              <span className="fsb-file-dot" style={{ background: color }} />
-              <span className="fsb-file-name">{tab.name}</span>
-              {tab.isDirty && <span className="fsb-file-dirty" />}
-            </button>
-          );
-        })}
+        {mediaFiles.length === 0 && <span className="fsb-empty-hint">No media in assets/</span>}
+        {mediaFiles.map(f => (
+          <div key={f.path} className="fsb-file-item" title="Click to copy name" onClick={() => navigator.clipboard.writeText(f.name)}>
+            <span className="fsb-file-dot" style={{ background: "var(--accent)" }} />
+            <span className="fsb-file-name">{f.name}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
