@@ -92,9 +92,12 @@ function EditorSection() {
   const setEditorWidth = useEditorStore((s) => s.setEditorWidth);
   const editorMdFont = useEditorStore((s) => s.editorMdFont);
   const setEditorMdFont = useEditorStore((s) => s.setEditorMdFont);
+  const typewriterMode = useEditorStore((s) => s.typewriterMode);
+  const setTypewriterMode = useEditorStore((s) => s.setTypewriterMode);
 
   const MD_EDITOR_FONTS = [
     { label: "Source Serif 4", value: '"Source Serif 4", "Charter", "Georgia", "Times New Roman", serif' },
+    { label: "Inter", value: '"Inter Variable", "Inter", sans-serif' },
     { label: "Roboto", value: '"Roboto", sans-serif' },
     { label: "DM Sans", value: '"DM Sans", sans-serif' },
     { label: "Open Sans", value: '"Open Sans", sans-serif' },
@@ -140,6 +143,9 @@ function EditorSection() {
           value={editorWidth}
           onChange={(e) => setEditorWidth(Number(e.target.value) || 960)}
         />
+      </Row>
+      <Row label="Typewriter mode" hint="Keep cursor vertically centered while typing">
+        <input type="checkbox" checked={typewriterMode} onChange={(e) => setTypewriterMode(e.target.checked)} />
       </Row>
       <Row label="Editor font" hint="Markdown WYSIWYG editor typeface">
         <select value={editorMdFont} onChange={(e) => setEditorMdFont(e.target.value)}>

@@ -400,7 +400,7 @@ fn convert_to_typst(path: String) -> Result<String, String> {
                 Ok(result)
             } else {
                 let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-                Ok(converter::markdown_to_typst(&content))
+                Ok(converter::markdown_to_typst(&content).0)
             }
         }
         "docx" => converter::try_pandoc("docx", &path),
@@ -481,10 +481,10 @@ fn is_markdown_path(path: &Path) -> bool {
 /// Build the Typst source for a Markdown file.
 /// Strips YAML front matter, generates a preamble from it, and combines with the body.
 /// If a `template.typ` exists next to the file it takes precedence over the built-in preamble.
-fn compose_markdown_source(md_path: &Path, md_content: &str) -> String {
+fn compose_markdown_source(md_path: &Path, md_content: &str) -> (String, Vec<String>) {
     let (body_md, fm_yaml) = converter::strip_front_matter(md_content);
     let fm = fm_yaml.map(converter::parse_front_matter).unwrap_or_default();
-    let body = converter::markdown_to_typst(body_md);
+    let (body, warnings) = converter::markdown_to_typst(body_md);
 
     // Explicit template.typ in the same directory wins over built-in preamble.
     let explicit_template = md_path
@@ -493,7 +493,7 @@ fn compose_markdown_source(md_path: &Path, md_content: &str) -> String {
         .filter(|p| p.exists())
         .and_then(|p| fs::read_to_string(&p).ok());
 
-    match explicit_template {
+    let typst = match explicit_template {
         Some(t) => format!("{t}\n\n{body}"),
         None => {
             let preamble = converter::build_preamble(&fm);
@@ -503,7 +503,8 @@ fn compose_markdown_source(md_path: &Path, md_content: &str) -> String {
                 format!("{preamble}\n{body}")
             }
         }
-    }
+    };
+    (typst, warnings)
 }
 
 #[tauri::command]
@@ -589,14 +590,17 @@ async fn compile_actor(
         let req = rx.borrow_and_update().clone();
         let Some(req) = req else { continue };
 
+        // Run Markdown conversion outside spawn_blocking so we can emit warnings.
+        let (source_content, conv_warnings) = if is_markdown_path(Path::new(&req.path)) {
+            compose_markdown_source(Path::new(&req.path), &req.content)
+        } else {
+            (req.content.clone(), vec![])
+        };
+        let _ = app_handle.emit("converter-warnings", &conv_warnings);
+
         let world = Arc::clone(&world_arc);
         let result = tauri::async_runtime::spawn_blocking(move || {
             let main_path = Path::new(&req.path);
-            let source_content = if is_markdown_path(main_path) {
-                compose_markdown_source(main_path, &req.content)
-            } else {
-                req.content.clone()
-            };
             let mut guard = world.lock().unwrap();
 
             let needs_init = match guard.as_ref() {
@@ -707,7 +711,7 @@ fn export_pdf(
     // The temp file lives next to the source so relative image paths still resolve.
     let (compile_input, temp_to_clean) = if is_markdown_path(input_path) {
         let md_content = fs::read_to_string(input_path).map_err(|e| e.to_string())?;
-        let typst_content = compose_markdown_source(input_path, &md_content);
+        let (typst_content, _) = compose_markdown_source(input_path, &md_content);
         let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
         let stem = input_path
             .file_stem()
@@ -789,7 +793,7 @@ mod tests {
         let md = dir.join("doc.md");
         fs::write(&md, "# Hello\n").unwrap();
 
-        let out = compose_markdown_source(&md, "# Hello\n");
+        let (out, _) = compose_markdown_source(&md, "# Hello\n");
         assert!(out.contains("= Hello"));
         assert!(!out.contains("#set page"));
 
@@ -805,7 +809,7 @@ mod tests {
         fs::write(&md, "# Hello\n").unwrap();
         fs::write(dir.join("template.typ"), "#set page(margin: 3cm)\n").unwrap();
 
-        let out = compose_markdown_source(&md, "# Hello\n");
+        let (out, _) = compose_markdown_source(&md, "# Hello\n");
         let tmpl_pos = out.find("#set page(margin: 3cm)").expect("template missing");
         let body_pos = out.find("= Hello").expect("body missing");
         assert!(tmpl_pos < body_pos, "template must come before body");

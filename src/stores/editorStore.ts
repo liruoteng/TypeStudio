@@ -151,6 +151,8 @@ interface EditorState {
   setEditorMinimap: (v: boolean) => void;
   editorLineNumbers: boolean;
   setEditorLineNumbers: (v: boolean) => void;
+  typewriterMode: boolean;
+  setTypewriterMode: (v: boolean) => void;
   editorWidth: number;
   setEditorWidth: (v: number) => void;
 
@@ -194,6 +196,10 @@ interface EditorState {
   showAiSessions: boolean;
   setShowAiSessions: (v: boolean) => void;
 
+  // Converter warnings (from Markdown → Typst pipeline)
+  converterWarnings: string[];
+  setConverterWarnings: (w: string[]) => void;
+
   // Metrics
   lastEditTime: number | null;
   setLastEditTime: (t: number) => void;
@@ -222,6 +228,7 @@ const PERSISTED_KEYS = [
   "editorWordWrap",
   "editorMinimap",
   "editorLineNumbers",
+  "typewriterMode",
   "useSidecarPreview",
   "defaultPreviewZoom",
   "confirmOnClose",
@@ -461,6 +468,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setEditorMinimap: (v) => { set({ editorMinimap: v }); schedulePersist(get); },
   editorLineNumbers: true,
   setEditorLineNumbers: (v) => { set({ editorLineNumbers: v }); schedulePersist(get); },
+  typewriterMode: false,
+  setTypewriterMode: (v) => { set({ typewriterMode: v }); schedulePersist(get); },
   editorWidth: 960,
   setEditorWidth: (w) => {
     set({ editorWidth: Math.min(1600, Math.max(480, w)) });
@@ -488,6 +497,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (typeof parsed.editorWordWrap === "boolean") patch.editorWordWrap = parsed.editorWordWrap;
       if (typeof parsed.editorMinimap === "boolean") patch.editorMinimap = parsed.editorMinimap;
       if (typeof parsed.editorLineNumbers === "boolean") patch.editorLineNumbers = parsed.editorLineNumbers;
+      if (typeof parsed.typewriterMode === "boolean") patch.typewriterMode = parsed.typewriterMode;
       if (typeof parsed.editorWidth === "number") patch.editorWidth = parsed.editorWidth;
       if (typeof parsed.useSidecarPreview === "boolean") patch.useSidecarPreview = parsed.useSidecarPreview;
       if (typeof parsed.defaultPreviewZoom === "number") {
@@ -554,6 +564,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   showAiSessions: false,
   setShowAiSessions: (v) => set({ showAiSessions: v }),
+
+  converterWarnings: [],
+  setConverterWarnings: (w) => set({ converterWarnings: w }),
 
   lastEditTime: null,
   setLastEditTime: (t) => set({ lastEditTime: t }),

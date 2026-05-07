@@ -113,6 +113,7 @@ export function StatusBar({
   const activeTab    = useEditorStore((s) => s.activeTab());
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const { errors: errorCount, warnings: warningCount, jumpToFirst } = useActiveMarkers(activeTabPath);
+  const converterWarnings = useEditorStore((s) => s.converterWarnings);
   const fontSize     = useEditorStore((s) => s.editorFontSize);
   const setFontSize  = useEditorStore((s) => s.setEditorFontSize);
   const lastEditTime = useEditorStore((s) => s.lastEditTime);
@@ -169,6 +170,15 @@ export function StatusBar({
           >
             <AlertTriangle size={10} /> {warningCount}
           </button>
+        )}
+        {converterWarnings.length > 0 && (
+          <span
+            className="status-warnings"
+            title={converterWarnings.join("\n")}
+            style={{ cursor: "default" }}
+          >
+            <AlertTriangle size={10} /> {converterWarnings.length} simplified
+          </span>
         )}
 
         {/* History/version button */}

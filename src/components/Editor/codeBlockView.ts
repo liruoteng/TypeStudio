@@ -18,7 +18,7 @@ export class CodeBlockView implements NodeView {
   private node: ProseNode;
   private view: EditorView;
   private getPos: () => number | undefined;
-  private toolbar: HTMLElement;
+  private actions: HTMLElement;
   private select: HTMLSelectElement;
   private copyBtn: HTMLButtonElement;
 
@@ -34,13 +34,8 @@ export class CodeBlockView implements NodeView {
     const container = document.createElement("div");
     container.className = "code-block-container";
 
-    this.toolbar = document.createElement("div");
-    this.toolbar.className = "code-block-toolbar";
-
-    const langLabel = document.createElement("span");
-    langLabel.className = "code-block-lang-label";
-    langLabel.textContent = "Language:";
-    this.toolbar.appendChild(langLabel);
+    this.actions = document.createElement("div");
+    this.actions.className = "code-block-actions";
 
     this.select = document.createElement("select");
     this.select.className = "code-block-lang-select";
@@ -54,26 +49,23 @@ export class CodeBlockView implements NodeView {
         );
       }
     });
-    this.toolbar.appendChild(this.select);
-
-    const spacer = document.createElement("span");
-    spacer.className = "code-block-spacer";
-    this.toolbar.appendChild(spacer);
+    this.actions.appendChild(this.select);
 
     this.copyBtn = document.createElement("button");
     this.copyBtn.className = "code-block-copy-btn";
-    this.copyBtn.textContent = "Copy";
+    this.copyBtn.title = "Copy code";
+    this.copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
     this.copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(this.node.textContent).then(() => {
-        this.copyBtn.textContent = "Copied!";
+        this.copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
         setTimeout(() => {
-          this.copyBtn.textContent = "Copy";
+          this.copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
         }, 2000);
       });
     });
-    this.toolbar.appendChild(this.copyBtn);
+    this.actions.appendChild(this.copyBtn);
 
-    container.appendChild(this.toolbar);
+    container.appendChild(this.actions);
 
     const pre = document.createElement("pre");
     const code = document.createElement("code");
@@ -94,7 +86,7 @@ export class CodeBlockView implements NodeView {
   }
 
   stopEvent(event: Event): boolean {
-    return this.toolbar.contains(event.target as Node);
+    return this.actions.contains(event.target as Node);
   }
 
   update(node: ProseNode): boolean {

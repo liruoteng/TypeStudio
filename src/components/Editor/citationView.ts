@@ -42,10 +42,11 @@ function walkTree(node: MdastNode) {
                 value: value.slice(lastIndex, start),
               });
             }
-            newChildren.push({
-              type: "citation",
-              key: match[1].trim(),
-            });
+            // Split multi-cite: [@a; @b] → two citation nodes
+            const keys = match[1].split(";").map((k) => k.trim().replace(/^@/, "")).filter(Boolean);
+            for (const key of keys) {
+              newChildren.push({ type: "citation", key });
+            }
             lastIndex = start + match[0].length;
           }
 

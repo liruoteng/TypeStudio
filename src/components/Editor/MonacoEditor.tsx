@@ -5,6 +5,7 @@ import { registerTypstLanguage } from "./typst-language";
 import { useEditorStore } from "../../stores/editorStore";
 import { useLspClient } from "../../hooks/useLspClient";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
+import { copyImageFilesToAssets } from "../../lib/utils";
 import "./MonacoEditor.css";
 
 interface MonacoEditorProps {
@@ -546,6 +547,44 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         setSlashMenu((prev) => (prev ? { ...prev, filter } : null));
       }
     });
+
+    // ── Drag & drop images from OS file explorer ──────────────────────
+    const domNode = editor.getDomNode();
+    if (!domNode) return;
+
+    const onNativeDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) {
+        e.preventDefault();
+      }
+    };
+
+    const onNativeDrop = (e: DragEvent) => {
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+      if (imageFiles.length === 0) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const workspacePath = useEditorStore.getState().workspacePath;
+      if (!workspacePath) return;
+
+      copyImageFilesToAssets(imageFiles, workspacePath)
+        .then((names) => {
+          for (const name of names) {
+            const selection = editor.getSelection();
+            if (!selection) continue;
+            editor.executeEdits("image-drop", [
+              { range: selection, text: `![${name}](assets/${name})`, forceMoveMarkers: true },
+            ]);
+          }
+          editor.focus();
+        })
+        .catch((err) => console.error("image drop error", err));
+    };
+
+    domNode.addEventListener("dragover", onNativeDragOver, { capture: true });
+    domNode.addEventListener("drop", onNativeDrop, { capture: true });
   };
 
   const handleChange: OnChange = useCallback(

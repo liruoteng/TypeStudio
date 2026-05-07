@@ -28,6 +28,7 @@
     "@milkdown/plugin-math": "^7.5.9",
     "@milkdown/plugin-prism": "^7.20.0",
     "@milkdown/preset-commonmark": "^7.20.0",
+    "@milkdown/preset-gfm": "^7.20.0",
     "@milkdown/react": "^7.20.0",
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2",

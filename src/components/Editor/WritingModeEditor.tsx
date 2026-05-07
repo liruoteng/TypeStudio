@@ -2,7 +2,10 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { Editor, rootCtx, defaultValueCtx, remarkPluginsCtx } from "@milkdown/core";
 import type { Plugin } from "unified";
 import type { Root } from "@milkdown/transformer";
-import { commonmark } from "@milkdown/preset-commonmark";
+import { commonmark, hardbreakSchema } from "@milkdown/preset-commonmark";
+import { gfm } from "@milkdown/preset-gfm";
+import { $shortcut } from "@milkdown/utils";
+import { TextSelection } from "@milkdown/prose/state";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import {
   remarkMathPlugin,
@@ -19,6 +22,7 @@ import { mathAutoSelectPlugin } from "./mathAutoSelect";
 import { editorViewCtx } from "@milkdown/core";
 import { useEditorStore } from "../../stores/editorStore";
 import type { Reference } from "../../stores/editorStore";
+import { copyImageFilesToAssets } from "../../lib/utils";
 import { linkClickPlugin } from "./linkClickPlugin";
 import { imageViewPlugin } from "./imageView";
 import { typewriterPlugin } from "./typewriterPlugin";
@@ -150,6 +154,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
 function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPreviewTrigger }: InnerProps) {
     const updateTabContent = useEditorStore((s) => s.updateTabContent);
     const fontSize = useEditorStore((s) => s.editorFontSize);
+    const typewriterMode = useEditorStore((s) => s.typewriterMode);
     const references = useEditorStore((s) => s.references);
 
     // Split frontmatter from body so Milkdown never sees the YAML block
@@ -171,6 +176,8 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     const [citeQuery, setCiteQuery] = useState<string | null>(null);
     const [citeAnchor, setCiteAnchor] = useState<DOMRect | null>(null);
     const editorContainerRef = useRef<HTMLDivElement>(null);
+    const typewriterOptionsRef = useRef({ enabled: typewriterMode, containerRef: editorContainerRef });
+    useEffect(() => { typewriterOptionsRef.current.enabled = typewriterMode; }, [typewriterMode]);
 
     const checkCiteTrigger = useCallback(() => {
         const editor = getEditor();
@@ -204,6 +211,22 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const enterToSoftBreak = $shortcut((ctx) => ({
+        'Enter': (state, dispatch) => {
+            const { selection, tr } = state;
+            if (!(selection instanceof TextSelection)) return false;
+            const parentType = selection.$from.parent.type.name;
+            if (parentType !== 'paragraph') return false;
+            dispatch?.(
+                tr
+                    .setMeta('hardbreak', true)
+                    .replaceSelectionWith(hardbreakSchema.type(ctx).create())
+                    .scrollIntoView()
+            );
+            return true;
+        },
+    }));
+
     const { get: getEditor } = useEditor((root) => {
         return Editor.make()
             .config((ctx) => {
@@ -233,6 +256,8 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
                 });
             })
             .use(commonmark)
+            .use(gfm)
+            .use(enterToSoftBreak)
             .use(listener)
             .use(remarkMathPlugin)
             .use(katexOptionsCtx)
@@ -248,7 +273,7 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             .use(mathAutoSelectPlugin)
             .use(linkClickPlugin)
             .use(imageViewPlugin)
-            .use(typewriterPlugin({ enabled: false, containerRef: editorContainerRef }))
+            .use(typewriterPlugin(typewriterOptionsRef.current))
             .use(codeBlockViewPlugin)
             .use(prism)
             .config((ctx) => {
@@ -269,6 +294,59 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             dispatch(state.tr.insertText(text));
         });
     }, [getEditor]);
+
+    const getEditorRef = useRef(getEditor);
+    useEffect(() => { getEditorRef.current = getEditor; }, [getEditor]);
+
+    // ── Drag & drop images from OS file explorer ─────────────────────────────
+    useEffect(() => {
+        const container = editorContainerRef.current;
+        if (!container) return;
+
+        const onDragOver = (e: DragEvent) => {
+            if (e.dataTransfer?.types.includes("Files")) {
+                e.preventDefault();
+            }
+        };
+
+        const onDrop = (e: DragEvent) => {
+            const files = Array.from(e.dataTransfer?.files ?? []);
+            const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+            if (imageFiles.length === 0) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const workspacePath = useEditorStore.getState().workspacePath;
+            if (!workspacePath) return;
+
+            copyImageFilesToAssets(imageFiles, workspacePath)
+                .then((names) => {
+                    const editor = getEditorRef.current();
+                    if (!editor) return;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    editor.action((ctx: any) => {
+                        const view = ctx.get(editorViewCtx);
+                        const { state, dispatch } = view;
+                        for (const name of names) {
+                            const node = state.schema.nodes.image.create({
+                                src: `assets/${name}`,
+                                alt: name,
+                            });
+                            dispatch(state.tr.replaceSelectionWith(node));
+                        }
+                    });
+                })
+                .catch((err) => console.error("image drop error", err));
+        };
+
+        container.addEventListener("dragover", onDragOver, { capture: true });
+        container.addEventListener("drop", onDrop, { capture: true });
+        return () => {
+            container.removeEventListener("dragover", onDragOver, { capture: true });
+            container.removeEventListener("drop", onDrop, { capture: true });
+        };
+    }, []);
 
     // ── Handle editor:insert events (from ReferencesPanel / AI panel) ────────
     useEffect(() => {

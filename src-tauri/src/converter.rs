@@ -161,15 +161,18 @@ fn build_neurips_preamble(fm: &FrontMatter) -> String {
 /// Markdown → Typst conversion (built-in, no external dependencies).
 /// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables,
 ///          `[@cite]` citations, inline math `$...$`, and block math `$$...$$`.
-pub fn markdown_to_typst(content: &str) -> String {
+pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
     let (body, _) = strip_front_matter(content);
     let expanded = expand_references(body);
     let content = expanded.as_str();
     let mut out = String::with_capacity(content.len());
+    let mut warnings: Vec<String> = Vec::new();
     let mut in_code_block = false;
     let mut code_lang = String::new();
     let mut code_buf: Vec<&str> = Vec::new();
     let mut prev_blank = true;
+    let mut typst_block_count: u32 = 0;
+    let mut html_warned = false;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -205,7 +208,12 @@ pub fn markdown_to_typst(content: &str) -> String {
         if let Some(rest) = line.strip_prefix("```").or_else(|| line.strip_prefix("~~~")) {
             if in_code_block {
                 let body = code_buf.join("\n");
-                if code_lang.is_empty() {
+                if code_lang == "typst" {
+                    // Raw Typst passthrough — emit verbatim
+                    out.push_str(&body);
+                    out.push_str("\n\n");
+                    typst_block_count += 1;
+                } else if code_lang.is_empty() {
                     out.push_str(&format!("```\n{body}\n```\n"));
                 } else {
                     out.push_str(&format!("```{}\n{body}\n```\n", code_lang));
@@ -276,7 +284,13 @@ pub fn markdown_to_typst(content: &str) -> String {
             .or_else(|| line.strip_prefix("+ "))
         {
             if prev_blank { }
-            out.push_str(&format!("- {}\n", inline(rest)));
+            if let Some(content) = rest.strip_prefix("[ ] ") {
+                out.push_str(&format!("- ☐ {}\n", inline(content)));
+            } else if let Some(content) = rest.strip_prefix("[x] ").or_else(|| rest.strip_prefix("[X] ")) {
+                out.push_str(&format!("- ☑ {}\n", inline(content)));
+            } else {
+                out.push_str(&format!("- {}\n", inline(rest)));
+            }
             prev_blank = false;
             i += 1;
             continue;
@@ -307,6 +321,21 @@ pub fn markdown_to_typst(content: &str) -> String {
             continue;
         }
 
+        // ── HTML block detection (warn once) ─────────────────────────────────
+        if !html_warned {
+            let t = line.trim();
+            let looks_like_html = t.starts_with('<')
+                && t.len() > 1
+                && t.chars().nth(1).map(|c| c.is_alphabetic() || c == '/').unwrap_or(false);
+            if looks_like_html {
+                warnings.push(
+                    "HTML elements detected — they will appear as literal text in the PDF. \
+                     Use a ```typst block for raw Typst instead.".to_string(),
+                );
+                html_warned = true;
+            }
+        }
+
         // ── Regular paragraph line ────────────────────────────────────────────
         out.push_str(&inline(line));
         out.push('\n');
@@ -317,10 +346,24 @@ pub fn markdown_to_typst(content: &str) -> String {
     // Flush unclosed code block
     if in_code_block && !code_buf.is_empty() {
         let body = code_buf.join("\n");
-        out.push_str(&format!("```{}\n{body}\n```\n", code_lang));
+        if code_lang == "typst" {
+            out.push_str(&code_buf.join("\n"));
+            out.push_str("\n\n");
+            typst_block_count += 1;
+        } else {
+            out.push_str(&format!("```{}\n{body}\n```\n", code_lang));
+        }
     }
 
-    out
+    if typst_block_count > 0 {
+        warnings.push(format!(
+            "{} raw Typst block{} — rendered in PDF only, not visible in the editor.",
+            typst_block_count,
+            if typst_block_count == 1 { "" } else { "s" }
+        ));
+    }
+
+    (out, warnings)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -676,7 +719,7 @@ mod tests {
     use super::*;
 
     fn convert(md: &str) -> String {
-        markdown_to_typst(md)
+        markdown_to_typst(md).0
     }
 
     // ── Headings ──────────────────────────────────────────────────────────────

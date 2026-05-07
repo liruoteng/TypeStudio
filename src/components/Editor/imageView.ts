@@ -5,6 +5,16 @@ import { imageSchema } from "@milkdown/preset-commonmark";
 import { $view } from "@milkdown/utils";
 import type { Ctx } from "@milkdown/ctx";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEditorStore } from "../../stores/editorStore";
+
+function resolveImageSrc(src: string): string {
+  if (src.startsWith("/")) return convertFileSrc(src);
+  const workspacePath = useEditorStore.getState().workspacePath;
+  if (workspacePath) {
+    return convertFileSrc(`${workspacePath}/${src}`);
+  }
+  return src;
+}
 
 export class ImageView implements NodeView {
   dom: HTMLElement;
@@ -21,7 +31,7 @@ export class ImageView implements NodeView {
     figure.style.textAlign = "center";
 
     const img = document.createElement("img");
-    const finalSrc = src.startsWith("http") ? src : convertFileSrc(src);
+    const finalSrc = src.startsWith("http") ? src : resolveImageSrc(src);
     img.src = finalSrc;
     img.alt = alt || "";
     if (title) img.title = title;
@@ -48,7 +58,7 @@ export class ImageView implements NodeView {
     const src = node.attrs.src as string;
     const img = this.dom.querySelector("img") as HTMLImageElement;
     if (img) {
-      const finalSrc = src.startsWith("http") ? src : convertFileSrc(src);
+      const finalSrc = src.startsWith("http") ? src : resolveImageSrc(src);
       if (img.src !== finalSrc) img.src = finalSrc;
       img.alt = (node.attrs.alt as string) || "";
       const title = node.attrs.title as string;

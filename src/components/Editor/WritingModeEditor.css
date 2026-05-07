@@ -37,7 +37,7 @@
 .milkdown .ProseMirror {
     font-family: inherit;
     line-height: 1.8;
-    color: var(--text);
+    color: #ebebeb;
     outline: none;
     min-height: 400px;
     caret-color: var(--accent);
@@ -63,43 +63,46 @@
     font-family: inherit;
     font-weight: 700;
     line-height: 1.25;
-    color: var(--text);
     margin-bottom: 0.5em;
-}
-
-.milkdown .ProseMirror h1 {
-    font-size: 2.2em;
-    margin-top: 1.8em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     letter-spacing: -0.01em;
 }
 
+.milkdown .ProseMirror h1 {
+    font-size: 2.4rem;
+    margin-top: 1.8em;
+}
+
 .milkdown .ProseMirror h2 {
-    font-size: 1.85em;
+    font-size: 2rem;
     margin-top: 1.6em;
 }
 
 .milkdown .ProseMirror h3 {
-    font-size: 1.5em;
+    font-size: 1.65rem;
     margin-top: 1.4em;
 }
 
 .milkdown .ProseMirror h4 {
-    font-size: 1.25em;
+    font-size: 1.4rem;
     margin-top: 1.2em;
 }
 
 .milkdown .ProseMirror h5 {
-    font-size: 1.1em;
+    font-size: 1.25rem;
     margin-top: 1em;
 }
 
 .milkdown .ProseMirror h6 {
-    font-size: 1.05em;
+    font-size: 1.1rem;
     margin-top: 0.8em;
 }
 
 .milkdown .ProseMirror p {
     margin: 0 0 1em;
+    line-height: 1.8;
 }
 
 .milkdown .ProseMirror blockquote {
@@ -131,7 +134,51 @@
 }
 
 .milkdown .ProseMirror li {
-    margin: 0.35em 0;
+    margin: 0;
+    line-height: 1;
+}
+
+.milkdown .ProseMirror li[data-item-type="task"] {
+    list-style: none;
+    margin-left: -1.8em;
+    padding-left: calc(1.8em + 4px);
+    position: relative;
+}
+
+.milkdown .ProseMirror li[data-item-type="task"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.1em;
+    width: 1em;
+    height: 1em;
+    border: 1.5px solid var(--text);
+    border-radius: 3px;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0.25em;
+    width: 0.35em;
+    height: 0.6em;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    cursor: pointer;
+}
+
+.milkdown .ProseMirror li[data-item-type="task"] ul,
+.milkdown .ProseMirror li[data-item-type="task"] ol {
+    padding-left: 1.8em;
 }
 
 /* ── Inline ─────────────────────────────────────────────────────────────────── */
@@ -163,74 +210,82 @@
 
 .code-block-container {
     margin: 1.2em 0;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    position: relative;
+    border-radius: 12px;
     overflow: hidden;
-    background: var(--bg-surface);
 }
 
-.code-block-toolbar {
+.code-block-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: var(--bg-hover);
-    border-bottom: 1px solid var(--border);
-    user-select: none;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
 }
 
-.code-block-lang-label {
-    font-size: 0.78em;
-    color: var(--text-muted);
-    white-space: nowrap;
+.code-block-container:hover .code-block-actions {
+    opacity: 1;
 }
 
 .code-block-lang-select {
-    font-size: 0.78em;
-    padding: 2px 6px;
-    border: 1px solid var(--border);
+    font-size: 0.72em;
+    padding: 1px 4px;
+    border: none;
     border-radius: 4px;
-    background: var(--bg-surface);
-    color: var(--text);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
     outline: none;
     cursor: pointer;
     font-family: "JetBrains Mono", "Fira Code", monospace;
+    opacity: 0.7;
+    transition: opacity 0.15s;
 }
 
-.code-block-spacer {
-    flex: 1;
+.code-block-lang-select:hover {
+    opacity: 1;
 }
 
 .code-block-copy-btn {
-    font-size: 0.78em;
-    padding: 2px 10px;
-    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
     border-radius: 4px;
-    background: var(--bg-surface);
-    color: var(--text);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: opacity 0.15s;
+    opacity: 0.7;
+    line-height: 0;
 }
 
 .code-block-copy-btn:hover {
-    background: var(--bg-hover);
+    opacity: 1;
 }
 
 .code-block-container pre {
-    padding: 16px 20px;
+    padding: 24px 20px;
     overflow-x: auto;
     margin: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
+    white-space: pre;
+    line-height: 1.5;
 }
 
-.code-block-container pre code {
+.milkdown .ProseMirror .code-block-container pre code {
     font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
-    font-size: 0.82em;
-    background: none;
+    font-size: 0.85rem;
+    line-height: 1.5;
     padding: 0;
+    margin: 0;
     color: inherit;
+    background: none !important;
+    border-radius: 0;
 }
 
 
@@ -255,6 +310,11 @@
     font-weight: 600;
 }
 
+.milkdown .ProseMirror td p,
+.milkdown .ProseMirror th p {
+    margin: 0;
+}
+
 /* ── Selection ──────────────────────────────────────────────────────────────── */
 
 .milkdown .ProseMirror ::selection {
@@ -264,17 +324,8 @@
 /* ── Light theme (claude) overrides ────────────────────────────────────────── */
 
 [data-theme="claude"] .milkdown .ProseMirror {
-    color: var(--text);
+    color: #3b3b3b;
     caret-color: var(--accent);
-}
-
-[data-theme="claude"] .milkdown .ProseMirror h1,
-[data-theme="claude"] .milkdown .ProseMirror h2,
-[data-theme="claude"] .milkdown .ProseMirror h3,
-[data-theme="claude"] .milkdown .ProseMirror h4,
-[data-theme="claude"] .milkdown .ProseMirror h5,
-[data-theme="claude"] .milkdown .ProseMirror h6 {
-    color: var(--text);
 }
 
 [data-theme="claude"] .milkdown .ProseMirror code {
@@ -583,17 +634,17 @@
     vertical-align: baseline;
 }
 
-/* ── Prism syntax highlighting overrides ────────────────────────────────────── */
+/* ── Prism syntax highlighting overrides (Everforest) ───────────────────────── */
 
 .code-block-container pre code .token.comment,
 .code-block-container pre code .token.prolog,
 .code-block-container pre code .token.doctype,
 .code-block-container pre code .token.cdata {
-    color: #8b949e;
+    color: #859289;
 }
 
 .code-block-container pre code .token.punctuation {
-    color: #c9d1d9;
+    color: #9aa79d;
 }
 
 .code-block-container pre code .token.property,
@@ -603,7 +654,7 @@
 .code-block-container pre code .token.constant,
 .code-block-container pre code .token.symbol,
 .code-block-container pre code .token.deleted {
-    color: #79c0ff;
+    color: #e69875;
 }
 
 .code-block-container pre code .token.selector,
@@ -612,7 +663,7 @@
 .code-block-container pre code .token.char,
 .code-block-container pre code .token.builtin,
 .code-block-container pre code .token.inserted {
-    color: #a5d6ff;
+    color: #a7c080;
 }
 
 .code-block-container pre code .token.operator,
@@ -620,36 +671,36 @@
 .code-block-container pre code .token.url,
 .code-block-container pre code .language-css .token.string,
 .code-block-container pre code .style .token.string {
-    color: #d2a8ff;
+    color: #83c092;
 }
 
 .code-block-container pre code .token.atrule,
 .code-block-container pre code .token.attr-value,
 .code-block-container pre code .token.keyword {
-    color: #ff7b72;
+    color: #e67e80;
 }
 
 .code-block-container pre code .token.function,
 .code-block-container pre code .token.class-name {
-    color: #d2a8ff;
+    color: #7fbbb3;
 }
 
 .code-block-container pre code .token.regex,
 .code-block-container pre code .token.important,
 .code-block-container pre code .token.variable {
-    color: #ffa657;
+    color: #d699b6;
 }
 
-/* Light theme prism overrides */
+/* Light theme prism overrides (Everforest light) */
 [data-theme="claude"] .code-block-container pre code .token.comment,
 [data-theme="claude"] .code-block-container pre code .token.prolog,
 [data-theme="claude"] .code-block-container pre code .token.doctype,
 [data-theme="claude"] .code-block-container pre code .token.cdata {
-    color: #6e7781;
+    color: #939f91;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.punctuation {
-    color: #24292f;
+    color: #879686;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.property,
@@ -659,7 +710,7 @@
 [data-theme="claude"] .code-block-container pre code .token.constant,
 [data-theme="claude"] .code-block-container pre code .token.symbol,
 [data-theme="claude"] .code-block-container pre code .token.deleted {
-    color: #0550ae;
+    color: #f57d26;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.selector,
@@ -668,7 +719,7 @@
 [data-theme="claude"] .code-block-container pre code .token.char,
 [data-theme="claude"] .code-block-container pre code .token.builtin,
 [data-theme="claude"] .code-block-container pre code .token.inserted {
-    color: #0a3069;
+    color: #899c40;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.operator,
@@ -676,24 +727,24 @@
 [data-theme="claude"] .code-block-container pre code .token.url,
 [data-theme="claude"] .code-block-container pre code .language-css .token.string,
 [data-theme="claude"] .code-block-container pre code .style .token.string {
-    color: #8250df;
+    color: #569d79;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.atrule,
 [data-theme="claude"] .code-block-container pre code .token.attr-value,
 [data-theme="claude"] .code-block-container pre code .token.keyword {
-    color: #cf222e;
+    color: #f85552;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.function,
 [data-theme="claude"] .code-block-container pre code .token.class-name {
-    color: #8250df;
+    color: #5a93a2;
 }
 
 [data-theme="claude"] .code-block-container pre code .token.regex,
 [data-theme="claude"] .code-block-container pre code .token.important,
 [data-theme="claude"] .code-block-container pre code .token.variable {
-    color: #953800;
+    color: #b87b9d;
 }
 
 /* ── Source mode ──────────────────────────────────────────────────────────────────── */

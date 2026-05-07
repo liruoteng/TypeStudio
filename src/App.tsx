@@ -74,6 +74,9 @@ export default function App() {
       const { setPreviewError } = useEditorStore.getState();
       setPreviewError(e.payload.message);
     });
+    const unlistenWarnings = listen<string[]>("converter-warnings", (e) => {
+      useEditorStore.getState().setConverterWarnings(e.payload);
+    });
     const unlisten3 = listen("menu:toggle-sidecar-preview", () => {
       const { useSidecarPreview, setUseSidecarPreview } = useEditorStore.getState();
       setUseSidecarPreview(!useSidecarPreview);
@@ -81,6 +84,7 @@ export default function App() {
     return () => {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
+      unlistenWarnings.then((f) => f());
       unlisten3.then((f) => f());
     };
   }, []);
