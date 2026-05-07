@@ -53,7 +53,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           URL="https://github.com/Myriad-Dreamin/tinymist/releases/download/${{ env.TINYMIST_VERSION }}/${{ matrix.tinymist_archive }}"
-          curl -L "$URL" | tar -xz -C src-tauri/binaries/ tinymist
+          curl -L "$URL" | tar -xz --strip-components=1 -C src-tauri/binaries/
           mv src-tauri/binaries/tinymist "src-tauri/binaries/tinymist-${{ matrix.target }}"
           chmod +x "src-tauri/binaries/tinymist-${{ matrix.target }}"
 
