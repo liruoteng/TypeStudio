@@ -88,6 +88,19 @@ function EditorSection() {
   const setMinimap = useEditorStore((s) => s.setEditorMinimap);
   const lineNumbers = useEditorStore((s) => s.editorLineNumbers);
   const setLineNumbers = useEditorStore((s) => s.setEditorLineNumbers);
+  const editorWidth = useEditorStore((s) => s.editorWidth);
+  const setEditorWidth = useEditorStore((s) => s.setEditorWidth);
+  const editorMdFont = useEditorStore((s) => s.editorMdFont);
+  const setEditorMdFont = useEditorStore((s) => s.setEditorMdFont);
+
+  const MD_EDITOR_FONTS = [
+    { label: "Source Serif 4", value: '"Source Serif 4", "Charter", "Georgia", "Times New Roman", serif' },
+    { label: "Roboto", value: '"Roboto", sans-serif' },
+    { label: "DM Sans", value: '"DM Sans", sans-serif' },
+    { label: "Open Sans", value: '"Open Sans", sans-serif' },
+    { label: "Lato", value: '"Lato", sans-serif' },
+  ] as const;
+
   return (
     <div>
       <h2>Editor</h2>
@@ -117,6 +130,23 @@ function EditorSection() {
       </Row>
       <Row label="Line numbers">
         <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} />
+      </Row>
+      <Row label="Editor width" hint="WYSIWYG page max-width, 480–1600 px">
+        <input
+          type="number"
+          min={480}
+          max={1600}
+          step={20}
+          value={editorWidth}
+          onChange={(e) => setEditorWidth(Number(e.target.value) || 960)}
+        />
+      </Row>
+      <Row label="Editor font" hint="Markdown WYSIWYG editor typeface">
+        <select value={editorMdFont} onChange={(e) => setEditorMdFont(e.target.value)}>
+          {MD_EDITOR_FONTS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
       </Row>
     </div>
   );

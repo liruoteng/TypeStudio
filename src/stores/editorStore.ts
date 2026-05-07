@@ -2,6 +2,23 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type { LspStatus } from "../components/Editor/lsp-client";
 
+// Tracks paths that were just written by the app so the FS watcher
+// can skip re-reading them (avoids redundant content update after save).
+const recentlyWritten = new Set<string>();
+const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function markPathJustWritten(path: string) {
+  recentlyWritten.add(path);
+  const existing = writeTimers.get(path);
+  if (existing) clearTimeout(existing);
+  writeTimers.set(path, setTimeout(() => {
+    recentlyWritten.delete(path);
+    writeTimers.delete(path);
+  }, 800));
+}
+export function isRecentlyWritten(path: string): boolean {
+  return recentlyWritten.has(path);
+}
+
 export interface AiMessage {
   role: "user" | "assistant";
   content: string;
@@ -124,6 +141,8 @@ interface EditorState {
   // Editor settings
   editorFontSize: number;
   setEditorFontSize: (size: number) => void;
+  editorMdFont: string;
+  setEditorMdFont: (v: string) => void;
   editorTabSize: number;
   setEditorTabSize: (n: number) => void;
   editorWordWrap: boolean;
@@ -132,6 +151,8 @@ interface EditorState {
   setEditorMinimap: (v: boolean) => void;
   editorLineNumbers: boolean;
   setEditorLineNumbers: (v: boolean) => void;
+  editorWidth: number;
+  setEditorWidth: (v: number) => void;
 
   // General settings
   confirmOnClose: boolean;
@@ -145,6 +166,10 @@ interface EditorState {
   // Writing mode
   writingMode: boolean;
   setWritingMode: (v: boolean) => void;
+
+  // Markdown source mode (raw textarea vs WYSIWYG)
+  mdSourceMode: boolean;
+  setMdSourceMode: (v: boolean) => void;
 
   // Reference papers (drop-zone library)
   references: Reference[];
@@ -191,7 +216,9 @@ interface EditorState {
 const PERSISTED_KEYS = [
   "theme",
   "editorFontSize",
+  "editorMdFont",
   "editorTabSize",
+  "editorWidth",
   "editorWordWrap",
   "editorMinimap",
   "editorLineNumbers",
@@ -421,6 +448,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ editorFontSize: Math.min(32, Math.max(8, size)) });
     schedulePersist(get);
   },
+  editorMdFont: '"Source Serif 4", "Charter", "Georgia", "Times New Roman", serif',
+  setEditorMdFont: (v) => { set({ editorMdFont: v }); schedulePersist(get); },
   editorTabSize: 2,
   setEditorTabSize: (n) => {
     set({ editorTabSize: Math.min(8, Math.max(1, Math.round(n))) });
@@ -432,6 +461,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setEditorMinimap: (v) => { set({ editorMinimap: v }); schedulePersist(get); },
   editorLineNumbers: true,
   setEditorLineNumbers: (v) => { set({ editorLineNumbers: v }); schedulePersist(get); },
+  editorWidth: 960,
+  setEditorWidth: (w) => {
+    set({ editorWidth: Math.min(1600, Math.max(480, w)) });
+    schedulePersist(get);
+  },
 
   confirmOnClose: true,
   setConfirmOnClose: (v) => { set({ confirmOnClose: v }); schedulePersist(get); },
@@ -449,10 +483,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const patch: Partial<EditorState> = {};
       if (typeof parsed.theme === "string") patch.theme = parsed.theme as AppTheme;
       if (typeof parsed.editorFontSize === "number") patch.editorFontSize = parsed.editorFontSize;
+      if (typeof parsed.editorMdFont === "string") patch.editorMdFont = parsed.editorMdFont;
       if (typeof parsed.editorTabSize === "number") patch.editorTabSize = parsed.editorTabSize;
       if (typeof parsed.editorWordWrap === "boolean") patch.editorWordWrap = parsed.editorWordWrap;
       if (typeof parsed.editorMinimap === "boolean") patch.editorMinimap = parsed.editorMinimap;
       if (typeof parsed.editorLineNumbers === "boolean") patch.editorLineNumbers = parsed.editorLineNumbers;
+      if (typeof parsed.editorWidth === "number") patch.editorWidth = parsed.editorWidth;
       if (typeof parsed.useSidecarPreview === "boolean") patch.useSidecarPreview = parsed.useSidecarPreview;
       if (typeof parsed.defaultPreviewZoom === "number") {
         patch.defaultPreviewZoom = parsed.defaultPreviewZoom;
@@ -481,6 +517,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   writingMode: false,
   setWritingMode: (v) => { set({ writingMode: v }); schedulePersist(get); },
+
+  mdSourceMode: false,
+  setMdSourceMode: (v) => set({ mdSourceMode: v }),
 
   references: [],
   addReference: (ref) => {

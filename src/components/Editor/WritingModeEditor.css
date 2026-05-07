@@ -15,7 +15,6 @@
 }
 
 .wme-page {
-    max-width: 720px;
     margin: 0 auto;
     padding: 0 48px;
 }
@@ -36,7 +35,7 @@
 }
 
 .milkdown .ProseMirror {
-    font-family: "Source Serif 4", "Charter", "Georgia", "Times New Roman", serif;
+    font-family: inherit;
     line-height: 1.8;
     color: var(--text);
     outline: none;
@@ -61,7 +60,7 @@
 .milkdown .ProseMirror h4,
 .milkdown .ProseMirror h5,
 .milkdown .ProseMirror h6 {
-    font-family: "Source Serif 4", "Charter", "Georgia", serif;
+    font-family: inherit;
     font-weight: 700;
     line-height: 1.25;
     color: var(--text);
@@ -75,29 +74,28 @@
 }
 
 .milkdown .ProseMirror h2 {
-    font-size: 1.7em;
+    font-size: 1.85em;
     margin-top: 1.6em;
 }
 
 .milkdown .ProseMirror h3 {
-    font-size: 1.35em;
+    font-size: 1.5em;
     margin-top: 1.4em;
 }
 
 .milkdown .ProseMirror h4 {
-    font-size: 1.15em;
+    font-size: 1.25em;
     margin-top: 1.2em;
 }
 
 .milkdown .ProseMirror h5 {
-    font-size: 1em;
+    font-size: 1.1em;
     margin-top: 1em;
 }
 
 .milkdown .ProseMirror h6 {
-    font-size: 0.9em;
+    font-size: 1.05em;
     margin-top: 0.8em;
-    color: var(--text-muted);
 }
 
 .milkdown .ProseMirror p {
@@ -260,7 +258,7 @@
 /* ── Selection ──────────────────────────────────────────────────────────────── */
 
 .milkdown .ProseMirror ::selection {
-    background: rgba(139, 92, 246, 0.2);
+    background: rgba(225, 163, 111, 0.2);
 }
 
 /* ── Light theme (claude) overrides ────────────────────────────────────────── */
@@ -696,4 +694,35 @@
 [data-theme="claude"] .code-block-container pre code .token.important,
 [data-theme="claude"] .code-block-container pre code .token.variable {
     color: #953800;
+}
+
+/* ── Source mode ──────────────────────────────────────────────────────────────────── */
+
+.wme-source-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0;
+    height: 100%;
+}
+
+.wme-source-textarea {
+    width: 100%;
+    min-height: 400px;
+    padding: 0 24px;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    resize: vertical;
+    outline: none;
+    tab-size: 2;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+[data-theme="claude"] .wme-source-textarea {
+    color: var(--text);
 }

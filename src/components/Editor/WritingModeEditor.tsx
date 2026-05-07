@@ -316,9 +316,12 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
         setCiteQuery(null);
     }, [getEditor]);
 
+    const editorWidth = useEditorStore((s) => s.editorWidth);
+    const editorMdFont = useEditorStore((s) => s.editorMdFont);
+
     return (
         <div className="wme-scroll" ref={editorContainerRef}>
-            <div className="wme-page" style={{ fontSize }}>
+            <div className="wme-page" style={{ fontSize, maxWidth: editorWidth, fontFamily: editorMdFont }}>
                 {frontmatterRef.current && (
                     <FrontmatterPanel raw={frontmatterRef.current} />
                 )}

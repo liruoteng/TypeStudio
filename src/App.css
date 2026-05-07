@@ -14,7 +14,7 @@
   --bg-elevated: #1f1f23;
   --bg-toolbar: #18181b;
   --bg-hover: #27272a;
-  --bg-active-item: rgba(139, 92, 246, 0.12);
+  --bg-active-item: rgba(225, 163, 111, 0.12);
   --bg-active-tab: #121214;
   --bg-preview: #18181b;
   --bg-btn-hover: #27272a;
@@ -32,24 +32,24 @@
   --text-header: #d4d4d8;
   --text-tree: #c4c4c8;
 
-  --accent: #8b5cf6;
-  --accent-bright: #a78bfa;
-  --accent-btn: #7c3aed;
-  --accent-btn-hover: #6d28d9;
-  --accent-tab-bar: #8b5cf6;
+  --accent: #E1A36F;
+  --accent-bright: #EDB88F;
+  --accent-btn: #D4945E;
+  --accent-btn-hover: #C8854F;
+  --accent-tab-bar: #E1A36F;
 
   --status-bg: #18181b;
   --status-text: #a1a1aa;
 
   --dirty: #f59e0b;
 
-  --icon-typst: #a78bfa;
+  --icon-typst: #EDB88F;
   --icon-bib: #dcdcaa;
   --icon-dir: #e8b84b;
 
   --spinner-track: #27272a;
-  --spinner-color: #a78bfa;
-  --reload-gradient: linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed);
+  --spinner-color: #EDB88F;
+  --reload-gradient: linear-gradient(90deg, #D4945E, #EDB88F, #D4945E);
 
   --scrollbar-thumb: #3f3f46;
 }
@@ -61,7 +61,7 @@
   --bg-elevated: #f4f4f5;
   --bg-toolbar: #ffffff;
   --bg-hover: #f4f4f5;
-  --bg-active-item: rgba(139, 92, 246, 0.08);
+  --bg-active-item: rgba(212, 148, 94, 0.08);
   --bg-active-tab: #ffffff;
   --bg-preview: #fafafa;
   --bg-btn-hover: #f4f4f5;
@@ -79,24 +79,24 @@
   --text-header: #3f3f46;
   --text-tree: #52525b;
 
-  --accent: #7c3aed;
-  --accent-bright: #8b5cf6;
+  --accent: #D4945E;
+  --accent-bright: #E1A36F;
   --accent-btn: #18181b;
   --accent-btn-hover: #27272a;
-  --accent-tab-bar: #7c3aed;
+  --accent-tab-bar: #D4945E;
 
   --status-bg: #fafafa;
   --status-text: #71717a;
 
-  --dirty: #f59e0b;
+  --dirty: #d97706;
 
-  --icon-typst: #7c3aed;
-  --icon-bib: #c47a15;
-  --icon-dir: #d97706;
+  --icon-typst: #D4945E;
+  --icon-bib: #b45309;
+  --icon-dir: #b45309;
 
   --spinner-track: #e4e4e7;
-  --spinner-color: #7c3aed;
-  --reload-gradient: linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed);
+  --spinner-color: #D4945E;
+  --reload-gradient: linear-gradient(90deg, #C8854F, #E1A36F, #C8854F);
 
   --scrollbar-thumb: #d4d4d8;
 }
@@ -817,39 +817,41 @@
   color: var(--text-muted);
 }
 
-/* ── Editor mode badge (shown in Editor panel header) ─────────────────────── */
-.editor-mode-badge {
-  font-size: 0.75rem;
+/* ── Markdown source toggle pill (Apple style, shown in Editor panel header) ──── */
+.md-source-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 1px;
+  line-height: 1;
+}
+
+.md-source-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  text-transform: capitalize;
-  padding: 3px 8px;
-  border-radius: 6px;
-  opacity: 0.9;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.editor-mode-badge--writing {
-  background: rgba(139, 92, 246, 0.14);
-  color: #c4b5fd;
-  border: 1px solid rgba(139, 92, 246, 0.25);
+.md-source-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 
-.editor-mode-badge--typst {
-  background: rgba(34, 197, 94, 0.12);
-  color: #86efac;
-  border: 1px solid rgba(34, 197, 94, 0.2);
-}
-
-[data-theme="claude"] .editor-mode-badge--writing {
-  background: rgba(124, 58, 237, 0.1);
-  color: #6d28d9;
-  border-color: rgba(124, 58, 237, 0.2);
-}
-
-[data-theme="claude"] .editor-mode-badge--typst {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
-  border-color: rgba(22, 163, 74, 0.18);
+.md-source-toggle-btn:not(.active):hover {
+  color: var(--text);
 }
 
 /* ── Dialog overlay ───────────────────────────────────────────────────────── */

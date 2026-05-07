@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource/roboto";
+@import "@fontsource/dm-sans";
+@import "@fontsource/open-sans";
+@import "@fontsource/lato";
 
 @custom-variant dark (&:is(.dark *));
 

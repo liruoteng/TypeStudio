@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEditorStore, FileEntry } from "../../stores/editorStore";
+import { useEditorStore, FileEntry, isRecentlyWritten } from "../../stores/editorStore";
 import { ContextMenu, type ContextMenuItem } from "../Layout/ContextMenu";
 import "./FileTree.css";
 
@@ -512,23 +512,94 @@ function FileTree({ onOpenFolder }, ref) {
     }, 1600);
   }, []);
 
+  const bumpRefresh = useCallback((dir: string) => {
+    setRefreshVersions((r) => ({ ...r, [dir]: (r[dir] ?? 0) + 1 }));
+  }, []);
+
+  const bumpRefreshRef = useRef(bumpRefresh);
+  bumpRefreshRef.current = bumpRefresh;
+
   // Auto-sync: watch workspace for external file system changes
   useEffect(() => {
     if (!workspacePath) return;
     let stopFn: (() => void) | null = null;
+    let mounted = true;
+    const bump = bumpRefreshRef.current;
+
     import("@tauri-apps/plugin-fs").then(({ watch }) => {
+      if (!mounted) return;
       watch(
         workspacePath,
-        () => bumpRefresh(workspacePath),
+        (event) => {
+          const paths = event.paths;
+          const rawType = event.type;
+          const isCreate = typeof rawType === "object" && "create" in rawType;
+          const isModify = typeof rawType === "object" && "modify" in rawType;
+          const isRemove = typeof rawType === "object" && "remove" in rawType;
+          const isAny = rawType === "any";
+
+          for (const p of paths) {
+            if (!p.startsWith(workspacePath)) continue;
+
+            if (isRemove) {
+              const store = useEditorStore.getState();
+              const tab = store.tabs.find((t) => t.path === p);
+              if (tab && !tab.isDirty) {
+                store.closeTab(p);
+              }
+              bump(parentOf(p));
+              continue;
+            }
+
+            if (isCreate) {
+              bump(parentOf(p));
+              continue;
+            }
+
+            if (isModify || isAny) {
+              const store = useEditorStore.getState();
+              const tab = store.tabs.find((t) => t.path === p);
+              if (!tab) {
+                if (isAny) bump(parentOf(p));
+                continue;
+              }
+              if (tab.isDirty || tab.isTemp || isRecentlyWritten(p)) continue;
+
+              invoke<string>("read_file", { path: p })
+                .then((content) => {
+                  const current = useEditorStore.getState();
+                  const currentTab = current.tabs.find((t) => t.path === p);
+                  if (currentTab && !currentTab.isDirty && content !== currentTab.content) {
+                    useEditorStore.setState((s) => ({
+                      tabs: s.tabs.map((t) =>
+                        t.path === p ? { ...t, content } : t
+                      ),
+                    }));
+                  }
+                })
+                .catch(() => {
+                  const store = useEditorStore.getState();
+                  const tab = store.tabs.find((t) => t.path === p);
+                  if (tab && !tab.isDirty) {
+                    store.closeTab(p);
+                  }
+                  bump(parentOf(p));
+                });
+              continue;
+            }
+
+            bump(parentOf(p));
+          }
+        },
         { recursive: true }
       ).then((stop) => { stopFn = stop; });
     });
-    return () => { stopFn?.(); };
-  }, [workspacePath]);
 
-  const bumpRefresh = useCallback((dir: string) => {
-    setRefreshVersions((r) => ({ ...r, [dir]: (r[dir] ?? 0) + 1 }));
-  }, []);
+    return () => {
+      mounted = false;
+      stopFn?.();
+    };
+  }, [workspacePath]);
 
   const moveNode = useCallback(async (src: string, destDir: string) => {
     if (!workspacePath) return;

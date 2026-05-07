@@ -10,6 +10,8 @@ import {
   Download,
   Minus,
   Menu,
+  FileText,
+  Code,
 } from "lucide-react";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
@@ -24,7 +26,7 @@ import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { SettingsDialog } from "./components/Settings/SettingsDialog";
 import { AIChatPanel } from "./components/AI/AIChatPanel";
 import { PDFViewerPanel } from "./components/PdfViewer/PDFViewerPanel";
-import { useEditorStore } from "./stores/editorStore";
+import { useEditorStore, markPathJustWritten } from "./stores/editorStore";
 import { usePreview, SaveEvent } from "./hooks/usePreview";
 import "./App.css";
 
@@ -34,6 +36,7 @@ export default function App() {
   const theme = useEditorStore((s) => s.theme);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const writingMode = useEditorStore((s) => s.writingMode);
+  const mdSourceMode = useEditorStore((s) => s.mdSourceMode);
   const isMdFile = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
   const activePanels = useEditorStore((s) => s.activePanels);
   const setActivePanels = useEditorStore((s) => s.setActivePanels);
@@ -209,6 +212,7 @@ export default function App() {
         });
         if (!destPath) return;
         await invoke("write_file", { path: destPath, contents: content });
+        markPathJustWritten(destPath);
         const name = destPath.split("/").pop() ?? destPath;
         const store = useEditorStore.getState();
         store.closeTab(path);
@@ -223,6 +227,7 @@ export default function App() {
     }
     try {
       await invoke("write_file", { path, contents: content });
+      markPathJustWritten(path);
       markTabClean(path);
       setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
     } catch (e) {
@@ -445,7 +450,7 @@ export default function App() {
               titleSuffixes={{ preview: <PreviewPageCount /> }}
               headerExtras={{
                 preview: <PreviewPanelControls onExportPdf={handleExportPdf} />,
-                editor: <EditorModeBadge />,
+                editor: isMdFile ? <MdSourceToggle /> : null,
                 ai: <AiHeaderControls />
               }}
               headerExtrasLeft={{
@@ -453,7 +458,7 @@ export default function App() {
               }}
               contents={{
                 ai: <AIChatPanel />,
-                editor: isMdFile ? (
+                editor: isMdFile && !mdSourceMode ? (
                   <WritingModeEditor
                     onSave={handleSave}
                     onSnapshot={handleSnapshot}
@@ -649,14 +654,26 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;
 
-const EditorModeBadge = memo(function EditorModeBadge() {
-  const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  if (!activeTabPath) return null;
-  const isMd = activeTabPath.endsWith(".md") || activeTabPath.endsWith(".markdown");
+const MdSourceToggle = memo(function MdSourceToggle() {
+  const mdSourceMode = useEditorStore((s) => s.mdSourceMode);
+  const setMdSourceMode = useEditorStore((s) => s.setMdSourceMode);
   return (
-    <span className={`editor-mode-badge editor-mode-badge--${isMd ? "writing" : "typst"}`}>
-      {isMd ? "Writing" : "Typst"}
-    </span>
+    <div className="md-source-toggle">
+      <button
+        className={`md-source-toggle-btn${!mdSourceMode ? " active" : ""}`}
+        onClick={() => setMdSourceMode(false)}
+        title="WYSIWYG mode"
+      >
+        <FileText size={13} />
+      </button>
+      <button
+        className={`md-source-toggle-btn${mdSourceMode ? " active" : ""}`}
+        onClick={() => setMdSourceMode(true)}
+        title="Source mode"
+      >
+        <Code size={13} />
+      </button>
+    </div>
   );
 });
 
