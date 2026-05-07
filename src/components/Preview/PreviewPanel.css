@@ -3,27 +3,24 @@
   flex-direction: row;
   height: 100%;
   min-height: 0;
-  background: var(--bg-preview);
+  background: var(--bg-base);
   overflow: hidden;
   position: relative;
 }
 
-/* Inner scroll area — sits next to the thumbnail strip when present.
-   This is the actual scroll container used for vertical paging and the
-   horizontal scroll used by zoom > 100%. */
+/* Inner scroll area */
 .preview-pages-scroll {
   flex: 1;
   min-width: 0;
   position: relative;
   overflow-y: scroll;
   overflow-x: auto;
-  /* Subtle "paper-on-desk" texture over the panel's base colour. */
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0) 60%),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0) 60%),
     repeating-linear-gradient(
       45deg,
-      rgba(255, 255, 255, 0.012) 0,
-      rgba(255, 255, 255, 0.012) 1px,
+      rgba(255, 255, 255, 0.008) 0,
+      rgba(255, 255, 255, 0.008) 1px,
       transparent 1px,
       transparent 6px
     );
@@ -31,11 +28,11 @@
 
 [data-theme="claude"] .preview-pages-scroll {
   background-image:
-    radial-gradient(circle at 50% 0%, rgba(0, 0, 0, 0.025) 0%, rgba(0, 0, 0, 0) 60%),
+    radial-gradient(circle at 50% 0%, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0) 60%),
     repeating-linear-gradient(
       45deg,
-      rgba(0, 0, 0, 0.014) 0,
-      rgba(0, 0, 0, 0.014) 1px,
+      rgba(0, 0, 0, 0.01) 0,
+      rgba(0, 0, 0, 0.01) 1px,
       transparent 1px,
       transparent 6px
     );
@@ -49,20 +46,20 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 13px;
-  gap: 8px;
+  font-size: 14px;
+  gap: 10px;
   text-align: center;
-  padding: 24px;
+  padding: 32px;
 }
 
 .preview-empty-icon,
 .preview-error-icon {
-  font-size: 40px;
+  font-size: 44px;
   margin-bottom: 8px;
 }
 
 .preview-empty-hint {
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.6;
 }
 
@@ -70,22 +67,22 @@
   color: #f87171;
   align-items: flex-start;
   justify-content: flex-start;
-  padding: 16px;
+  padding: 20px;
   overflow-y: auto;
 }
 .preview-error-icon {
   align-self: center;
 }
 .preview-error-text {
-  font-size: 11px;
+  font-size: 12px;
   font-family: "JetBrains Mono", "Cascadia Code", monospace;
   width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
   color: #fca5a5;
   background: var(--bg-base);
-  padding: 10px;
-  border-radius: 4px;
+  padding: 12px;
+  border-radius: 8px;
   margin-top: 8px;
   overflow-y: auto;
   max-height: 100%;
@@ -103,15 +100,12 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Thin progress bar shown during re-compile when pages already visible */
-.preview-reloading {
-  /* slight dim overlay on pages while recompiling */
-}
 .preview-reload-indicator {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 2px;
   background: var(--reload-gradient);
   background-size: 200% 100%;
   animation: progress-slide 1.2s linear infinite;
@@ -136,51 +130,40 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 16px 0;
-  padding: 6px 10px;
-  font-size: 11px;
+  margin: 10px 20px 0;
+  padding: 8px 12px;
+  font-size: 12px;
   color: #fca5a5;
-  background: rgba(127, 29, 29, 0.35);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
+  background: rgba(127, 29, 29, 0.3);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
   cursor: help;
 }
 .preview-error-banner-icon {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* ── Page list ───────────────────────────────────────────────────────────── */
-/* Inner zoomable wrapper — direct child of .preview-pages-scroll. */
 .preview-pages-content {
   display: flex;
   flex-direction: column;
-  /* flex-start so when zoomed pages exceed the scroll container width, the
-     left edge stays at scrollLeft = 0 (always reachable). Pages are still
-     visually centred via margin: auto on .preview-page. */
   align-items: flex-start;
-  padding: 28px 24px 40px;
-  gap: 24px;
+  padding: 32px 28px 48px;
+  gap: 28px;
   min-width: 100%;
 }
 
 .preview-page {
   position: relative;
-  /* Stronger, more layered shadow for the "paper on a desk" feel. */
   box-shadow:
-    rgba(0, 0, 0, 0.18) 0 24px 38px -16px,
-    rgba(0, 0, 0, 0.10) 0 8px 14px -8px,
-    rgba(0, 0, 0, 0.06) 0 2px 3px;
-  border-radius: 3px;
+    rgba(0, 0, 0, 0.15) 0 24px 38px -16px,
+    rgba(0, 0, 0, 0.08) 0 8px 14px -8px,
+    rgba(0, 0, 0, 0.04) 0 2px 3px;
+  border-radius: 4px;
   background: #ffffff;
   flex-shrink: 0;
-  /* Scale page width with zoom.
-     min(100%, 700px) = natural width at zoom 1 (fills panel up to 700 px).
-     Multiplying by --preview-zoom makes pages grow beyond the panel at
-     zoom > 1 (triggering horizontal scroll) and shrink at zoom < 1. */
   width: calc(min(100%, 700px) * var(--preview-zoom, 1));
-  /* Centre the page when it fits; when it overflows the container the auto
-     margins collapse to 0 and the left edge stays at the padding boundary. */
   margin-left: auto;
   margin-right: auto;
   transition: box-shadow 0.18s ease;
@@ -188,9 +171,9 @@
 
 .preview-page:hover {
   box-shadow:
-    rgba(0, 0, 0, 0.22) 0 30px 44px -18px,
-    rgba(0, 0, 0, 0.12) 0 10px 16px -10px,
-    rgba(0, 0, 0, 0.07) 0 2px 3px;
+    rgba(0, 0, 0, 0.2) 0 30px 44px -18px,
+    rgba(0, 0, 0, 0.1) 0 10px 16px -10px,
+    rgba(0, 0, 0, 0.05) 0 2px 3px;
 }
 
 .preview-page-inner {
@@ -214,13 +197,13 @@
 /* Page number badge */
 .preview-page-number {
   position: absolute;
-  bottom: 6px;
-  right: 8px;
-  font-size: 10px;
+  bottom: 8px;
+  right: 10px;
+  font-size: 11px;
   color: #888;
   background: rgba(255, 255, 255, 0.7);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   pointer-events: none;
   user-select: none;
 }
@@ -228,51 +211,50 @@
 /* ── Thumbnail strip (left column, scrolls independently) ─────────────── */
 .preview-thumbs {
   flex-shrink: 0;
-  width: 88px;
+  width: 92px;
   height: 100%;
   overflow-y: auto;
-  padding: 12px 6px;
+  padding: 14px 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.22);
-  border-right: 1px solid var(--border-dim);
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border-right: 1px solid var(--border);
 }
 
 [data-theme="claude"] .preview-thumbs {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .preview-thumb {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 4px;
+  gap: 4px;
+  padding: 5px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s;
 }
-.preview-thumb:hover { background: rgba(255, 255, 255, 0.06); }
-[data-theme="claude"] .preview-thumb:hover { background: rgba(0, 0, 0, 0.05); }
+.preview-thumb:hover { background: rgba(255, 255, 255, 0.05); }
+[data-theme="claude"] .preview-thumb:hover { background: rgba(0, 0, 0, 0.04); }
 .preview-thumb--active { background: var(--bg-active-item); }
 
 .preview-thumb-page {
   width: 100%;
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   overflow: hidden;
   display: block;
-  /* When the SVG hasn't loaded yet aspectRatio comes from the JS prop. */
 }
 .preview-thumb--active .preview-thumb-page {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.18);
 }
 
 .preview-thumb-inner {
@@ -284,41 +266,38 @@
   display: block;
   width: 100% !important;
   height: 100% !important;
-  /* Disable text events inside thumbnails — they're for navigation only. */
   pointer-events: none;
 }
 
 .preview-thumb-num {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 .preview-thumb--active .preview-thumb-num { color: var(--accent-bright); font-weight: 600; }
 
 /* ── Floating zoom controls ────────────────────────────────────────────── */
-/* Sticky positioning inside .preview-pages-scroll keeps the controls
-   pinned to the bottom-right of the visible viewport while pages scroll. */
 .preview-pages-scroll .preview-zoom-floating {
   position: sticky;
-  bottom: 16px;
+  bottom: 20px;
   margin-left: auto;
-  margin-right: 16px;
-  margin-top: -42px;          /* sit on top of the last page's bottom margin */
+  margin-right: 20px;
+  margin-top: -46px;
   width: max-content;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px;
+  padding: 5px;
   border-radius: 999px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   z-index: 5;
 }
 
 .preview-floating-btn {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: transparent;
   border: none;
@@ -337,10 +316,10 @@
 }
 
 .preview-floating-pct {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  padding: 0 8px;
-  min-width: 40px;
+  padding: 0 10px;
+  min-width: 44px;
   text-align: center;
   cursor: pointer;
   user-select: none;

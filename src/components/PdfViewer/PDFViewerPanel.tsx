@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./PDFViewerPanel.css";
 
@@ -190,7 +191,7 @@ export function PDFViewerPanel() {
           disabled={currentPage <= 1}
           title="Previous page"
         >
-          ‹
+          <ChevronLeft size={14} />
         </button>
         <input
           className="pdf-page-input"
@@ -210,7 +211,7 @@ export function PDFViewerPanel() {
           disabled={currentPage >= numPages}
           title="Next page"
         >
-          ›
+          <ChevronRight size={14} />
         </button>
 
         <span className="pdf-toolbar-sep" />
@@ -221,7 +222,7 @@ export function PDFViewerPanel() {
           disabled={scale <= ZOOM_MIN}
           title="Zoom out"
         >
-          −
+          <Minus size={14} />
         </button>
         <span className="pdf-zoom-label">{Math.round(scale * 100)}%</span>
         <button
@@ -230,7 +231,7 @@ export function PDFViewerPanel() {
           disabled={scale >= ZOOM_MAX}
           title="Zoom in"
         >
-          +
+          <Plus size={14} />
         </button>
 
         <span className="pdf-filename" title={activePdfPath}>
@@ -264,7 +265,7 @@ export function PDFViewerPanel() {
           <div className="pdf-citation-header">
             <span>Citation [{popup.key}]</span>
             <button className="pdf-popup-close" onClick={() => setPopup(null)}>
-              ×
+              <X size={12} />
             </button>
           </div>
           {popup.refText ? (

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { X } from "lucide-react";
 import * as Diff from "diff";
 import "./HistoryPanel.css";
 
@@ -134,7 +135,7 @@ export function HistoryPanel({ filePath, onRestore, onClose }: HistoryPanelProps
               Compare
             </button>
           )}
-          <button className="history-close-btn" onClick={onClose}>✕</button>
+          <button className="history-close-btn" onClick={onClose}><X size={12} /></button>
         </div>
       </div>
 

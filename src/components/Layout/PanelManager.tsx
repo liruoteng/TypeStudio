@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, type RefObject, type ReactNode } from "react";
+import { X, Check } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./PanelManager.css";
 
@@ -61,7 +62,7 @@ interface PanelProps {
 
 function Panel({ id, idx, label, isTopRight, isSideBySide, titleSuffix, headerExtra, headerExtraLeft,
   children, style, onClose, onDragStart, onDragOver, onDrop, onDragEnd }: PanelProps) {
-  const diffMode = id === "diff" ? (isSideBySide ? "sbs" : "inline") : undefined;
+  const diffMode = id === "diff" ? (isSideBySide ? "side by side" : "inline") : undefined;
   return (
     <div
       className="pm-panel"
@@ -79,36 +80,22 @@ function Panel({ id, idx, label, isTopRight, isSideBySide, titleSuffix, headerEx
         onDragEnd={onDragEnd}
       >
         <div className="pm-panel-header-left">
-          <GripIcon />
           {headerExtraLeft}
         </div>
         <span className="pm-panel-title">
           {label}
-          {diffMode && <span className="pm-panel-subtitle">{diffMode === "sbs" ? " — side by side" : " — inline"}</span>}
+          {diffMode && <span className="pm-panel-subtitle">{diffMode}</span>}
           {titleSuffix}
         </span>
         <div className="pm-panel-header-right">
           {headerExtra}
           <button className="pm-panel-close" onClick={() => onClose(idx)} title={`Close ${label}`} aria-label={`Close ${label} panel`}>
-            ✕
+            <X size={12} />
           </button>
         </div>
       </div>
       <div className="pm-panel-body">{children}</div>
     </div>
-  );
-}
-
-function GripIcon() {
-  return (
-    <svg className="pm-grip" width="10" height="14" viewBox="0 0 10 14" fill="none" aria-hidden>
-      <circle cx="3" cy="3"  r="1.2" fill="currentColor" />
-      <circle cx="7" cy="3"  r="1.2" fill="currentColor" />
-      <circle cx="3" cy="7"  r="1.2" fill="currentColor" />
-      <circle cx="7" cy="7"  r="1.2" fill="currentColor" />
-      <circle cx="3" cy="11" r="1.2" fill="currentColor" />
-      <circle cx="7" cy="11" r="1.2" fill="currentColor" />
-    </svg>
   );
 }
 
@@ -141,7 +128,7 @@ export function PanelSelector({ activePanels, onToggle, onClose }: PanelSelector
             onClick={() => { onToggle(p.id); onClose(); }}
           >
             <span className={`pm-selector-check${active ? " pm-selector-check--on" : ""}`}>
-              {active && "✓"}
+              {active && <Check size={10} />}
             </span>
             <span className="pm-selector-info">
               <span className="pm-selector-label">{p.label}</span>

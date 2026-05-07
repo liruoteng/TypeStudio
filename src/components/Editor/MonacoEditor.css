@@ -12,26 +12,26 @@
 }
 
 .editor-empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.3;
+  font-size: 52px;
+  margin-bottom: 20px;
+  opacity: 0.25;
   color: var(--accent-bright);
 }
 
 .editor-empty-message p {
-  margin: 4px 0;
-  font-size: 14px;
+  margin: 6px 0;
+  font-size: 15px;
 }
 
 .editor-empty-hint {
-  font-size: 12px !important;
+  font-size: 13px !important;
   opacity: 0.6;
 }
 
 .editor-empty-new-btn {
-  margin-top: 16px;
-  padding: 7px 20px;
-  font-size: 13px;
+  margin-top: 20px;
+  padding: 8px 24px;
+  font-size: 14px;
   font-weight: 500;
   font-family: inherit;
   background: var(--accent-btn);
@@ -46,10 +46,7 @@
 }
 
 /* ── Diagnostic squigglies ────────────────────────────────────────────────
-   Soften Monaco's default wavy underlines: slightly transparent so they
-   read as a hint rather than a hard alarm, with a faint tinted background
-   on the offending range to make the region (not just the underline)
-   discoverable on hover. */
+   Soften Monaco's default wavy underlines */
 .monaco-editor .squiggly-error {
   opacity: 0.75;
 }
@@ -61,9 +58,6 @@
   opacity: 0.6;
 }
 
-/* Subtle range tint — only visible on hover so the editor stays calm
-   while typing. Targets the inline decoration Monaco applies to the
-   diagnostic range. */
 .monaco-editor .view-line:hover .squiggly-error {
   opacity: 1;
 }
@@ -71,19 +65,16 @@
   opacity: 0.95;
 }
 
-/* Writing mode inline decorations
-   NOTE: No font-size changes — Monaco enforces a uniform line height per
-   editor font-size setting, so larger font-size on a decoration clips the line. */
-
-/* Syntax markers: invisible off the cursor line, dimly visible on it */
+/* Writing mode inline decorations */
 .wm-marker        { opacity: 0 !important; }
 .wm-marker-active { opacity: 0.35 !important; }
 
-/* Headings: font-size is safe because writing mode sets lineHeight to ~2.2x
-   the editor font-size, giving headings enough room at these ratios. */
 .wm-h1 { font-size: 1.5em !important; font-weight: 800 !important; letter-spacing: 0.01em !important; }
 .wm-h2 { font-size: 1.25em !important; font-weight: 700 !important; }
 .wm-h3 { font-size: 1.1em !important; font-weight: 600 !important; }
+.wm-h4 { font-size: 1.0em !important; font-weight: 600 !important; }
+.wm-h5 { font-size: 0.95em !important; font-weight: 600 !important; }
+.wm-h6 { font-size: 0.9em !important; font-weight: 600 !important; }
 
 .wm-bold { font-weight: 700 !important; }
 .wm-italic { font-style: italic !important; }
@@ -100,9 +91,9 @@
 
 .wm-code {
   font-family: "JetBrains Mono", "Fira Code", monospace !important;
-  background: rgba(128, 128, 128, 0.15);
-  border-radius: 3px;
-  padding: 1px 3px;
+  background: rgba(128, 128, 128, 0.12);
+  border-radius: 4px;
+  padding: 1px 4px;
 }
 
 /* Writing mode container: center the content column */
@@ -113,6 +104,6 @@
   background: var(--bg-base);
 }
 .editor-writing-mode > * {
-  max-width: 740px;
+  max-width: 760px;
   width: 100%;
 }

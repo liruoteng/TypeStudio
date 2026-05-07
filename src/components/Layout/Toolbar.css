@@ -2,9 +2,8 @@
 .toolbar {
   display: flex;
   align-items: stretch;
-  height: 38px;
+  height: 42px;
   background: var(--bg-toolbar);
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -14,35 +13,26 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 0 6px;
+  padding: 0 8px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border-dim);
-  /* width is set inline to match sidebarWidth when sidebar is open */
+  border-right: 1px solid var(--border);
 }
 
 /* ── Explorer action buttons inside toolbar-left ─────────────────────────── */
 .toolbar-explorer-actions {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
 }
 
 /* Square icon buttons for the sidebar toolbar — same size/shape as the toggle */
 .toolbar-left .toolbar-btn-icon {
   padding: 0;
-  width: 26px;
+  width: 28px;
   border-color: transparent;
 }
 .toolbar-left .toolbar-btn-icon:hover:not(:disabled) {
   border-color: transparent;
-}
-
-.toolbar-file-icon {
-  stroke: currentColor;
-  stroke-width: 1.45;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
 }
 
 /* ── Center: tab strip ────────────────────────────────────────────────────── */
@@ -59,14 +49,15 @@
   height: 100%;
   background: transparent;
   border-bottom: none;
-  padding: 4px 4px 0;
-  gap: 2px;
+  padding: 5px 5px 0;
+  gap: 4px;
 }
 
 .toolbar-tabs .tab {
   height: 100%;
-  border-radius: 6px 6px 0 0;
+  border-radius: 8px 8px 0 0;
   border-bottom: none;
+  font-size: 13px;
 }
 
 .toolbar-tabs .tab.active {
@@ -79,6 +70,7 @@
 /* The blue top accent line on the active tab */
 .toolbar-tabs .tab.active::before {
   border-radius: 3px 3px 0 0;
+  height: 2.5px;
 }
 
 /* ── Right: action buttons ────────────────────────────────────────────────── */
@@ -86,9 +78,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 8px;
+  padding: 0 10px;
   flex-shrink: 0;
-  border-left: 1px solid var(--border-dim);
+  border-left: 1px solid var(--border);
 }
 
 /* ── Icon button (toolbar actions) ───────────────────────────────────────── */
@@ -96,7 +88,7 @@
   padding: 0 7px;
   font-size: 13px;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
@@ -104,7 +96,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
+  height: 28px;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .toolbar-btn-icon:hover:not(:disabled) {
@@ -127,6 +119,13 @@
   color: #ffffff;
 }
 
+.toolbar-btn-icon--text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
 .dirty-badge {
   color: var(--dirty);
   font-size: 14px;
@@ -134,13 +133,13 @@
 
 /* ── Legacy classes kept for compatibility ────────────────────────────────── */
 .toolbar-btn {
-  padding: 4px 12px;
+  padding: 5px 14px;
   background: transparent;
   border: 1px solid var(--border-btn);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   font-family: inherit;
   transition: background 0.12s;

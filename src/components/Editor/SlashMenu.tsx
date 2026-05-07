@@ -19,6 +19,9 @@ const COMMANDS: SlashCommand[] = [
   { id: "h1",       label: "Heading 1",      description: "Top-level heading",      category: "Structure", icon: "H1",  snippet: "= " },
   { id: "h2",       label: "Heading 2",      description: "Second-level heading",   category: "Structure", icon: "H2",  snippet: "== " },
   { id: "h3",       label: "Heading 3",      description: "Third-level heading",    category: "Structure", icon: "H3",  snippet: "=== " },
+  { id: "h4",       label: "Heading 4",      description: "Fourth-level heading",   category: "Structure", icon: "H4",  snippet: "==== " },
+  { id: "h5",       label: "Heading 5",      description: "Fifth-level heading",    category: "Structure", icon: "H5",  snippet: "===== " },
+  { id: "h6",       label: "Heading 6",      description: "Sixth-level heading",    category: "Structure", icon: "H6",  snippet: "====== " },
   { id: "bullet",   label: "Bullet List",    description: "Unordered list item",    category: "Structure", icon: "•",   snippet: "- " },
   { id: "numbered", label: "Numbered List",  description: "Ordered list item",      category: "Structure", icon: "1.",  snippet: "+ " },
   { id: "hr",       label: "Divider",        description: "Horizontal rule",        category: "Structure", icon: "—",   snippet: "#line(length: 100%)\n" },
@@ -35,7 +38,7 @@ const COMMANDS: SlashCommand[] = [
   { id: "math-block",  label: "Display Math",  description: "Block math expression",  category: "Math", icon: "∫", snippet: "$ x $", cursorOffset: 2, selectLength: 1 },
   // Advanced — land on the most likely thing to fill in first
   // #figure(\n  image(""),\n  caption: []\n)  → cursor between the image path quotes (offset 18)
-  { id: "figure",    label: "Figure",      description: "Image with caption", category: "Advanced", icon: "⊞", snippet: '#figure(\n  image(""),\n  caption: []\n)', cursorOffset: 18 },
+  { id: "figure",    label: "Figure",      description: "Image with caption", category: "Advanced", icon: "Fig", snippet: '#figure(\n  image(""),\n  caption: []\n)', cursorOffset: 18 },
   // #table(\n  columns: 3,\n  [], [], [],\n)  → select "3" so user can set column count (offset 19)
   { id: "table",     label: "Table",       description: "Table layout",       category: "Advanced", icon: "▦", snippet: "#table(\n  columns: 3,\n  [], [], [],\n)", cursorOffset: 19, selectLength: 1 },
   { id: "quote",     label: "Quote",       description: "Block quote",        category: "Advanced", icon: "❝", snippet: "#quote[text]",  cursorOffset: 7, selectLength: 4 },

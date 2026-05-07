@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "./PdfViewer.css";
@@ -115,7 +116,7 @@ export function PdfViewer({ pdfPath }: { pdfPath: string }) {
           disabled={currentPage <= 1}
           title="Previous page"
         >
-          ‹
+          <ChevronLeft size={14} />
         </button>
         <input
           className="pdf-page-input"
@@ -135,7 +136,7 @@ export function PdfViewer({ pdfPath }: { pdfPath: string }) {
           disabled={currentPage >= totalPages}
           title="Next page"
         >
-          ›
+          <ChevronRight size={14} />
         </button>
 
         <span className="pdf-toolbar-sep" />
@@ -147,7 +148,7 @@ export function PdfViewer({ pdfPath }: { pdfPath: string }) {
           disabled={zoom <= ZOOM_MIN}
           title="Zoom out"
         >
-          −
+          <Minus size={14} />
         </button>
         <span className="pdf-zoom-label">{Math.round(zoom * 100)}%</span>
         <button
@@ -156,7 +157,7 @@ export function PdfViewer({ pdfPath }: { pdfPath: string }) {
           disabled={zoom >= ZOOM_MAX}
           title="Zoom in"
         >
-          +
+          <Plus size={14} />
         </button>
 
         <span className="pdf-toolbar-sep" />

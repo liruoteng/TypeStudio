@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--bg-surface);
+  background: var(--bg-base);
   color: var(--text);
 }
 

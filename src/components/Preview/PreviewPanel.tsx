@@ -1,4 +1,5 @@
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { FileText, AlertTriangle, ArrowLeftRight, Maximize } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import { ContextMenu } from "../Layout/ContextMenu";
 import "./PreviewPanel.css";
@@ -263,7 +264,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
   if (activeTabPath && !activeTabPath.endsWith(".typ") && !activeTabPath.endsWith(".md") && !activeTabPath.endsWith(".markdown")) {
     return (
       <div ref={panelRef} className="preview-panel preview-empty">
-        <div className="preview-empty-icon">📄</div>
+        <div className="preview-empty-icon"><FileText size={44} /></div>
         <p>Preview not available</p>
         <p className="preview-empty-hint">Open a .typ or .md file to see a preview</p>
       </div>
@@ -276,7 +277,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
   if (error && pageCount === 0) {
     return (
       <div ref={panelRef} className="preview-panel preview-error">
-        <div className="preview-error-icon">⚠</div>
+        <div className="preview-error-icon"><AlertTriangle size={44} /></div>
         <pre className="preview-error-text">{error}</pre>
       </div>
     );
@@ -294,7 +295,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
   if (pageCount === 0) {
     return (
       <div ref={panelRef} className="preview-panel preview-empty">
-        <div className="preview-empty-icon">📄</div>
+        <div className="preview-empty-icon"><FileText size={44} /></div>
         <p>Preview will appear here</p>
         <p className="preview-empty-hint">Save a .typ or .md file to render it</p>
       </div>
@@ -329,7 +330,7 @@ export const PreviewPanel = memo(function PreviewPanel() {
         <div ref={panelRef} className="preview-pages-scroll">
           {error && (
             <div className="preview-error-banner" title={error}>
-              <span className="preview-error-banner-icon">⚠</span>
+              <span className="preview-error-banner-icon"><AlertTriangle size={13} /></span>
               <span>Syntax error — showing last successful preview</span>
             </div>
           )}
@@ -355,14 +356,14 @@ export const PreviewPanel = memo(function PreviewPanel() {
               onClick={fitToWidth}
               title="Fit page width to panel"
             >
-              ↔
+              <ArrowLeftRight size={14} />
             </button>
             <button
               className="preview-floating-btn"
               onClick={fitToPage}
               title="Fit whole page to panel"
             >
-              ⤢
+              <Maximize size={14} />
             </button>
             <span className="preview-floating-pct" title="Click to reset to 100%" onClick={() => setZoom(1)}>
               {Math.round(zoom * 100)}%

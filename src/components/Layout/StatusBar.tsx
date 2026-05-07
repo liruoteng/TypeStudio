@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useMonaco } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
+import {
+  Circle,
+  X,
+  AlertTriangle,
+  Clock,
+  Zap,
+  Pencil,
+  Minus,
+  Plus,
+  Type,
+} from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./StatusBar.css";
 
@@ -139,7 +150,7 @@ export function StatusBar({
           className={`lsp-indicator lsp-${lspStatus}`}
           title={`Tinymist LSP: ${lspStatus}`}
         >
-          ◉ Tinymist: {lspStatus}
+          <Circle size={8} fill="currentColor" /> Tinymist: {lspStatus}
         </span>
         {errorCount > 0 && (
           <button
@@ -147,7 +158,7 @@ export function StatusBar({
             onClick={() => jumpToFirst("error")}
             title={`${errorCount} error${errorCount === 1 ? "" : "s"} — click to jump (F8 / Shift+F8 to cycle)`}
           >
-            ✗ {errorCount}
+            <X size={10} /> {errorCount}
           </button>
         )}
         {warningCount > 0 && (
@@ -156,7 +167,7 @@ export function StatusBar({
             onClick={() => jumpToFirst("warning")}
             title={`${warningCount} warning${warningCount === 1 ? "" : "s"} — click to jump`}
           >
-            ⚠ {warningCount}
+            <AlertTriangle size={10} /> {warningCount}
           </button>
         )}
 
@@ -167,7 +178,7 @@ export function StatusBar({
           disabled={!activeTabPath}
           title="File history"
         >
-          ⏱
+          <Clock size={11} />
         </button>
 
         {/* Font size widget */}
@@ -191,7 +202,7 @@ export function StatusBar({
             title="Adjust font size"
             onClick={() => setShowFontMenu((v) => !v)}
           >
-            A {fontSize}
+            <Type size={11} /> {fontSize}
           </button>
           <button
             className="font-adj-btn"
@@ -199,7 +210,7 @@ export function StatusBar({
             onClick={() => setFontSize(fontSize - 1)}
             disabled={fontSize <= 8}
           >
-            −
+            <Minus size={10} />
           </button>
           <button
             className="font-adj-btn"
@@ -207,7 +218,7 @@ export function StatusBar({
             onClick={() => setFontSize(fontSize + 1)}
             disabled={fontSize >= 32}
           >
-            +
+            <Plus size={10} />
           </button>
         </div>
 
@@ -216,7 +227,7 @@ export function StatusBar({
       <div className="status-right">
         {editTimeLabel && (
           <span className="status-edit-time" title="Last edit time">
-            ✎ {editTimeLabel}
+            <Pencil size={11} /> {editTimeLabel}
           </span>
         )}
         {language && (
@@ -227,7 +238,7 @@ export function StatusBar({
         )}
         {lastCompileMs !== null && (
           <span className="status-compile-time" title="Last compile duration">
-            ⚡ {lastCompileMs < 1000
+            <Zap size={11} /> {lastCompileMs < 1000
               ? `${Math.round(lastCompileMs)}ms`
               : `${(lastCompileMs / 1000).toFixed(1)}s`}
           </span>

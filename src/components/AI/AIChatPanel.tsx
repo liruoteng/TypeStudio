@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { X, Option } from "lucide-react";
 import { useEditorStore, type AiMessage } from "../../stores/editorStore";
 import { prepareWithSegments, measureNaturalWidth } from "@chenglou/pretext";
 import "./AIChatPanel.css";
@@ -578,14 +579,14 @@ export function AIChatPanel() {
                         onClick={() => { forkChatSession(sess.id); setShowAiSessions(false); }}
                         title="Fork session"
                       >
-                        ⎇
+                        <Option size={12} />
                       </button>
                       <button
                         className="ai-session-action-btn ai-session-action-btn--delete"
                         onClick={() => deleteChatSession(sess.id)}
                         title="Delete session"
                       >
-                        ×
+                        <X size={12} />
                       </button>
                     </div>
                   </div>

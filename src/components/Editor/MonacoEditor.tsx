@@ -164,7 +164,7 @@ function computeWritingDecorations(
       // Headings: # H1  ## H2  etc.
       const hm = line.match(/^(#{1,6}) /);
       if (hm) {
-        const lvl = Math.min(hm[1].length, 3) as 1 | 2 | 3;
+        const lvl = Math.min(hm[1].length, 6) as 1 | 2 | 3 | 4 | 5 | 6;
         dim(decs, ln, 1, hm[1].length + 2, cursorLine);
         dec(decs, ln, hm[1].length + 2, line.length + 1, `wm-h${lvl}`);
         applyInlineStyles(decs, line, ln, hm[1].length + 1, cursorLine);
@@ -205,7 +205,7 @@ function computeWritingDecorations(
       // Typst headings: = H1  == H2  etc.
       const hm = line.match(/^(={1,6}) /);
       if (hm) {
-        const lvl = Math.min(hm[1].length, 3) as 1 | 2 | 3;
+        const lvl = Math.min(hm[1].length, 6) as 1 | 2 | 3 | 4 | 5 | 6;
         dim(decs, ln, 1, hm[1].length + 2, cursorLine);
         dec(decs, ln, hm[1].length + 2, line.length + 1, `wm-h${lvl}`);
         applyInlineStyles(decs, line, ln, hm[1].length + 1, cursorLine);
@@ -421,7 +421,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
 
     // Extra px inserted *before* a heading line via Monaco view zones.
     // Mirrors Obsidian's heading margins: H1 largest, H3 smallest.
-    const headingTopPx = [0, 28, 18, 10, 0, 0, 0]; // index = heading level 1-6
+    const headingTopPx = [0, 28, 18, 10, 6, 4, 2]; // index = heading level 1-6
 
     function refreshZones() {
       editor!.changeViewZones(accessor => {

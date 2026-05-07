@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./SettingsDialog.css";
 
@@ -39,7 +40,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           ))}
         </div>
         <div className="settings-content">
-          <button className="settings-close" onClick={onClose} aria-label="Close">×</button>
+          <button className="settings-close" onClick={onClose} aria-label="Close"><X size={14} /></button>
           {section === "general" && <GeneralSection />}
           {section === "editor" && <EditorSection />}
           {section === "preview" && <PreviewSection />}

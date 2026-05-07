@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, remarkPluginsCtx } from "@milkdown/core";
+import type { Plugin } from "unified";
+import type { Root } from "@milkdown/transformer";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import {
@@ -17,7 +19,17 @@ import { mathAutoSelectPlugin } from "./mathAutoSelect";
 import { editorViewCtx } from "@milkdown/core";
 import { useEditorStore } from "../../stores/editorStore";
 import type { Reference } from "../../stores/editorStore";
+import { linkClickPlugin } from "./linkClickPlugin";
+import { imageViewPlugin } from "./imageView";
+import { typewriterPlugin } from "./typewriterPlugin";
+import { codeBlockViewPlugin } from "./codeBlockView";
+import { prism, prismConfig } from "@milkdown/plugin-prism";
+import { refractor } from "refractor";
+import { FrontmatterPanel } from "./FrontmatterPanel";
+import { extractFrontmatter, restoreFrontmatter } from "./frontmatterUtil";
+import { remarkCitationPlugin, citationSchema, citationViewPlugin } from "./citationView";
 import "katex/dist/katex.min.css";
+import "prismjs/themes/prism-tomorrow.css";
 import "./WritingModeEditor.css";
 
 export interface WritingModeEditorProps {
@@ -64,12 +76,10 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => {
-            // Debug: log intercepted keys when dropdown is open
-            // console.log('CiteDropdown key:', e.key);
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 e.stopPropagation();
-                (e as any).stopImmediatePropagation?.();
+                (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
                 setActiveIndex((prev) => Math.min(prev + 1, matches.length - 1));
                 return;
             }
@@ -77,7 +87,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
             if (e.key === "ArrowUp") {
                 e.preventDefault();
                 e.stopPropagation();
-                (e as any).stopImmediatePropagation?.();
+                (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
                 setActiveIndex((prev) => Math.max(prev - 1, 0));
                 return;
             }
@@ -85,7 +95,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
             if (e.key === "Enter") {
                 e.preventDefault();
                 e.stopPropagation();
-                (e as any).stopImmediatePropagation?.();
+                (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
                 if (matches[activeIndex]) {
                     onSelect(matches[activeIndex]);
                     onClose();
@@ -96,13 +106,12 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
             if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
-                (e as any).stopImmediatePropagation?.();
+                (e as KeyboardEvent & { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
                 onClose();
                 return;
             }
         };
 
-        // Use capture phase so we can intercept keys before the editor handles them
         window.addEventListener("keydown", handleKey, true);
         return () => window.removeEventListener("keydown", handleKey, true);
     }, [query, matches, activeIndex, onSelect, onClose]);
@@ -134,7 +143,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
             ))}
         </div>
     );
-} 
+}
 
 // ── Inner editor component ────────────────────────────────────────────────────
 
@@ -142,31 +151,11 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     const updateTabContent = useEditorStore((s) => s.updateTabContent);
     const fontSize = useEditorStore((s) => s.editorFontSize);
     const references = useEditorStore((s) => s.references);
-    const addReference = useEditorStore((s) => s.addReference);
 
-    useEffect(() => {
-        // Add sample references for debugging citation dropdown
-        addReference({
-            name: 'Sample Article',
-            kind: 'bib',
-            bibKey: 'sample2026',
-            title: 'Understanding React State Management',
-            authors: ['John Doe'],
-            year: 2026,
-            abstract: 'A guide to managing state in React applications.'
-        });
-        addReference({
-            name: 'Another Article',
-            kind: 'pdf',
-            bibKey: 'another2025',
-            title: 'TypeScript Advanced Patterns',
-            authors: ['Jane Smith'],
-            year: 2025,
-            abstract: 'Exploring advanced patterns in TypeScript.'
-        });
-    }, [addReference]);
-    console.log('Available References:', references);
-
+    // Split frontmatter from body so Milkdown never sees the YAML block
+    const { frontmatter, body } = extractFrontmatter(initialContent);
+    const frontmatterRef = useRef(frontmatter);
+    const bodyRef = useRef(body);
     const contentRef = useRef(initialContent);
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,24 +172,64 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     const [citeAnchor, setCiteAnchor] = useState<DOMRect | null>(null);
     const editorContainerRef = useRef<HTMLDivElement>(null);
 
+    const checkCiteTrigger = useCallback(() => {
+        const editor = getEditor();
+        if (!editor) return;
+
+        editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            const { state } = view;
+            const { selection } = state;
+            const { $from } = selection;
+
+            const textBefore = state.doc.textBetween(
+                Math.max(0, $from.pos - 100),
+                $from.pos
+            );
+
+            const match = textBefore.match(/\[@([\w]*)$/);
+            if (match) {
+                const coords = view.coordsAtPos($from.pos);
+                setCiteQuery(match[1]);
+                setCiteAnchor(new DOMRect(
+                    coords.left,
+                    coords.top,
+                    0,
+                    coords.bottom - coords.top
+                ));
+            } else {
+                setCiteQuery(null);
+            }
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const { get: getEditor } = useEditor((root) => {
         return Editor.make()
             .config((ctx) => {
                 ctx.set(rootCtx, root);
-                ctx.set(defaultValueCtx, initialContent);
+                ctx.set(defaultValueCtx, body);
+                ctx.update(remarkPluginsCtx, (prev) => [
+                    ...prev,
+                    { plugin: remarkCitationPlugin as unknown as Plugin<[Record<string, unknown>], Root>, options: {} },
+                ]);
                 ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-                    contentRef.current = markdown;
-                    updateTabContent(pathRef.current, markdown);
+                    bodyRef.current = markdown;
+                    const full = restoreFrontmatter(frontmatterRef.current, markdown);
+                    contentRef.current = full;
+                    updateTabContent(pathRef.current, full);
 
                     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
                     autoSaveTimer.current = setTimeout(() => {
-                        onSaveRef.current?.(pathRef.current, markdown, false);
+                        onSaveRef.current?.(pathRef.current, full, false);
                     }, 1500);
 
                     if (previewTimer.current) clearTimeout(previewTimer.current);
                     previewTimer.current = setTimeout(() => {
-                        onPreviewRef.current?.(pathRef.current, markdown);
+                        onPreviewRef.current?.(pathRef.current, full);
                     }, 800);
+
+                    checkCiteTrigger();
                 });
             })
             .use(commonmark)
@@ -216,7 +245,17 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             .use(mathBlockInputRule)
             .use(mathBlockViewPlugin)
             .use(mathInlineViewPlugin)
-            .use(mathAutoSelectPlugin);
+            .use(mathAutoSelectPlugin)
+            .use(linkClickPlugin)
+            .use(imageViewPlugin)
+            .use(typewriterPlugin({ enabled: false, containerRef: editorContainerRef }))
+            .use(codeBlockViewPlugin)
+            .use(prism)
+            .config((ctx) => {
+                ctx.set(prismConfig.key, { configureRefractor: () => refractor });
+            })
+            .use(citationSchema)
+            .use(citationViewPlugin);
     });
 
     // ── Insert text at cursor (for editor:insert and citation selection) ─────
@@ -253,54 +292,6 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
         return () => window.removeEventListener("keydown", handler);
     }, [onSnapshot]);
 
-    // ── Citation autocomplete: detect `[@` trigger in ProseMirror ───────────
-    useEffect(() => {
-        const checkCiteTrigger = () => {
-            const editor = getEditor();
-            if (!editor) return;
-
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                const { selection } = state;
-                const { $from } = selection;
-
-                // Get text before the cursor (within a reasonable range)
-                const textBefore = state.doc.textBetween(
-                    Math.max(0, $from.pos - 100),
-                    $from.pos
-                );
-
-                const match = textBefore.match(/\[@([\w]*)$/);
-            console.log('Text Before Cursor:', textBefore);
-            console.log('Match Found:', match);
-                if (match) {
-                    const coords = view.coordsAtPos($from.pos);
-                    setCiteQuery(match[1]);
-                    setCiteAnchor(new DOMRect(coords.left, coords.top, 0, 0));
-                } else {
-                    setCiteQuery(null);
-                }
-            });
-        };
-
-        const container = editorContainerRef.current;
-        if (!container) return;
-
-        // Input event handling via ProseMirror context
-        const onInput = () => {
-            setTimeout(checkCiteTrigger, 0); // Ensure ProseMirror processes input
-        };
-
-        container.addEventListener("input", onInput);
-        container.addEventListener("keyup", onInput);
-
-        return () => {
-            container.removeEventListener("input", onInput);
-            container.removeEventListener("keyup", onInput);
-        };
-    }, [getEditor]);
-
     const handleCiteSelect = useCallback((ref: Reference) => {
         const editor = getEditor();
         if (!editor || !ref.bibKey) return;
@@ -309,7 +300,6 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             const view = ctx.get(editorViewCtx);
             const { state, dispatch } = view;
             const { from } = state.selection;
-            // Delete the partial `[@query` text and replace with `[@key]`
             const text = state.doc.textBetween(Math.max(0, from - 100), from);
             const matchIdx = text.lastIndexOf("[@");
             if (matchIdx >= 0) {
@@ -329,6 +319,9 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     return (
         <div className="wme-scroll" ref={editorContainerRef}>
             <div className="wme-page" style={{ fontSize }}>
+                {frontmatterRef.current && (
+                    <FrontmatterPanel raw={frontmatterRef.current} />
+                )}
                 <Milkdown />
             </div>
             {citeQuery !== null && citeAnchor && (

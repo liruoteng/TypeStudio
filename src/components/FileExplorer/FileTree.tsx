@@ -60,7 +60,7 @@ function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
   if (ext === "cs") return <span className="file-icon cs-icon">C#</span>;
   if (ext === "xml") return <span className="file-icon xml-icon">X</span>;
   if (ext === "txt") return <span className="file-icon txt-icon">≡</span>;
-  if (["zip", "tar", "gz", "bz2", "7z", "rar"].includes(ext)) return <span className="file-icon zip-icon">⊞</span>;
+  if (["zip", "tar", "gz", "bz2", "7z", "rar"].includes(ext)) return <span className="file-icon zip-icon">ZIP</span>;
   return <span className="file-icon generic-icon">·</span>;
 }
 

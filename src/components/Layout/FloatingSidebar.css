@@ -1,7 +1,7 @@
 /* ── Rail / push sidebar ──────────────────────────────────────────────────── */
 .fsb {
   flex-shrink: 0;
-  width: 36px;          /* rail width — always visible */
+  width: 40px;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
@@ -10,34 +10,32 @@
   overflow: hidden;
   position: relative;
 }
-/* When open the width comes from the inline style; this ensures a minimum */
 .fsb--open {
-  min-width: 140px;
+  min-width: 160px;
 }
 
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
 .fsb-topbar {
   display: flex;
   align-items: center;
-  justify-content: center;   /* rail: icon centred */
-  padding: 0 6px;
-  height: 38px;
+  justify-content: center;
+  padding: 0 8px;
+  height: 42px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-dim);
   background: var(--bg-toolbar);
   gap: 0;
 }
 .fsb--open .fsb-topbar {
-  justify-content: space-between;  /* open: brand left, toggle right */
-  padding: 0 10px;
+  justify-content: space-between;
+  padding: 0 12px;
 }
 
 .fsb-brand {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
-  display: none;   /* hidden in rail */
+  letter-spacing: -0.01em;
+  display: none;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -58,9 +56,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -77,9 +75,9 @@
 
 /* ── Generic section (hidden in rail) ────────────────────────────────────── */
 .fsb-section {
-  display: none;    /* hidden until open */
+  display: none;
   flex-direction: column;
-  border-bottom: 1px solid var(--border-dim);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .fsb--open .fsb-section {
@@ -96,12 +94,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px 5px;
+  padding: 8px 12px 6px;
 }
 .fsb-section-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -109,13 +107,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 5px;
   transition: background 0.12s, color 0.12s;
 }
 .fsb-section-action:hover {
@@ -129,11 +127,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin: 0 10px 8px;
-  padding: 8px 10px;
+  margin: 0 12px 10px;
+  padding: 10px 12px;
   border: 1.5px dashed var(--border-medium);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: 8px;
+  font-size: 12px;
   color: var(--text-dim);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
@@ -149,22 +147,22 @@
 .fsb-file-list {
   display: flex;
   flex-direction: column;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
 }
 .fsb-empty-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
-  padding: 2px 12px 4px;
+  padding: 4px 14px 6px;
 }
 .fsb-file-item {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 3px 10px;
+  gap: 8px;
+  padding: 4px 12px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
@@ -207,8 +205,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px 8px;
-  font-size: 12px;
+  padding: 5px 12px 10px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 .fsb-workspace-item--active { color: var(--text); }
@@ -226,13 +224,13 @@
   flex: 1;
 }
 .fsb-open-folder-btn {
-  margin: 0 10px 8px;
-  padding: 5px 10px;
+  margin: 0 12px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   text-align: left;
@@ -256,21 +254,21 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border-dim);
-  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
 }
 .fsb-bottom-btn {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
-  height: 32px;
+  height: 34px;
   padding: 0;
-  padding-left: 10px;
+  padding-left: 12px;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
   cursor: pointer;
   border-radius: 0;
@@ -281,13 +279,12 @@
   background: var(--bg-hover);
   color: var(--text);
 }
-/* In rail mode, centre the icon and hide the label */
 .fsb:not(.fsb--open) .fsb-bottom-btn {
   padding-left: 0;
   justify-content: center;
 }
 .fsb-bottom-label {
-  font-size: 12px;
+  font-size: 13px;
 }
 .fsb:not(.fsb--open) .fsb-bottom-label {
   display: none;
@@ -304,28 +301,38 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 4px;
+  width: 5px;
   cursor: col-resize;
   z-index: 10;
-  background: transparent;
-  transition: background 0.15s;
 }
-.fsb-resize-handle:hover,
-.fsb-resize-handle:active {
-  background: var(--accent);
+.fsb-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--text-dim);
+  opacity: 0.25;
+  transition: opacity 0.15s;
+}
+.fsb-resize-handle:hover::after {
+  opacity: 0.55;
 }
 
 /* ── URL paste row ──────────────────────────────────────────── */
 .fsb-url-row {
-  padding: 0 8px 4px;
+  padding: 0 12px 6px;
 }
 .fsb-url-input {
   width: 100%;
-  padding: 4px 7px;
-  font-size: 0.78rem;
+  padding: 5px 9px;
+  font-size: 0.85rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text-secondary);
   outline: none;
   transition: border-color 0.12s;
@@ -339,7 +346,7 @@
 
 /* ── Search section ──────────────────────────────────────────── */
 .fsb-search-section {
-  border-bottom: 1px solid var(--border-dim);
+  border-bottom: 1px solid var(--border);
   max-height: 50%;
   display: flex;
   flex-direction: column;
@@ -348,18 +355,18 @@
 .fsb-search-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px 4px;
+  gap: 6px;
+  padding: 8px 12px 6px;
 }
 
 .fsb-search-input {
   flex: 1;
   min-width: 0;
-  padding: 4px 7px;
-  font-size: 0.78rem;
+  padding: 5px 9px;
+  font-size: 0.85rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text-secondary);
   outline: none;
   font-family: inherit;
@@ -376,13 +383,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 5px;
   flex-shrink: 0;
   transition: background 0.12s, color 0.12s;
 }
@@ -392,9 +399,9 @@
 }
 
 .fsb-search-status {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
-  padding: 8px 10px;
+  padding: 10px 14px;
 }
 
 .fsb-search-results {
@@ -404,15 +411,15 @@
 }
 
 .fsb-search-file-group {
-  padding-bottom: 4px;
+  padding-bottom: 6px;
 }
 
 .fsb-search-file-path {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--text-muted);
-  padding: 4px 10px 2px;
+  padding: 6px 12px 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -423,11 +430,11 @@
   align-items: baseline;
   gap: 8px;
   width: 100%;
-  padding: 2px 10px;
+  padding: 3px 12px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
@@ -441,7 +448,7 @@
 .fsb-search-line-num {
   flex-shrink: 0;
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: 11px;
   font-family: monospace;
   min-width: 28px;
   text-align: right;

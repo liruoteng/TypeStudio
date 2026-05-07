@@ -71,7 +71,6 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
   const theme          = useEditorStore((s) => s.theme);
   const setTheme       = useEditorStore((s) => s.setTheme);
   const tabs           = useEditorStore((s) => s.tabs);
-  const activeTabPath  = useEditorStore((s) => s.activeTabPath);
   const setActiveTab   = useEditorStore((s) => s.setActiveTab);
   const workspacePath  = useEditorStore((s) => s.workspacePath);
   const openTab        = useEditorStore((s) => s.openTab);

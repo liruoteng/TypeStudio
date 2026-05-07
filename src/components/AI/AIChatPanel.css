@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-surface);
+  background: var(--bg-base);
 }
 
 /* ── Top bar (session title + controls) ──────────────────────────────────── */

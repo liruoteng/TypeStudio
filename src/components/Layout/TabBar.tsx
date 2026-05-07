@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { X } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import { ContextMenu } from "./ContextMenu";
 import "./TabBar.css";
@@ -63,7 +64,7 @@ export function TabBar() {
               }}
               title="Close tab"
             >
-              ✕
+              <X size={11} />
             </button>
           </div>
         ))}

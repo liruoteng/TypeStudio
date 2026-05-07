@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { FileText, AlertTriangle } from "lucide-react";
 import { useEditorStore } from "../../stores/editorStore";
 import "./PreviewPanel.css";
 
@@ -62,7 +63,7 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
   if (!activeTabPath || !activeTabPath.endsWith(".typ")) {
     return (
       <div className="preview-panel preview-empty">
-        <div className="preview-empty-icon">📄</div>
+        <div className="preview-empty-icon"><FileText size={44} /></div>
         <p>Preview not available</p>
         <p className="preview-empty-hint">Open a .typ file to see a preview</p>
       </div>
@@ -72,7 +73,7 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
   if (error) {
     return (
       <div className="preview-panel preview-error">
-        <div className="preview-error-icon">⚠</div>
+        <div className="preview-error-icon"><AlertTriangle size={44} /></div>
         <pre className="preview-error-text">{error}</pre>
       </div>
     );

@@ -1,6 +1,16 @@
 import { useState, useRef, useCallback, memo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  Check,
+  LayoutGrid,
+  Plus,
+  Play,
+  RefreshCw,
+  Download,
+  Minus,
+  Menu,
+} from "lucide-react";
 import { StatusBar } from "./components/Layout/StatusBar";
 import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
 import { PanelManager, ALL_PANELS } from "./components/Layout/PanelManager";
@@ -412,7 +422,7 @@ export default function App() {
   }, [handleNewFile, handleSave, handleSnapshot, handleExportPdf, handleOpenFolder]);
 
   return (
-    <div className="app" data-theme={theme === "dark" ? undefined : theme}>
+    <div className={"app " + (theme === "dark" ? "dark" : "")} data-theme={theme === "dark" ? undefined : theme}>
       {showHistory && activeTabPath && (
         <HistoryPanel
           filePath={activeTabPath}
@@ -542,7 +552,7 @@ function LayoutDropdown({
             className={`layout-dd-item${active ? " layout-dd-item--on" : ""}`}
             onClick={() => { onTogglePanel(p.id); onClose(); }}
           >
-            <span className={`layout-dd-check${active ? " layout-dd-check--on" : ""}`}>{active && "✓"}</span>
+            <span className={`layout-dd-check${active ? " layout-dd-check--on" : ""}`}>{active && <Check size={10} />}</span>
             <span className="layout-dd-label">{p.label}</span>
             <span className="layout-dd-desc">{p.shortcut}</span>
           </button>
@@ -554,7 +564,7 @@ function LayoutDropdown({
         className={`layout-dd-item${panelLayout === "horizontal" ? " layout-dd-item--on" : ""}`}
         onClick={() => { if (panelLayout !== "horizontal") onToggleLayout(); onClose(); }}
       >
-        <span className={`layout-dd-check${panelLayout === "horizontal" ? " layout-dd-check--on" : ""}`}>{panelLayout === "horizontal" && "✓"}</span>
+        <span className={`layout-dd-check${panelLayout === "horizontal" ? " layout-dd-check--on" : ""}`}>{panelLayout === "horizontal" && <Check size={10} />}</span>
         <span className="layout-dd-label">Side by side</span>
         <span className="layout-dd-desc">Panels arranged in columns</span>
       </button>
@@ -562,7 +572,7 @@ function LayoutDropdown({
         className={`layout-dd-item${panelLayout === "vertical" ? " layout-dd-item--on" : ""}`}
         onClick={() => { if (panelLayout !== "vertical") onToggleLayout(); onClose(); }}
       >
-        <span className={`layout-dd-check${panelLayout === "vertical" ? " layout-dd-check--on" : ""}`}>{panelLayout === "vertical" && "✓"}</span>
+        <span className={`layout-dd-check${panelLayout === "vertical" ? " layout-dd-check--on" : ""}`}>{panelLayout === "vertical" && <Check size={10} />}</span>
         <span className="layout-dd-label">Stacked</span>
         <span className="layout-dd-desc">Panels arranged in rows</span>
       </button>
@@ -601,61 +611,32 @@ function LatexImportResultDialog({
   onClose: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 10000,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "var(--color-bg, #1e1e1e)",
-          color: "var(--color-fg, #ccc)",
-          border: "1px solid var(--color-border, #444)",
-          borderRadius: 8,
-          padding: "1.5rem",
-          maxWidth: 480,
-          width: "90%",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ margin: "0 0 0.75rem" }}>LaTeX Template Imported</h3>
-        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", opacity: 0.7 }}>
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
+        <h3 className="dialog-title">LaTeX Template Imported</h3>
+        <p className="dialog-row">
           Profile: <strong>{result.profile ?? "unknown"}</strong>
         </p>
-        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", opacity: 0.7 }}>
-          Opened: <code style={{ fontSize: "0.8rem" }}>{result.mainTyp.split("/").pop()}</code>
+        <p className="dialog-row">
+          Opened: <code>{result.mainTyp.split("/").pop()}</code>
         </p>
         {result.notes.length > 0 && (
-          <details style={{ margin: "0.5rem 0", fontSize: "0.8rem" }}>
-            <summary style={{ cursor: "pointer", opacity: 0.8 }}>
+          <details className="dialog-details">
+            <summary>
               {result.notes.length} conversion note{result.notes.length !== 1 ? "s" : ""}
             </summary>
-            <ul style={{ margin: "0.4rem 0 0 1rem", padding: 0, opacity: 0.7 }}>
+            <ul>
               {result.notes.map((n, i) => (
-                <li key={i} style={{ marginBottom: "0.2rem" }}>{n}</li>
+                <li key={i}>{n}</li>
               ))}
             </ul>
           </details>
         )}
-        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", justifyContent: "flex-end" }}>
-          <button
-            style={{ padding: "0.35rem 0.9rem", cursor: "pointer", opacity: 0.8 }}
-            onClick={onOpenReport}
-          >
+        <div className="dialog-actions">
+          <button className="dialog-btn" onClick={onOpenReport}>
             Open Report
           </button>
-          <button
-            style={{ padding: "0.35rem 0.9rem", cursor: "pointer", fontWeight: "bold" }}
-            onClick={onClose}
-          >
+          <button className="dialog-btn dialog-btn--primary" onClick={onClose}>
             Done
           </button>
         </div>
@@ -691,7 +672,13 @@ const PreviewPageCount = memo(function PreviewPageCount() {
 
 const AiHeaderControls = memo(function AiHeaderControls() {
   return (
-    <button onClick={() => window.dispatchEvent(new CustomEvent("ai:new-session"))} title="New chat" style={{ fontSize: '16px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }}>+</button>
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("ai:new-session"))}
+      title="New chat"
+      className="ai-column-action"
+    >
+      <Plus size={14} />
+    </button>
   );
 });
 
@@ -699,7 +686,13 @@ const AiHeaderControlsLeft = memo(function AiHeaderControlsLeft() {
   const setShowAiSessions = useEditorStore((s) => s.setShowAiSessions);
 
   return (
-    <button onClick={() => setShowAiSessions(true)} title="All sessions" style={{ fontSize: '14px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }}>☰</button>
+    <button
+      onClick={() => setShowAiSessions(true)}
+      title="All sessions"
+      className="ai-column-action"
+    >
+      <Menu size={14} />
+    </button>
   );
 });
 
@@ -749,7 +742,7 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
         disabled={loading || !isTypst}
         title="Recompile (Cmd+S also triggers this)"
       >
-        {loading ? <span className="spin">⟳</span> : "▶"}
+        {loading ? <RefreshCw size={12} className="spin" /> : <Play size={12} />}
       </button>
       <button
         className="preview-icon-btn"
@@ -757,14 +750,14 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
         disabled={!isTypst}
         title="Export PDF"
       >
-        ⬇
+        <Download size={12} />
       </button>
       {!useSidecar && (
         <>
           <span className="preview-zoom-sep" />
-          <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out">−</button>
+          <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out"><Minus size={12} /></button>
           <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
-          <button className="preview-icon-btn" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in">+</button>
+          <button className="preview-icon-btn" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in"><Plus size={12} /></button>
         </>
       )}
     </div>
@@ -780,28 +773,28 @@ function WelcomeScreen({ onNewFile, onOpenFolder }: { onNewFile: (kind?: "typ" |
         <p className="welcome-subtitle">A Typst writing environment</p>
         <div className="welcome-actions">
           <button className="welcome-action" onClick={() => onNewFile("typ")}>
-            <span className="welcome-action-icon">+</span>
+            <span className="welcome-action-icon"><Plus size={16} /></span>
             <span className="welcome-action-text">
               <span className="welcome-action-label">New Typst file</span>
               <span className="welcome-action-hint">⌘N</span>
             </span>
           </button>
           <button className="welcome-action" onClick={() => onNewFile("md")}>
-            <span className="welcome-action-icon">+</span>
+            <span className="welcome-action-icon"><Plus size={16} /></span>
             <span className="welcome-action-text">
               <span className="welcome-action-label">New Markdown file</span>
               <span className="welcome-action-hint">⌘⇧N</span>
             </span>
           </button>
           <button className="welcome-action" onClick={onOpenFolder}>
-            <span className="welcome-action-icon">⊞</span>
+            <span className="welcome-action-icon"><LayoutGrid size={16} /></span>
             <span className="welcome-action-text">
               <span className="welcome-action-label">Open folder</span>
               <span className="welcome-action-hint">⌘⇧O</span>
             </span>
           </button>
         </div>
-        <p className="welcome-hint">Use the <span className="welcome-hint-key">⊞</span> layout button (top-right) to reopen panels.</p>
+        <p className="welcome-hint">Use the <span className="welcome-hint-key"><LayoutGrid size={12} /></span> layout button (top-right) to reopen panels.</p>
       </div>
     </div>
   );

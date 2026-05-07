@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { X, ArrowDownToLine } from "lucide-react";
 import { useEditorStore, type Reference } from "../../stores/editorStore";
 import "./ReferencesPanel.css";
 
@@ -150,7 +151,7 @@ function AddCitationPanel({ onAdd }: AddCitationPanelProps) {
       <div className="ref-add-form">
         <div className="ref-add-form-header">
           <span>Fetch by DOI</span>
-          <button className="ref-add-form-close" onClick={() => { setMode("closed"); setDoiErr(null); }}>✕</button>
+          <button className="ref-add-form-close" onClick={() => { setMode("closed"); setDoiErr(null); }}><X size={12} /></button>
         </div>
         <div className="ref-add-row">
           <input
@@ -174,7 +175,7 @@ function AddCitationPanel({ onAdd }: AddCitationPanelProps) {
     <div className="ref-add-form">
       <div className="ref-add-form-header">
         <span>Manual entry</span>
-        <button className="ref-add-form-close" onClick={() => setMode("closed")}>✕</button>
+          <button className="ref-add-form-close" onClick={() => setMode("closed")}><X size={12} /></button>
       </div>
       <input className="ref-add-input" placeholder="Citation key (e.g. smith2024)" value={manualKey} onChange={(e) => setManualKey(e.target.value)} />
       <input className="ref-add-input" placeholder="Title" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} />
@@ -306,7 +307,7 @@ export function ReferencesPanel() {
         onDrop={handleDrop}
       >
         <div className="references-dropzone-icon" aria-hidden>
-          {busy ? "…" : "⇣"}
+          {busy ? "…" : <ArrowDownToLine size={20} />}
         </div>
         <div className="references-dropzone-text">
           <strong>Drop reference papers here</strong>
@@ -342,7 +343,7 @@ export function ReferencesPanel() {
                   title="Remove"
                   aria-label="Remove"
                 >
-                  ×
+                  <X size={12} />
                 </button>
               </div>
               <div className="reference-card-title" title={ref.title || ref.name}>
