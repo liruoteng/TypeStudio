@@ -173,12 +173,34 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
     let mut prev_blank = true;
     let mut typst_block_count: u32 = 0;
     let mut html_warned = false;
+    let mut in_html_comment = false;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
 
     while i < lines.len() {
         let line = lines[i];
+
+        // ── HTML comments: strip <!-- ... --> (single- or multi-line) ────────
+        if !in_code_block {
+            let t = line.trim();
+            // Single-line comment: <!-- ... --> on one line
+            if t.starts_with("<!--") && t.contains("-->") {
+                i += 1;
+                continue;
+            }
+            // Start of multi-line comment
+            if t.starts_with("<!--") {
+                in_html_comment = true;
+                i += 1;
+                continue;
+            }
+            if in_html_comment {
+                if t.contains("-->") { in_html_comment = false; }
+                i += 1;
+                continue;
+            }
+        }
 
         // ── Block math: $$...$$  ─────────────────────────────────────────────
         if line.trim() == "$$" && !in_code_block {

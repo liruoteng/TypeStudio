@@ -1,0 +1,6 @@
+{
+  "id": "neurips",
+  "name": "NeurIPS / ML Workshop",
+  "description": "Machine learning workshop paper in NeurIPS style with centered abstract and math support.",
+  "category": "ML / AI"
+}

@@ -741,6 +741,74 @@ fn export_pdf(
     Ok(dest_path)
 }
 
+// ── Template commands ─────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct TemplateInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+}
+
+fn templates_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    if let Ok(res) = app.path().resource_dir() {
+        let p = res.join("resources").join("templates");
+        if p.exists() { return p; }
+        let p2 = res.join("templates");
+        if p2.exists() { return p2; }
+    }
+    std::env::current_dir()
+        .unwrap_or_default()
+        .join("resources")
+        .join("templates")
+}
+
+#[tauri::command]
+fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateInfo>, String> {
+    let dir = templates_dir(&app);
+    let mut templates = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("cannot read templates dir {dir:?}: {e}"))?;
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() { continue; }
+        let manifest = entry.path().join("template.json");
+        if !manifest.exists() { continue; }
+        let raw = fs::read_to_string(&manifest).map_err(|e| e.to_string())?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        templates.push(TemplateInfo {
+            id:          v["id"].as_str().unwrap_or("").to_string(),
+            name:        v["name"].as_str().unwrap_or("").to_string(),
+            description: v["description"].as_str().unwrap_or("").to_string(),
+            category:    v["category"].as_str().unwrap_or("").to_string(),
+        });
+    }
+    templates.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(templates)
+}
+
+#[tauri::command]
+fn create_project_from_template(
+    app: tauri::AppHandle,
+    template_id: String,
+    dest_path: String,
+) -> Result<String, String> {
+    let src = templates_dir(&app).join(&template_id);
+    if !src.exists() {
+        return Err(format!("template '{template_id}' not found"));
+    }
+    let dest = Path::new(&dest_path);
+    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+
+    for entry in fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str == "template.json" { continue; }
+        fs::copy(entry.path(), dest.join(&name)).map_err(|e| e.to_string())?;
+    }
+
+    Ok(dest.join("main.md").to_string_lossy().to_string())
+}
+
 // ── App setup ──────────────────────────────────────────────────────────────
 
 fn find_tinymist_path(resource_dir: &str) -> String {
@@ -1033,6 +1101,8 @@ pub fn run() {
             ai::cancel_ai_stream,
             ai::search_citations,
             ai::list_ollama_models,
+            list_templates,
+            create_project_from_template,
         ])
         .setup(move |app| {
             let resource_dir = app
@@ -1056,6 +1126,7 @@ pub fn run() {
 
             let m_new_file      = MenuItemBuilder::new("New Typst Document").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
             let m_new_md        = MenuItemBuilder::new("New Markdown Document").id("new-file-md").accelerator("CmdOrCtrl+Shift+N").build(handle)?;
+            let m_new_template  = MenuItemBuilder::new("New Project from Template…").id("new-from-template").build(handle)?;
             let m_open_file     = MenuItemBuilder::new("Open File…").id("open-file").accelerator("CmdOrCtrl+O").build(handle)?;
             let m_open_folder   = MenuItemBuilder::new("Open Folder…").id("open-folder").accelerator("CmdOrCtrl+Shift+O").build(handle)?;
             let m_save          = MenuItemBuilder::new("Save").id("save").accelerator("CmdOrCtrl+S").build(handle)?;
@@ -1074,6 +1145,7 @@ pub fn run() {
             let file_menu = SubmenuBuilder::new(handle, "File")
                 .item(&m_new_file)
                 .item(&m_new_md)
+                .item(&m_new_template)
                 .item(&m_open_file)
                 .item(&m_open_folder)
                 .separator()
@@ -1134,10 +1206,10 @@ pub fn run() {
                 let id = event.id().as_ref();
                 // Every app-owned item simply forwards a `menu:<id>` event.
                 match id {
-                    "new-file" | "new-file-md" | "open-file" | "open-folder" | "save" | "save-all"
-                    | "close-tab" | "export-pdf" | "import-latex" | "toggle-sidebar" | "toggle-preview"
-                    | "toggle-outline" | "toggle-writing-mode" | "toggle-sidecar-preview"
-                    | "toggle-history" | "open-settings" => {
+                    "new-file" | "new-file-md" | "new-from-template" | "open-file" | "open-folder"
+                    | "save" | "save-all" | "close-tab" | "export-pdf" | "import-latex"
+                    | "toggle-sidebar" | "toggle-preview" | "toggle-outline" | "toggle-writing-mode"
+                    | "toggle-sidecar-preview" | "toggle-history" | "open-settings" => {
                         let _ = app.emit(&format!("menu:{id}"), ());
                     }
                     _ => {}

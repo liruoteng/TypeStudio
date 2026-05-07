@@ -24,6 +24,7 @@ import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
 import { SettingsDialog } from "./components/Settings/SettingsDialog";
+import { TemplatePickerDialog } from "./components/Templates/TemplatePickerDialog";
 import { AIChatPanel } from "./components/AI/AIChatPanel";
 import { PDFViewerPanel } from "./components/PdfViewer/PDFViewerPanel";
 import { useEditorStore, markPathJustWritten } from "./stores/editorStore";
@@ -95,6 +96,7 @@ export default function App() {
 
   // Settings dialog
   const [showSettings, setShowSettings] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   // LaTeX import result
   const [importResult, setImportResult] = useState<{
@@ -318,6 +320,7 @@ export default function App() {
     }));
 
     unlisteners.push(listen("menu:open-folder", handleOpenFolder));
+    unlisteners.push(listen("menu:new-from-template", () => setShowTemplatePicker(true)));
 
     unlisteners.push(listen("menu:save", async () => {
       const tab = useEditorStore.getState().activeTab();
@@ -516,6 +519,7 @@ export default function App() {
 
       <StatusBar lspStatus={lspStatus} onShowHistory={() => setShowHistory((v) => !v)} />
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showTemplatePicker && <TemplatePickerDialog onClose={() => setShowTemplatePicker(false)} />}
       {importResult && (
         <LatexImportResultDialog
           result={importResult}
