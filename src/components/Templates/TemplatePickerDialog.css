@@ -1,5 +1,6 @@
 :root {
   --template-badge-conference: #1a5fb4;
+  --template-badge-cv: #7b3f00;
   --template-badge-ml: #2e7d32;
   --template-badge-general: #6a1e72;
 }
@@ -167,6 +168,39 @@
 }
 
 /* ── Footer ───────────────────────────────────────────────────────── */
+
+/* ── Project name row ────────────────────────────────────────────── */
+
+.template-name-row {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color, #333);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.template-name-label {
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.template-name-input {
+  flex: 1;
+  background: var(--bg-secondary, #252525);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  color: var(--text-primary, #e0e0e0);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  font-family: inherit;
+}
+
+.template-name-input:focus {
+  border-color: var(--accent, #4a9eff);
+}
 
 .template-error {
   padding: 8px 20px;

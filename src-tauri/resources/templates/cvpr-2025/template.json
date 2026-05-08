@@ -1,0 +1,7 @@
+{
+  "id": "cvpr-2025",
+  "name": "CVPR 2025",
+  "description": "Official CVPR 2025 two-column paper template with Times New Roman, blind review support, and IEEE-style bibliography.",
+  "category": "CV / AI",
+  "main": "content.md"
+}

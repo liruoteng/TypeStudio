@@ -9,6 +9,10 @@ pub struct FrontMatter {
     pub template:  Option<String>,
     pub abstract_text: Option<String>,
     pub bibliography: Option<String>,
+    /// Path (relative to the .md file) of the .typ file that should be compiled
+    /// for preview instead of the markdown file itself. Used by the hybrid workflow
+    /// where content.md is included into main.typ via `#include "content.typ"`.
+    pub compile:   Option<String>,
 }
 
 /// Strip YAML front matter from `content` (the `---…---` block at the top).
@@ -52,6 +56,7 @@ pub fn parse_front_matter(yaml: &str) -> FrontMatter {
                 "template" => fm.template = Some(val),
                 "abstract" => fm.abstract_text = if val.is_empty() { None } else { Some(val) },
                 "bibliography" => fm.bibliography = Some(val),
+                "compile" => fm.compile = Some(val),
                 "authors" | "author" => {
                     if !val.is_empty() {
                         fm.authors.push(val);

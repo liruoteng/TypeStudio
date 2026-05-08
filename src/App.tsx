@@ -59,6 +59,8 @@ export default function App() {
   }, [setActivePanels]);
 
 
+  const lastSnapshotTimeRef = useRef<Map<string, number>>(new Map());
+
   // Track save events so usePreview re-compiles on every save of a .typ file
   const [saveEvent, setSaveEvent] = useState<SaveEvent | null>(null);
   usePreview(saveEvent);
@@ -193,6 +195,7 @@ export default function App() {
     if (tab?.isTemp) return;
     try {
       await invoke("save_snapshot", { path });
+      lastSnapshotTimeRef.current.set(path, Date.now());
     } catch (e) {
       console.error("snapshot error", e);
     }
@@ -236,6 +239,16 @@ export default function App() {
       markPathJustWritten(path);
       markTabClean(path);
       setSaveEvent((prev) => ({ path, n: (prev?.n ?? 0) + 1 }));
+
+      // Auto-save: snapshot at most once every 5 minutes per file
+      if (!isExplicit) {
+        const last = lastSnapshotTimeRef.current.get(path) ?? 0;
+        if (Date.now() - last > 5 * 60 * 1000) {
+          invoke("save_snapshot", { path })
+            .then(() => lastSnapshotTimeRef.current.set(path, Date.now()))
+            .catch((e) => console.error("auto-snapshot error", e));
+        }
+      }
     } catch (e) {
       console.error("save error", e);
     }

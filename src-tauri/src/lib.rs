@@ -223,15 +223,15 @@ fn save_snapshot(path: String) -> Result<(), String> {
     let filename = if ext.is_empty() { format!("{secs}") } else { format!("{secs}.{ext}") };
     fs::copy(src, history_dir.join(&filename)).map_err(|e| e.to_string())?;
 
-    // Prune oldest snapshots beyond 50
+    // Prune oldest snapshots beyond 200
     let mut files: Vec<_> = fs::read_dir(&history_dir)
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
         .collect();
-    if files.len() > 50 {
+    if files.len() > 200 {
         files.sort_by_key(|e| e.file_name());
-        for f in &files[..files.len() - 50] {
+        for f in &files[..files.len() - 200] {
             let _ = fs::remove_file(f.path());
         }
     }
@@ -471,6 +471,31 @@ pub struct PreviewError {
     pub message: String,
 }
 
+/// For the hybrid markdown workflow: if `md_content` has `compile: <rel>` in
+/// its frontmatter, converts the markdown body to Typst (no preamble), writes
+/// it as a sibling `.typ` file, and returns the compile target path + content.
+/// Returns `None` if the file is not using the hybrid workflow.
+fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String)> {
+    let (_, fm_yaml) = converter::strip_front_matter(md_content);
+    let compile_rel = fm_yaml
+        .and_then(|y| {
+            let fm = converter::parse_front_matter(y);
+            fm.compile
+        })?;
+
+    let dir = md_path.parent().unwrap_or(Path::new("."));
+    let target = dir.join(&compile_rel);
+    if !target.exists() { return None; }
+
+    let (body_typst, _) = converter::markdown_to_typst(md_content);
+    let stem = md_path.file_stem()?.to_string_lossy();
+    let sibling_typ = dir.join(format!("{stem}.typ"));
+    let _ = fs::write(&sibling_typ, &body_typst);
+
+    let target_content = fs::read_to_string(&target).ok()?;
+    Some((target.to_string_lossy().to_string(), target_content))
+}
+
 fn is_markdown_path(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref(),
@@ -657,14 +682,36 @@ fn update_preview_source(
     content: String,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
+    let (compile_path, compile_content) =
+        if is_markdown_path(Path::new(&path)) {
+            if let Some((target_path, target_content)) = resolve_md_hybrid(Path::new(&path), &content) {
+                (target_path, target_content)
+            } else {
+                (path, content)
+            }
+        } else {
+            (path, content)
+        };
+    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content }))
+        .map_err(|e| e.to_string())
 }
 
 /// Compile from disk (used by save/refresh paths that don't pass content).
 #[tauri::command]
 fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Result<(), String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    state.compile_tx.send(Some(CompileRequest { path, content })).map_err(|e| e.to_string())
+    let (compile_path, compile_content) =
+        if is_markdown_path(Path::new(&path)) {
+            if let Some((target_path, target_content)) = resolve_md_hybrid(Path::new(&path), &content) {
+                (target_path, target_content)
+            } else {
+                (path, content)
+            }
+        } else {
+            (path, content)
+        };
+    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content }))
+        .map_err(|e| e.to_string())
 }
 
 // ── Sidecar preview ────────────────────────────────────────────────────────
@@ -749,6 +796,7 @@ pub struct TemplateInfo {
     pub name: String,
     pub description: String,
     pub category: String,
+    pub main: String,
 }
 
 fn templates_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
@@ -780,6 +828,7 @@ fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateInfo>, String> {
             name:        v["name"].as_str().unwrap_or("").to_string(),
             description: v["description"].as_str().unwrap_or("").to_string(),
             category:    v["category"].as_str().unwrap_or("").to_string(),
+            main:        v["main"].as_str().unwrap_or("main.md").to_string(),
         });
     }
     templates.sort_by(|a, b| a.name.cmp(&b.name));
@@ -790,14 +839,23 @@ fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateInfo>, String> {
 fn create_project_from_template(
     app: tauri::AppHandle,
     template_id: String,
-    dest_path: String,
+    parent_path: String,
+    project_name: String,
 ) -> Result<String, String> {
     let src = templates_dir(&app).join(&template_id);
     if !src.exists() {
         return Err(format!("template '{template_id}' not found"));
     }
-    let dest = Path::new(&dest_path);
-    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    let dest = Path::new(&parent_path).join(&project_name);
+    if dest.exists() {
+        return Err(format!("Folder '{}' already exists", dest.display()));
+    }
+    fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+
+    // Read main filename from template.json
+    let manifest_raw = fs::read_to_string(src.join("template.json")).map_err(|e| e.to_string())?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).map_err(|e| e.to_string())?;
+    let main_file = manifest["main"].as_str().unwrap_or("main.md").to_string();
 
     for entry in fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name();
@@ -806,7 +864,27 @@ fn create_project_from_template(
         fs::copy(entry.path(), dest.join(&name)).map_err(|e| e.to_string())?;
     }
 
-    Ok(dest.join("main.md").to_string_lossy().to_string())
+    // If the main file is a hybrid markdown file (has `compile:` frontmatter),
+    // pre-generate the sibling .typ body so the preview works immediately on open.
+    let main_path = dest.join(&main_file);
+    if is_markdown_path(Path::new(&main_file)) {
+        if let Ok(md_content) = fs::read_to_string(&main_path) {
+            let (_, fm_yaml) = converter::strip_front_matter(&md_content);
+            let has_compile = fm_yaml
+                .map(converter::parse_front_matter)
+                .and_then(|fm| fm.compile)
+                .is_some();
+            if has_compile {
+                let (body_typst, _) = converter::markdown_to_typst(&md_content);
+                let stem = Path::new(&main_file).file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "content".to_string());
+                let _ = fs::write(dest.join(format!("{stem}.typ")), body_typst);
+            }
+        }
+    }
+
+    Ok(main_path.to_string_lossy().to_string())
 }
 
 // ── App setup ──────────────────────────────────────────────────────────────
@@ -963,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    fn save_snapshot_prunes_to_50() {
+    fn save_snapshot_prunes_to_200() {
         let dir = std::env::temp_dir().join("ts_snap_prune");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
@@ -972,14 +1050,14 @@ mod tests {
 
         let hist = dir.join(".history").join("prune");
         fs::create_dir_all(&hist).unwrap();
-        for i in 0u64..55 {
+        for i in 0u64..205 {
             fs::write(hist.join(format!("{i}.typ")), format!("v{i}")).unwrap();
         }
 
         save_snapshot(file.to_string_lossy().to_string()).unwrap();
 
         let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
-        assert_eq!(snaps.len(), 50);
+        assert_eq!(snaps.len(), 200);
 
         let _ = fs::remove_dir_all(&dir);
     }

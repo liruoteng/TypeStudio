@@ -2,10 +2,8 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { Editor, rootCtx, defaultValueCtx, remarkPluginsCtx } from "@milkdown/core";
 import type { Plugin } from "unified";
 import type { Root } from "@milkdown/transformer";
-import { commonmark, hardbreakSchema } from "@milkdown/preset-commonmark";
+import { commonmark } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
-import { $shortcut } from "@milkdown/utils";
-import { TextSelection } from "@milkdown/prose/state";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import {
   remarkMathPlugin,
@@ -211,22 +209,6 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const enterToSoftBreak = $shortcut((ctx) => ({
-        'Enter': (state, dispatch) => {
-            const { selection, tr } = state;
-            if (!(selection instanceof TextSelection)) return false;
-            const parentType = selection.$from.parent.type.name;
-            if (parentType !== 'paragraph') return false;
-            dispatch?.(
-                tr
-                    .setMeta('hardbreak', true)
-                    .replaceSelectionWith(hardbreakSchema.type(ctx).create())
-                    .scrollIntoView()
-            );
-            return true;
-        },
-    }));
-
     const { get: getEditor } = useEditor((root) => {
         return Editor.make()
             .config((ctx) => {
@@ -257,7 +239,6 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             })
             .use(commonmark)
             .use(gfm)
-            .use(enterToSoftBreak)
             .use(listener)
             .use(remarkMathPlugin)
             .use(katexOptionsCtx)

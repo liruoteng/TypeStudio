@@ -563,7 +563,33 @@ function FileTree({ onOpenFolder }, ref) {
                 if (isAny) bump(parentOf(p));
                 continue;
               }
-              if (tab.isDirty || tab.isTemp || isRecentlyWritten(p)) continue;
+              if (tab.isTemp || isRecentlyWritten(p)) continue;
+
+              if (tab.isDirty) {
+                // File changed externally while we have unsaved edits — ask the user.
+                const name = p.split("/").pop() ?? p;
+                import("@tauri-apps/plugin-dialog").then(({ ask }) => {
+                  ask(
+                    `"${name}" was modified outside Type Studio. Reload from disk and discard your changes?`,
+                    { title: "File Changed Externally", kind: "warning" }
+                  ).then((reload) => {
+                    if (!reload) return;
+                    invoke<string>("read_file", { path: p })
+                      .then((content) => {
+                        useEditorStore.setState((s) => ({
+                          tabs: s.tabs.map((t) =>
+                            t.path === p ? { ...t, content, isDirty: false } : t
+                          ),
+                        }));
+                      })
+                      .catch(() => {
+                        useEditorStore.getState().closeTab(p);
+                        bump(parentOf(p));
+                      });
+                  });
+                });
+                continue;
+              }
 
               invoke<string>("read_file", { path: p })
                 .then((content) => {

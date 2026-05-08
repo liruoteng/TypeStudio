@@ -8,22 +8,19 @@ interface TemplateInfo {
   name: string;
   description: string;
   category: string;
+  main: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
   "Conference": "var(--template-badge-conference)",
+  "CV / AI":    "var(--template-badge-cv)",
   "ML / AI":    "var(--template-badge-ml)",
   "General":    "var(--template-badge-general)",
 };
 
 function TemplateThumbnail({ template }: { template: TemplateInfo }) {
-  const lines = template.id === "ieee-conference"
-    ? [90, 70, 80, 60, 75, 65, 70, 55]
-    : template.id === "neurips"
-    ? [85, 60, 75, 55, 80, 65, 70, 50]
-    : [80, 65, 90, 55, 70, 80, 60, 75];
-
-  const isTwo = template.id === "ieee-conference";
+  const isTwo = template.id === "ieee-conference" || template.id === "cvpr-2025";
+  const lines = [90, 70, 80, 60, 75, 65, 70, 55];
 
   return (
     <div className="template-thumbnail">
@@ -56,6 +53,7 @@ function TemplateThumbnail({ template }: { template: TemplateInfo }) {
 export function TemplatePickerDialog({ onClose }: { onClose: () => void }) {
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("my-paper");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,29 +78,45 @@ export function TemplatePickerDialog({ onClose }: { onClose: () => void }) {
 
   const handleCreate = useCallback(async () => {
     if (!selected) return;
+    const name = projectName.trim();
+    if (!name) {
+      setError("Please enter a project name.");
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false, title: "Choose project location" });
-      if (typeof folder !== "string") {
+      const parentFolder = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose where to create the project",
+      });
+      if (typeof parentFolder !== "string") {
         setCreating(false);
         return;
       }
       const mainPath = await invoke<string>("create_project_from_template", {
         templateId: selected,
-        destPath: folder,
+        parentPath: parentFolder,
+        projectName: name,
       });
+      const projectPath = mainPath.slice(0, mainPath.lastIndexOf("/"));
       const content = await invoke<string>("read_file", { path: mainPath });
-      useEditorStore.getState().setWorkspacePath(folder);
-      useEditorStore.getState().openTab(mainPath, "main.md", content);
+      const fileName = mainPath.split("/").pop() ?? "main";
+      useEditorStore.getState().setWorkspacePath(projectPath);
+      useEditorStore.getState().openTab(mainPath, fileName, content);
       onClose();
     } catch (e) {
       setError(String(e));
     } finally {
       setCreating(false);
     }
-  }, [selected, onClose]);
+  }, [selected, projectName, onClose]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !creating) handleCreate();
+  }, [handleCreate, creating]);
 
   return (
     <div className="template-backdrop" onMouseDown={onClose}>
@@ -142,6 +156,20 @@ export function TemplatePickerDialog({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
+        <div className="template-name-row">
+          <label className="template-name-label" htmlFor="project-name">Project name</label>
+          <input
+            id="project-name"
+            className="template-name-input"
+            type="text"
+            value={projectName}
+            onChange={(e) => { setProjectName(e.target.value); setError(null); }}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </div>
+
         {error && <div className="template-error">{error}</div>}
 
         <div className="template-footer">
@@ -149,9 +177,9 @@ export function TemplatePickerDialog({ onClose }: { onClose: () => void }) {
           <button
             className="template-btn-create"
             onClick={handleCreate}
-            disabled={!selected || creating}
+            disabled={!selected || creating || !projectName.trim()}
           >
-            {creating ? "Creating…" : "Create Project…"}
+            {creating ? "Creating…" : "Choose Location…"}
           </button>
         </div>
       </div>
