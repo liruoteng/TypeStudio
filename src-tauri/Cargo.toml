@@ -1,6 +1,6 @@
 [package]
 name = "type-studio"
-version = "0.1.0"
+version = "0.0.1"
 description = "Type Studio — A Typst IDE"
 authors = ["ruoteng"]
 edition = "2021"

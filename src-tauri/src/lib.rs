@@ -19,6 +19,9 @@ use tauri::{Emitter, Manager};
 pub struct CompileRequest {
     pub path: String,
     pub content: String,
+    /// An extra file to put in the source cache before compiling (e.g. content.typ
+    /// for the hybrid markdown workflow). Avoids relying on comemo disk re-reads.
+    pub sidecar: Option<(String, String)>,
 }
 
 pub struct AppState {
@@ -475,7 +478,8 @@ pub struct PreviewError {
 /// its frontmatter, converts the markdown body to Typst (no preamble), writes
 /// it as a sibling `.typ` file, and returns the compile target path + content.
 /// Returns `None` if the file is not using the hybrid workflow.
-fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String)> {
+/// Returns `(target_path, target_content, sidecar_path, sidecar_content)`.
+fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String, String, String)> {
     let (_, fm_yaml) = converter::strip_front_matter(md_content);
     let compile_rel = fm_yaml
         .and_then(|y| {
@@ -493,7 +497,12 @@ fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String
     let _ = fs::write(&sibling_typ, &body_typst);
 
     let target_content = fs::read_to_string(&target).ok()?;
-    Some((target.to_string_lossy().to_string(), target_content))
+    Some((
+        target.to_string_lossy().to_string(),
+        target_content,
+        sibling_typ.to_string_lossy().to_string(),
+        body_typst,
+    ))
 }
 
 fn is_markdown_path(path: &Path) -> bool {
@@ -635,6 +644,9 @@ async fn compile_actor(
             if needs_init {
                 *guard = Some(typst_world::TypstWorld::new(main_path)?);
             }
+            if let Some((sidecar_path, sidecar_content)) = &req.sidecar {
+                guard.as_mut().unwrap().cache_source(Path::new(sidecar_path), sidecar_content);
+            }
             guard.as_mut().unwrap().set_source(main_path, &source_content)?;
 
             let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
@@ -682,17 +694,17 @@ fn update_preview_source(
     content: String,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    let (compile_path, compile_content) =
+    let (compile_path, compile_content, sidecar) =
         if is_markdown_path(Path::new(&path)) {
-            if let Some((target_path, target_content)) = resolve_md_hybrid(Path::new(&path), &content) {
-                (target_path, target_content)
+            if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
+                (tp, tc, Some((sp, sc)))
             } else {
-                (path, content)
+                (path, content, None)
             }
         } else {
-            (path, content)
+            (path, content, None)
         };
-    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content }))
+    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content, sidecar }))
         .map_err(|e| e.to_string())
 }
 
@@ -700,17 +712,17 @@ fn update_preview_source(
 #[tauri::command]
 fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Result<(), String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let (compile_path, compile_content) =
+    let (compile_path, compile_content, sidecar) =
         if is_markdown_path(Path::new(&path)) {
-            if let Some((target_path, target_content)) = resolve_md_hybrid(Path::new(&path), &content) {
-                (target_path, target_content)
+            if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
+                (tp, tc, Some((sp, sc)))
             } else {
-                (path, content)
+                (path, content, None)
             }
         } else {
-            (path, content)
+            (path, content, None)
         };
-    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content }))
+    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content, sidecar }))
         .map_err(|e| e.to_string())
 }
 

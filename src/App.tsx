@@ -451,6 +451,7 @@ export default function App() {
       {showHistory && activeTabPath && (
         <HistoryPanel
           filePath={activeTabPath}
+          currentContent={useEditorStore.getState().tabs.find((t) => t.path === activeTabPath)?.content ?? ""}
           onRestore={handleRestore}
           onClose={() => setShowHistory(false)}
         />

@@ -26,6 +26,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Tauri sidecar binaries (downloaded by CI per platform)
+src-tauri/binaries/
+
 # custom
 examples
 CLAUDE.md

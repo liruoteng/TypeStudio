@@ -58,6 +58,14 @@ impl TypstWorld {
         self.source_cache.insert(id, Source::new(id, content.to_string()));
         Ok(())
     }
+
+    /// Update the in-memory content of a file without changing the main file.
+    /// Used to keep included files (e.g. content.typ) in sync with the editor.
+    pub fn cache_source(&mut self, path: &Path, content: &str) {
+        if let Ok(id) = file_id(&self.root, path) {
+            self.source_cache.insert(id, Source::new(id, content.to_string()));
+        }
+    }
 }
 
 // ── typst::World impl ──────────────────────────────────────────────────────
