@@ -1,8 +1,8 @@
 /**
- * Triggers a Tinymist SVG compile on explicit saves only.
- * Compilation is intentionally NOT triggered on every keystroke — the
- * auto-save in MonacoEditor fires 1.5 s after the last keystroke, which
- * provides live-ish preview without blocking the editor on heavy documents.
+ * On explicit saves, pushes content to the preview pipeline.
+ * - .typ: sidecar watches the file on disk, so nothing extra needed.
+ * - .md / .markdown: converts in-memory content to Typst and writes to the
+ *   temp .preview.typ file; tinymist's file watcher picks up the change.
  */
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,18 +14,17 @@ export interface SaveEvent {
 }
 
 export function usePreview(saveEvent: SaveEvent | null) {
-  const setPreviewLoading = useEditorStore((s) => s.setPreviewLoading);
-
   useEffect(() => {
     if (!saveEvent) return;
     const p = saveEvent.path;
-    if (!p.endsWith(".typ") && !p.endsWith(".md") && !p.endsWith(".markdown")) return;
-    // Sidecar handles recompilation for .typ files via file watching.
-    if (p.endsWith(".typ")) return;
-    setPreviewLoading(true);
-    invoke("trigger_preview_compile", { path: saveEvent.path }).catch((e) => {
+    const isMd = p.endsWith(".md") || p.endsWith(".markdown");
+    if (!p.endsWith(".typ") && !isMd) return;
+    // Sidecar handles .typ files via file watching; .md needs conversion.
+    if (!isMd) return;
+    const tab = useEditorStore.getState().tabs.find((t) => t.path === p);
+    if (!tab) return;
+    invoke("write_preview_sidecar_content", { path: p, content: tab.content }).catch((e) => {
       console.error(e);
-      setPreviewLoading(false);
     });
   }, [saveEvent?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 }

@@ -171,7 +171,6 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
     const bodyRef = useRef(body);
     const contentRef = useRef(initialContent);
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const onSaveRef = useRef(onSave);
     const onPreviewRef = useRef(onPreviewTrigger);
@@ -243,10 +242,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                         onSaveRef.current?.(pathRef.current, full, false);
                     }, 1500);
 
-                    if (previewTimer.current) clearTimeout(previewTimer.current);
-                    previewTimer.current = setTimeout(() => {
-                        onPreviewRef.current?.(pathRef.current, full);
-                    }, 800);
+                    onPreviewRef.current?.(pathRef.current, full);
 
                     checkCiteTrigger();
                 });

@@ -8,7 +8,6 @@ import {
   Play,
   RefreshCw,
   Download,
-  Minus,
   Menu,
   FileText,
   Code,
@@ -19,7 +18,6 @@ import { PanelManager, ALL_PANELS } from "./components/Layout/PanelManager";
 import type { PanelId } from "./components/Layout/PanelManager";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
 import { WritingModeEditor } from "./components/Editor/WritingModeEditor";
-import { PreviewPanel } from "./components/Preview/PreviewPanel";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
@@ -256,6 +254,16 @@ export default function App() {
 
   // ── Live preview: fire-and-forget to compile actor, results via events ──────
   const handlePreviewTrigger = useCallback((path: string, content: string) => {
+    // Markdown uses the tinymist sidecar: convert in-memory content to Typst
+    // and write to the temp .preview.typ file. tinymist's file watcher detects
+    // the change and recompiles automatically.
+    if (path.endsWith(".md") || path.endsWith(".markdown")) {
+      invoke("write_preview_sidecar_content", { path, content }).catch((e) => {
+        console.error("write_preview_sidecar_content failed:", JSON.stringify(e), e);
+      });
+      return;
+    }
+    // Typst — in-process compile path (e.g. for non-sidecar setups).
     useEditorStore.getState().setPreviewLoading(true);
     invoke("update_preview_source", { path, content }).catch((e) => {
       console.error("update_preview_source failed:", JSON.stringify(e), e);
@@ -618,11 +626,9 @@ function LayoutIcon() {
 }
 
 
-/** Always uses tinymist sidecar iframe for .typ files; in-process SVG for everything else. */
+/** Uses tinymist sidecar iframe for all previewable files (.typ, .md). */
 const PreviewBody = memo(function PreviewBody() {
-  const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  if (activeTabPath?.endsWith(".typ")) return <SidecarPreviewPanel />;
-  return <PreviewPanel />;
+  return <SidecarPreviewPanel />;
 });
 
 // ── LaTeX Import Result Dialog ────────────────────────────────────────────────
@@ -671,9 +677,6 @@ function LatexImportResultDialog({
   );
 }
 
-const ZOOM_STEP = 0.25;
-const ZOOM_MIN = 0.25;
-const ZOOM_MAX = 4;
 
 const MdSourceToggle = memo(function MdSourceToggle() {
   const mdSourceMode = useEditorStore((s) => s.mdSourceMode);
@@ -734,7 +737,7 @@ const AiHeaderControlsLeft = memo(function AiHeaderControlsLeft() {
   );
 });
 
-/** Preview panel header controls: compile button, download, zoom. */
+/** Preview panel header controls: compile button, download. */
 const PreviewPanelControls = memo(function PreviewPanelControls({
   onExportPdf,
 }: {
@@ -742,15 +745,8 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
 }) {
   const loading = useEditorStore((s) => s.previewLoading);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  const zoom = useEditorStore((s) => s.previewZoom);
-  const setZoom = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
-  const isMd = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
-  const isTypst = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
-
-  const zoomOut = useCallback(() => setZoom(+(zoom - ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
-  const zoomIn = useCallback(() => setZoom(+(zoom + ZOOM_STEP).toFixed(2)), [zoom, setZoom]);
-  const zoomReset = useCallback(() => setZoom(1), [setZoom]);
+  const isTypst = activeTabPath?.endsWith(".typ") ?? false;
 
   const handleRefresh = useCallback(async () => {
     const tab = useEditorStore.getState().activeTab();
@@ -789,14 +785,7 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
       >
         <Download size={12} />
       </button>
-      {!activeTabPath?.endsWith(".typ") && (
-        <>
-          <span className="preview-zoom-sep" />
-          <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out"><Minus size={12} /></button>
-          <button className="preview-zoom-pct" onClick={zoomReset} title="Reset zoom to 100%">{Math.round(zoom * 100)}%</button>
-          <button className="preview-icon-btn" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} title="Zoom in"><Plus size={12} /></button>
-        </>
-      )}
+
     </div>
   );
 });

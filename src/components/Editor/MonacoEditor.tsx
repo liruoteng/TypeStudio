@@ -265,7 +265,6 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   const changeVersions = useRef<Map<string, number>>(new Map());
   const lspChangeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onSnapshotRef = useRef(onSnapshot);
   const onPreviewTriggerRef = useRef(onPreviewTrigger);
   useEffect(() => { onSnapshotRef.current = onSnapshot; }, [onSnapshot]);
@@ -595,12 +594,10 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       updateTabContent(activeTabPath, value);
       setLastEditTime(Date.now());
 
-      // Live preview: compile from in-memory content.
+      // Live preview: fire synchronously — the Tauri invoke is async so it
+      // never blocks the editor.
       if (activeTabPath.endsWith(".typ") || activeTabPath.endsWith(".md") || activeTabPath.endsWith(".markdown")) {
-        clearTimeout(previewTimer.current);
-        previewTimer.current = setTimeout(() => {
-          onPreviewTriggerRef.current?.(activeTabPath, value);
-        }, 0);
+        onPreviewTriggerRef.current?.(activeTabPath, value);
       }
 
       // Auto-save debounce. For .typ files we always use the tinymist sidecar
