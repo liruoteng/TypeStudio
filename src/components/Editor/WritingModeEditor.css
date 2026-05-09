@@ -124,18 +124,26 @@
 .milkdown .ProseMirror ul {
     list-style-type: disc;
     padding-left: 1.8em;
-    margin: 0.4em 0 1em;
+    margin: 0.4em 0 0.6em;
 }
 
 .milkdown .ProseMirror ol {
     list-style-type: decimal;
     padding-left: 1.8em;
-    margin: 0.4em 0 1em;
+    margin: 0.4em 0 0.6em;
 }
 
 .milkdown .ProseMirror li {
     margin: 0;
-    line-height: 1;
+    line-height: 1.7;
+}
+
+.milkdown .ProseMirror li p {
+    margin: 0;
+}
+
+.milkdown .ProseMirror li + li {
+    margin-top: 0.15em;
 }
 
 .milkdown .ProseMirror li[data-item-type="task"] {
@@ -143,13 +151,14 @@
     margin-left: -1.8em;
     padding-left: calc(1.8em + 4px);
     position: relative;
+    cursor: default;
 }
 
 .milkdown .ProseMirror li[data-item-type="task"]::before {
     content: "";
     position: absolute;
     left: 0;
-    top: 0.1em;
+    top: 0.4em;
     width: 1em;
     height: 1em;
     border: 1.5px solid var(--text);
@@ -202,8 +211,24 @@
     font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
     font-size: 0.82em;
     background: var(--bg-hover);
-    padding: 0.15em 0.4em;
+    padding: 0.2em 0.45em;
     border-radius: 4px;
+    color: var(--accent-bright);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    word-break: break-word;
+}
+
+.milkdown .ProseMirror p code {
+    line-height: 1.4;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+[data-theme="claude"] .milkdown .ProseMirror code {
+    color: #c7254e;
+    background: #f9f2f4;
+    border-color: rgba(0, 0, 0, 0.06);
 }
 
 /* ── Code blocks ────────────────────────────────────────────────────────────── */

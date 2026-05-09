@@ -618,12 +618,11 @@ function LayoutIcon() {
 }
 
 
-/** Chooses sidecar iframe vs in-process SVG preview based on store flag. */
+/** Always uses tinymist sidecar iframe for .typ files; in-process SVG for everything else. */
 const PreviewBody = memo(function PreviewBody() {
-  const useSidecar = useEditorStore((s) => s.useSidecarPreview);
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
-  const isMd = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
-  return useSidecar && !isMd ? <SidecarPreviewPanel /> : <PreviewPanel />;
+  if (activeTabPath?.endsWith(".typ")) return <SidecarPreviewPanel />;
+  return <PreviewPanel />;
 });
 
 // ── LaTeX Import Result Dialog ────────────────────────────────────────────────
@@ -746,7 +745,6 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
   const zoom = useEditorStore((s) => s.previewZoom);
   const setZoom = useEditorStore((s) => s.setPreviewZoom);
   const compileStatus = useEditorStore((s) => s.compileStatus);
-  const useSidecar = useEditorStore((s) => s.useSidecarPreview);
   const isMd = activeTabPath?.endsWith(".md") || activeTabPath?.endsWith(".markdown");
   const isTypst = (activeTabPath?.endsWith(".typ") ?? false) || (isMd ?? false);
 
@@ -791,7 +789,7 @@ const PreviewPanelControls = memo(function PreviewPanelControls({
       >
         <Download size={12} />
       </button>
-      {!useSidecar && (
+      {!activeTabPath?.endsWith(".typ") && (
         <>
           <span className="preview-zoom-sep" />
           <button className="preview-icon-btn" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out"><Minus size={12} /></button>

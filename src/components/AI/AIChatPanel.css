@@ -14,8 +14,12 @@
   gap: 6px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: #1a1a1e;
   flex-shrink: 0;
+}
+
+[data-theme="claude"] .ai-chat-topbar {
+  background: #ededee;
 }
 
 .ai-topbar-title {
@@ -53,8 +57,12 @@
   gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: #1a1a1e;
   flex-shrink: 0;
+}
+
+[data-theme="claude"] .ai-sessions-header {
+  background: #ededee;
 }
 
 .ai-sessions-back {

@@ -16,6 +16,11 @@ const DRAG_MIME = "application/x-type-studio-path";
 // so we track the active in-explorer drag source here instead.
 let activeDragSource: string | null = null;
 
+/** Exposed for the editor's drop handler to detect in-app file drags. */
+export function getActiveDragSource(): string | null {
+  return activeDragSource;
+}
+
 function setCustomDragImage(e: React.DragEvent, label: string, isDir: boolean) {
   const ghost = document.createElement("div");
   ghost.className = "drag-ghost";

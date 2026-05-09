@@ -557,7 +557,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  activePanels: ["ai", "editor"],
+  activePanels: [],
   setActivePanels: (panels) => set({ activePanels: panels }),
   panelLayout: "horizontal",
   setPanelLayout: (layout) => set({ panelLayout: layout }),

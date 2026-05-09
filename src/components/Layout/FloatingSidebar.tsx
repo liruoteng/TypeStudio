@@ -247,11 +247,11 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
         </div>
       </div>
 
-      {/* ── Section 2: Media Management ── */}
-      <MediaSection />
+      {/* ── Section 2: Media Management (temporarily hidden) ── */}
+      {/* <MediaSection /> */}
 
-      {/* ── Section 3: References (drop zone + URL paste) ───── */}
-      <ReferencesSection />
+      {/* ── Section 3: References (temporarily hidden) ───── */}
+      {/* <ReferencesSection /> */}
 
       {/* ── Bottom: profile + theme ──────────────────────────── */}
       <div className="fsb-bottom">
@@ -362,6 +362,7 @@ function SearchSection({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ReferencesSection() {
   const [urlValue, setUrlValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -417,6 +418,7 @@ function ReferencesSection() {
 }
 
 // ── Media Management Section ──────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MediaSection() {
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const [mediaFiles, setMediaFiles] = useState<FileEntry[]>([]);

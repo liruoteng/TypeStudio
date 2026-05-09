@@ -97,6 +97,7 @@ export function AIChatPanel() {
   const [citationResults, setCitationResults] = useState<CitationResult[] | null>(null);
   const [isCiteMode, setIsCiteMode] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const savedInputRef = useRef("");
   const requestStartRef = useRef(0);
@@ -186,6 +187,14 @@ export function AIChatPanel() {
     window.addEventListener("ai:new-session", onNewSession);
     return () => window.removeEventListener("ai:new-session", onNewSession);
   }, [handleNewSession]);
+
+  useEffect(() => {
+    const onFocusInput = () => {
+      chatInputRef.current?.focus();
+    };
+    window.addEventListener("ai:focus-input", onFocusInput);
+    return () => window.removeEventListener("ai:focus-input", onFocusInput);
+  }, []);
 
   const handleSwitchSession = (id: string) => {
     commitMessages(localMessagesRef.current);
@@ -729,6 +738,7 @@ export function AIChatPanel() {
 
       <div className="ai-chat-input-area">
         <textarea
+          ref={chatInputRef}
           className="ai-chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}

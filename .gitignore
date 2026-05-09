@@ -1,6 +1,7 @@
 .claude
 .vscode
 .agents
+.history
 # Logs
 logs
 *.log
@@ -36,3 +37,4 @@ FUTURE.md
 TODOS.md
 LATEX-TYPST-MAP.md
 skills-lock.json
+

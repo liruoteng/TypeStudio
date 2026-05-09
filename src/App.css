@@ -452,7 +452,11 @@
   padding: 5px 12px;
   height: 32px;
   flex-shrink: 0;
-  background: var(--bg-elevated);
+  background: #1a1a1e;
+}
+
+[data-theme="claude"] .ai-dock-header {
+  background: #ededee;
 }
 
 .ai-dock-label {

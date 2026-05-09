@@ -20,6 +20,8 @@ export function usePreview(saveEvent: SaveEvent | null) {
     if (!saveEvent) return;
     const p = saveEvent.path;
     if (!p.endsWith(".typ") && !p.endsWith(".md") && !p.endsWith(".markdown")) return;
+    // Sidecar handles recompilation for .typ files via file watching.
+    if (p.endsWith(".typ")) return;
     setPreviewLoading(true);
     invoke("trigger_preview_compile", { path: saveEvent.path }).catch((e) => {
       console.error(e);

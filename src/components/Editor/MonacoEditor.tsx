@@ -12,7 +12,7 @@ interface MonacoEditorProps {
   onSave?: (path: string, content: string, isExplicit?: boolean) => void;
   onSnapshot?: (path: string) => void;
   onNewFile?: () => void;
-  /** Called 800 ms after the last keystroke with in-memory content for live preview. */
+  /** Called 0 ms after the last keystroke with in-memory content for live preview. */
   onPreviewTrigger?: (path: string, content: string) => void;
   /** When seq increments, restore content imperatively into the editor. */
   externalContent?: { content: string; seq: number };
@@ -595,20 +595,20 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
       updateTabContent(activeTabPath, value);
       setLastEditTime(Date.now());
 
-      // Live preview: compile from in-memory content 150 ms after the last keystroke.
-      // 150 ms is below human perception threshold, so preview feels instant.
+      // Live preview: compile from in-memory content.
       if (activeTabPath.endsWith(".typ") || activeTabPath.endsWith(".md") || activeTabPath.endsWith(".markdown")) {
         clearTimeout(previewTimer.current);
         previewTimer.current = setTimeout(() => {
           onPreviewTriggerRef.current?.(activeTabPath, value);
-        }, 50);
+        }, 0);
       }
 
-      // Auto-save debounce. Sidecar preview watches the file on disk, so we
-      // drop to 80 ms in that mode — feels live. Otherwise 1.5 s is fine
-      // because the in-process SVG path compiles from memory on a shorter
-      // timer above.
-      const autoSaveMs = useEditorStore.getState().useSidecarPreview ? 0 : 1500;
+      // Auto-save debounce. For .typ files we always use the tinymist sidecar
+      // (iframe) which watches disk — save immediately so preview feels live.
+      // For everything else the in-process SVG path compiles from memory, so
+      // a longer debounce is fine.
+      const isTyp = activeTabPath.endsWith(".typ");
+      const autoSaveMs = isTyp ? 0 : 1500;
       clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = setTimeout(() => {
         if (onSave) onSave(activeTabPath, value);
@@ -714,8 +714,10 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         smoothScrolling: true,
         cursorBlinking: "smooth" as const,
         padding: { top: 24, bottom: 24 },
-        suggest: { showSnippets: true },
-        quickSuggestions: { other: true, comments: false, strings: false },
+        suggest: { showSnippets: false },
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        wordBasedSuggestions: "off",
       }
     : {
         fontSize: editorFontSize,
@@ -731,8 +733,10 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         cursorBlinking: "smooth" as const,
         bracketPairColorization: { enabled: true },
         padding: { top: 8, bottom: 8 },
-        suggest: { showSnippets: true },
-        quickSuggestions: { other: true, comments: false, strings: false },
+        suggest: { showSnippets: false },
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        wordBasedSuggestions: "off",
       };
 
   return (

@@ -18,13 +18,22 @@ import { mathBlockViewPlugin } from "./mathBlockView";
 import { mathInlineViewPlugin } from "./mathInlineView";
 import { mathAutoSelectPlugin } from "./mathAutoSelect";
 import { editorViewCtx } from "@milkdown/core";
+import { TextSelection } from "@milkdown/prose/state";
 import { useEditorStore } from "../../stores/editorStore";
 import type { Reference } from "../../stores/editorStore";
+import { slashMenuPlugin } from "./slashMenuPlugin";
+import type { SlashState } from "./slashMenuPlugin";
+import { SlashMenu } from "./SlashMenu";
+import type { SlashCommand } from "./SlashMenu";
+import { SelectionToolbar } from "./SelectionToolbar";
 import { copyImageFilesToAssets } from "../../lib/utils";
+import { getActiveDragSource } from "../FileExplorer/FileTree";
 import { linkClickPlugin } from "./linkClickPlugin";
 import { imageViewPlugin } from "./imageView";
 import { typewriterPlugin } from "./typewriterPlugin";
 import { codeBlockViewPlugin } from "./codeBlockView";
+import { taskItemPlugin } from "./taskItemPlugin";
+import { historyPlugin } from "./historyPlugin";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { refractor } from "refractor";
 import { FrontmatterPanel } from "./FrontmatterPanel";
@@ -44,6 +53,7 @@ export interface WritingModeEditorProps {
 interface InnerProps {
     path: string;
     initialContent: string;
+    externalContent?: { content: string; seq: number };
     onSave?: WritingModeEditorProps["onSave"];
     onSnapshot?: WritingModeEditorProps["onSnapshot"];
     onPreviewTrigger?: WritingModeEditorProps["onPreviewTrigger"];
@@ -149,7 +159,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
 
 // ── Inner editor component ────────────────────────────────────────────────────
 
-function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPreviewTrigger }: InnerProps) {
+function WritingModeEditorInner({ path, initialContent, externalContent, onSave, onSnapshot, onPreviewTrigger }: InnerProps) {
     const updateTabContent = useEditorStore((s) => s.updateTabContent);
     const fontSize = useEditorStore((s) => s.editorFontSize);
     const typewriterMode = useEditorStore((s) => s.typewriterMode);
@@ -177,6 +187,10 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     const typewriterOptionsRef = useRef({ enabled: typewriterMode, containerRef: editorContainerRef });
     useEffect(() => { typewriterOptionsRef.current.enabled = typewriterMode; }, [typewriterMode]);
 
+    // ── Slash menu state ─────────────────────────────────────────────────────
+    const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
+    const slashAnchorRef = useRef<number | null>(null);
+
     const checkCiteTrigger = useCallback(() => {
         const editor = getEditor();
         if (!editor) return;
@@ -192,7 +206,7 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
                 $from.pos
             );
 
-            const match = textBefore.match(/\[@([\w]*)$/);
+            const match = textBefore.match(/\[@([\w-]*)$/);
             if (match) {
                 const coords = view.coordsAtPos($from.pos);
                 setCiteQuery(match[1]);
@@ -256,12 +270,23 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             .use(imageViewPlugin)
             .use(typewriterPlugin(typewriterOptionsRef.current))
             .use(codeBlockViewPlugin)
+            .use(taskItemPlugin)
             .use(prism)
             .config((ctx) => {
                 ctx.set(prismConfig.key, { configureRefractor: () => refractor });
             })
+            .use(historyPlugin)
             .use(citationSchema)
-            .use(citationViewPlugin);
+            .use(citationViewPlugin)
+            .use(slashMenuPlugin((state: SlashState | null) => {
+                if (state) {
+                    slashAnchorRef.current = state.anchorPos;
+                    setSlashMenu({ x: state.x, y: state.y, filter: state.filter });
+                } else {
+                    slashAnchorRef.current = null;
+                    setSlashMenu(null);
+                }
+            }));
     });
 
     // ── Insert text at cursor (for editor:insert and citation selection) ─────
@@ -279,46 +304,273 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
     const getEditorRef = useRef(getEditor);
     useEffect(() => { getEditorRef.current = getEditor; }, [getEditor]);
 
-    // ── Drag & drop images from OS file explorer ─────────────────────────────
+    // ── Sync external content (e.g. snapshot restore) in-place ─────────────
+    const externalSeqRef = useRef(externalContent?.seq);
+    useEffect(() => {
+        if (!externalContent || externalContent.seq === externalSeqRef.current) return;
+        externalSeqRef.current = externalContent.seq;
+
+        const editor = getEditorRef.current();
+        if (!editor) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        editor.action((ctx: any) => {
+            const view = ctx.get(editorViewCtx);
+            const { state, dispatch } = view;
+            const { frontmatter: fm, body } = extractFrontmatter(externalContent.content);
+            frontmatterRef.current = fm;
+            const doc = state.schema.text(body);
+            dispatch(state.tr.replaceWith(0, state.doc.content.size, doc));
+        });
+    }, [externalContent]);
+
+    // ── Slash command selection ──────────────────────────────────────────────
+    // Build content as ProseMirror nodes/marks so formatting renders immediately
+    const handleSlashSelect = useCallback((command: SlashCommand) => {
+        const editor = getEditor();
+        if (!editor) return;
+        const anchorPos = slashAnchorRef.current;
+        if (anchorPos === null) return;
+
+        // AI chat command — open AI panel instead of inserting text
+        if (command.id === "ai-chat") {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            editor.action((ctx: any) => {
+                const view = ctx.get(editorViewCtx);
+                const { state, dispatch } = view;
+                const { from } = state.selection;
+                const deleteFrom = Math.min(anchorPos, from);
+                dispatch(state.tr.delete(deleteFrom, from));
+            });
+            useEditorStore.getState().setActivePanels(["ai", "editor"]);
+            window.dispatchEvent(new CustomEvent("ai:focus-input"));
+            setSlashMenu(null);
+            slashAnchorRef.current = null;
+            return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        editor.action((ctx: any) => {
+            const view = ctx.get(editorViewCtx);
+            const { state, dispatch } = view;
+            const { from } = state.selection;
+            const deleteFrom = Math.min(anchorPos, from);
+            const deleteTo = from;
+            let tr = state.tr.delete(deleteFrom, deleteTo);
+
+            const s = state.schema;
+            let content;
+            let cursorPos: number | undefined;
+            let selectLen: number | undefined;
+
+            try {
+                switch (command.id) {
+                    case "h1": case "h2": case "h3": case "h4": case "h5": case "h6": {
+                        const level = parseInt(command.id[1]);
+                        content = s.nodes.heading.create({ level }, s.text(""));
+                        cursorPos = deleteFrom + 1;
+                        break;
+                    }
+                    case "bullet": {
+                        const item = s.nodes.list_item.create(null, s.nodes.paragraph.create(null, s.text("")));
+                        content = s.nodes.bullet_list.create(null, item);
+                        cursorPos = deleteFrom + 3;
+                        break;
+                    }
+                    case "numbered": {
+                        const item = s.nodes.list_item.create(null, s.nodes.paragraph.create(null, s.text("")));
+                        content = s.nodes.ordered_list.create({ order: 1 }, item);
+                        cursorPos = deleteFrom + 3;
+                        break;
+                    }
+                    case "hr": {
+                        content = s.nodes.hr.create();
+                        cursorPos = deleteFrom + 1;
+                        break;
+                    }
+                    case "bold": {
+                        content = s.text("bold", [s.marks.strong.create()]);
+                        cursorPos = deleteFrom;
+                        selectLen = 4;
+                        break;
+                    }
+                    case "italic": {
+                        content = s.text("italic", [s.marks.emphasis.create()]);
+                        cursorPos = deleteFrom;
+                        selectLen = 6;
+                        break;
+                    }
+                    case "strike": {
+                        content = s.text("text", [s.marks.strike_through.create()]);
+                        cursorPos = deleteFrom;
+                        selectLen = 4;
+                        break;
+                    }
+                    case "code-inline": {
+                        content = s.text("code", [s.marks.inlineCode.create()]);
+                        cursorPos = deleteFrom;
+                        selectLen = 4;
+                        break;
+                    }
+                    case "code-block": {
+                        content = s.nodes.code_block.create({ language: "" });
+                        cursorPos = deleteFrom + 1;
+                        break;
+                    }
+                    case "math-inline": {
+                        // Fall back to text snippet if schema node unavailable
+                        const mathInline = s.nodes.math_inline || s.nodes.mathInline;
+                        if (mathInline) {
+                            content = mathInline.create({ value: "" });
+                            cursorPos = deleteFrom + 1;
+                        } else {
+                            content = s.text("$x$");
+                            cursorPos = deleteFrom + 2;
+                            selectLen = 1;
+                        }
+                        break;
+                    }
+                    case "math-block": {
+                        const mathBlock = s.nodes.math_block || s.nodes.mathBlock;
+                        if (mathBlock) {
+                            content = mathBlock.create({ value: "" });
+                            cursorPos = deleteFrom + 1;
+                        } else {
+                            content = s.text("$$x$$");
+                            cursorPos = deleteFrom + 3;
+                            selectLen = 1;
+                        }
+                        break;
+                    }
+                    case "image": {
+                        content = s.nodes.image.create({ src: "", alt: "image" });
+                        cursorPos = deleteFrom + 1;
+                        break;
+                    }
+                    case "table": {
+                        const tbl = s.nodes.table;
+                        const hdrRow = s.nodes.table_header_row;
+                        const row = s.nodes.table_row;
+                        const cell = s.nodes.table_cell;
+                        const hdr = s.nodes.table_header;
+                        const para = s.nodes.paragraph;
+                        if (tbl && hdrRow && row && cell) {
+                            const mkCell = (txt: string, isHdr: boolean) => {
+                                const ct = isHdr && hdr ? hdr : cell;
+                                const c = para ? para.create(null, s.text(txt)) : s.text(txt);
+                                return ct.create(null, c);
+                            };
+                            content = tbl.create(null, [
+                                hdrRow.create(null, [mkCell("a", true), mkCell("b", true)]),
+                                row.create(null, [mkCell("", false), mkCell("", false)]),
+                            ]);
+                            cursorPos = deleteFrom + 1;
+                        } else {
+                            content = s.text(command.snippet || "");
+                            cursorPos = deleteFrom + (command.cursorOffset ?? (command.snippet || "").length);
+                        }
+                        break;
+                    }
+                    case "quote": {
+                        content = s.nodes.blockquote.create(null, s.nodes.paragraph.create(null, s.text("")));
+                        cursorPos = deleteFrom + 2;
+                        break;
+                    }
+                    case "link": {
+                        content = s.text("url", [s.marks.link.create({ href: "" })]);
+                        cursorPos = deleteFrom;
+                        selectLen = 3;
+                        break;
+                    }
+                    default: {
+                        content = s.text(command.snippet || "");
+                        cursorPos = deleteFrom + (command.cursorOffset ?? (command.snippet || "").length);
+                        selectLen = command.selectLength;
+                    }
+                }
+
+                if (content) {
+                    tr = tr.replaceWith(deleteFrom, deleteFrom, content);
+                    if (cursorPos !== undefined) {
+                        if (selectLen && selectLen > 0) {
+                            tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos, cursorPos + selectLen));
+                        } else {
+                            tr = tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("slash command fallback to text", command.id, e);
+                const fallback = command.snippet || "";
+                tr = tr.replaceWith(deleteFrom, deleteFrom, s.text(fallback));
+                const cp = deleteFrom + (command.cursorOffset ?? fallback.length);
+                if (command.selectLength && command.selectLength > 0) {
+                    tr = tr.setSelection(TextSelection.create(tr.doc, cp, cp + command.selectLength));
+                } else {
+                    tr = tr.setSelection(TextSelection.create(tr.doc, cp));
+                }
+            }
+
+            dispatch(tr);
+        });
+
+        setSlashMenu(null);
+        slashAnchorRef.current = null;
+    }, [getEditor]);
+
+    // ── Drag & drop images from OS file explorer / in-app file tree ─────────
     useEffect(() => {
         const container = editorContainerRef.current;
         if (!container) return;
 
+        const insertImagesAtCursor = (srcs: string[]) => {
+            const editor = getEditorRef.current();
+            if (!editor) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            editor.action((ctx: any) => {
+                const view = ctx.get(editorViewCtx);
+                const { state, dispatch } = view;
+                for (const src of srcs) {
+                    const node = state.schema.nodes.image.create({
+                        src,
+                        alt: src.split("/").pop() ?? "image",
+                    });
+                    dispatch(state.tr.replaceSelectionWith(node));
+                }
+            });
+        };
+
         const onDragOver = (e: DragEvent) => {
-            if (e.dataTransfer?.types.includes("Files")) {
+            if (e.dataTransfer?.types.includes("Files") || getActiveDragSource()) {
                 e.preventDefault();
             }
         };
 
         const onDrop = (e: DragEvent) => {
-            const files = Array.from(e.dataTransfer?.files ?? []);
-            const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-            if (imageFiles.length === 0) return;
-
-            e.preventDefault();
-            e.stopPropagation();
-
             const workspacePath = useEditorStore.getState().workspacePath;
             if (!workspacePath) return;
 
-            copyImageFilesToAssets(imageFiles, workspacePath)
-                .then((names) => {
-                    const editor = getEditorRef.current();
-                    if (!editor) return;
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    editor.action((ctx: any) => {
-                        const view = ctx.get(editorViewCtx);
-                        const { state, dispatch } = view;
-                        for (const name of names) {
-                            const node = state.schema.nodes.image.create({
-                                src: `assets/${name}`,
-                                alt: name,
-                            });
-                            dispatch(state.tr.replaceSelectionWith(node));
-                        }
-                    });
-                })
-                .catch((err) => console.error("image drop error", err));
+            // OS-level file drops
+            const files = Array.from(e.dataTransfer?.files ?? []);
+            const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+            if (imageFiles.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                copyImageFilesToAssets(imageFiles, workspacePath)
+                    .then((names) => insertImagesAtCursor(names.map((n) => `assets/${n}`)))
+                    .catch((err) => console.error("image drop error", err));
+                return;
+            }
+
+            // In-app file tree drag
+            const dragPath = getActiveDragSource();
+            if (dragPath && /\.(png|jpg|jpeg|gif|svg|webp|bmp)$/i.test(dragPath)) {
+                e.preventDefault();
+                e.stopPropagation();
+                const relativePath = dragPath.startsWith(workspacePath)
+                    ? dragPath.slice(workspacePath.length + 1)
+                    : dragPath;
+                insertImagesAtCursor([relativePath]);
+            }
         };
 
         container.addEventListener("dragover", onDragOver, { capture: true });
@@ -359,18 +611,23 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
             const view = ctx.get(editorViewCtx);
             const { state, dispatch } = view;
             const { from } = state.selection;
-            const text = state.doc.textBetween(Math.max(0, from - 100), from);
-            const matchIdx = text.lastIndexOf("[@");
-            if (matchIdx >= 0) {
-                const deleteFrom = from - (text.length - matchIdx);
-                dispatch(
-                    state.tr
-                        .delete(deleteFrom, from)
-                        .insertText(`[@${ref.bibKey}]`, deleteFrom)
-                );
-            } else {
-                dispatch(state.tr.insertText(`[@${ref.bibKey}]`));
+            let deleteFrom = from;
+            const searchStart = Math.max(0, from - 100);
+            for (let pos = from - 1; pos >= searchStart; pos--) {
+                if (state.doc.textBetween(pos, pos + 2) === "[@") {
+                    deleteFrom = pos;
+                    break;
+                }
             }
+            const citationNode = state.schema.nodes.citation.create({ key: ref.bibKey });
+            let tr;
+            if (deleteFrom < from) {
+                tr = state.tr.delete(deleteFrom, from);
+                tr = tr.replaceWith(deleteFrom, deleteFrom, citationNode);
+            } else {
+                tr = state.tr.replaceWith(from, from, citationNode);
+            }
+            dispatch(tr);
         });
         setCiteQuery(null);
     }, [getEditor]);
@@ -395,6 +652,16 @@ function WritingModeEditorInner({ path, initialContent, onSave, onSnapshot, onPr
                     onClose={() => setCiteQuery(null)}
                 />
             )}
+            {slashMenu && (
+                <SlashMenu
+                    x={slashMenu.x}
+                    y={slashMenu.y}
+                    filter={slashMenu.filter}
+                    onSelect={handleSlashSelect}
+                    onClose={() => setSlashMenu(null)}
+                />
+            )}
+            <SelectionToolbar getEditor={getEditor} />
         </div>
     );
 }
@@ -407,15 +674,15 @@ export function WritingModeEditor({ onSave, onSnapshot, onPreviewTrigger, extern
     }
 
     const content = externalContent?.content ?? activeTab.content;
-    const instanceKey = `${activeTab.path}::${externalContent?.seq ?? 0}`;
 
     return (
         <MilkdownProvider>
             <div className="wme-root">
                 <WritingModeEditorInner
-                    key={instanceKey}
+                    key={activeTab.path}
                     path={activeTab.path}
                     initialContent={content}
+                    externalContent={externalContent}
                     onSave={onSave}
                     onSnapshot={onSnapshot}
                     onPreviewTrigger={onPreviewTrigger}

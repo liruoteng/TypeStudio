@@ -16,33 +16,31 @@ export interface SlashCommand {
 
 const COMMANDS: SlashCommand[] = [
   // Structure — cursor lands at end (default)
-  { id: "h1",       label: "Heading 1",      description: "Top-level heading",      category: "Structure", icon: "H1",  snippet: "= " },
-  { id: "h2",       label: "Heading 2",      description: "Second-level heading",   category: "Structure", icon: "H2",  snippet: "== " },
-  { id: "h3",       label: "Heading 3",      description: "Third-level heading",    category: "Structure", icon: "H3",  snippet: "=== " },
-  { id: "h4",       label: "Heading 4",      description: "Fourth-level heading",   category: "Structure", icon: "H4",  snippet: "==== " },
-  { id: "h5",       label: "Heading 5",      description: "Fifth-level heading",    category: "Structure", icon: "H5",  snippet: "===== " },
-  { id: "h6",       label: "Heading 6",      description: "Sixth-level heading",    category: "Structure", icon: "H6",  snippet: "====== " },
+  { id: "h1",       label: "Heading 1",      description: "Top-level heading",      category: "Structure", icon: "H1",  snippet: "# " },
+  { id: "h2",       label: "Heading 2",      description: "Second-level heading",   category: "Structure", icon: "H2",  snippet: "## " },
+  { id: "h3",       label: "Heading 3",      description: "Third-level heading",    category: "Structure", icon: "H3",  snippet: "### " },
+  { id: "h4",       label: "Heading 4",      description: "Fourth-level heading",   category: "Structure", icon: "H4",  snippet: "#### " },
+  { id: "h5",       label: "Heading 5",      description: "Fifth-level heading",    category: "Structure", icon: "H5",  snippet: "##### " },
+  { id: "h6",       label: "Heading 6",      description: "Sixth-level heading",    category: "Structure", icon: "H6",  snippet: "###### " },
   { id: "bullet",   label: "Bullet List",    description: "Unordered list item",    category: "Structure", icon: "•",   snippet: "- " },
-  { id: "numbered", label: "Numbered List",  description: "Ordered list item",      category: "Structure", icon: "1.",  snippet: "+ " },
-  { id: "hr",       label: "Divider",        description: "Horizontal rule",        category: "Structure", icon: "—",   snippet: "#line(length: 100%)\n" },
+  { id: "numbered", label: "Numbered List",  description: "Ordered list item",      category: "Structure", icon: "1.",  snippet: "1. " },
+  { id: "hr",       label: "Divider",        description: "Horizontal rule",        category: "Structure", icon: "—",   snippet: "---\n" },
   // Text — select the placeholder word so user can type over it immediately
-  { id: "bold",      label: "Bold",          description: "Bold text",              category: "Text", icon: "B",   snippet: "*bold*",          cursorOffset: 1, selectLength: 4 },
-  { id: "italic",    label: "Italic",        description: "Italic text",            category: "Text", icon: "I",   snippet: "_italic_",        cursorOffset: 1, selectLength: 6 },
-  { id: "underline", label: "Underline",     description: "Underlined text",        category: "Text", icon: "U",   snippet: "#underline[text]", cursorOffset: 11, selectLength: 4 },
-  { id: "strike",    label: "Strikethrough", description: "Strikethrough text",     category: "Text", icon: "S̶",  snippet: "#strike[text]",   cursorOffset: 8, selectLength: 4 },
+  { id: "bold",      label: "Bold",          description: "Bold text",              category: "Text", icon: "B",   snippet: "**bold**",       cursorOffset: 2, selectLength: 4 },
+  { id: "italic",    label: "Italic",        description: "Italic text",            category: "Text", icon: "I",   snippet: "*italic*",        cursorOffset: 1, selectLength: 6 },
+  { id: "strike",    label: "Strikethrough", description: "Strikethrough text",     category: "Text", icon: "S̶",  snippet: "~~text~~",       cursorOffset: 2, selectLength: 4 },
   // Code — select the placeholder
   { id: "code-inline", label: "Inline Code", description: "Inline code snippet",   category: "Code", icon: "<>",  snippet: "`code`",          cursorOffset: 1, selectLength: 4 },
   { id: "code-block",  label: "Code Block",  description: "Multi-line code block", category: "Code", icon: "{}",  snippet: "```\ncode\n```",   cursorOffset: 4, selectLength: 4 },
   // Math — select the placeholder expression
   { id: "math-inline", label: "Inline Math",   description: "Inline math expression", category: "Math", icon: "∑", snippet: "$x$",   cursorOffset: 1, selectLength: 1 },
-  { id: "math-block",  label: "Display Math",  description: "Block math expression",  category: "Math", icon: "∫", snippet: "$ x $", cursorOffset: 2, selectLength: 1 },
-  // Advanced — land on the most likely thing to fill in first
-  // #figure(\n  image(""),\n  caption: []\n)  → cursor between the image path quotes (offset 18)
-  { id: "figure",    label: "Figure",      description: "Image with caption", category: "Advanced", icon: "Fig", snippet: '#figure(\n  image(""),\n  caption: []\n)', cursorOffset: 18 },
-  // #table(\n  columns: 3,\n  [], [], [],\n)  → select "3" so user can set column count (offset 19)
-  { id: "table",     label: "Table",       description: "Table layout",       category: "Advanced", icon: "▦", snippet: "#table(\n  columns: 3,\n  [], [], [],\n)", cursorOffset: 19, selectLength: 1 },
-  { id: "quote",     label: "Quote",       description: "Block quote",        category: "Advanced", icon: "❝", snippet: "#quote[text]",  cursorOffset: 7, selectLength: 4 },
-  { id: "pagebreak", label: "Page Break",  description: "Force a new page",   category: "Advanced", icon: "⊡", snippet: "#pagebreak()" },
+  { id: "math-block",  label: "Display Math",  description: "Block math expression",  category: "Math", icon: "∫", snippet: "$$\nx\n$$", cursorOffset: 3, selectLength: 1 },
+  // Advanced — Markdown-compatible
+  { id: "image",    label: "Image",       description: "Image with alt text",       category: "Advanced", icon: "🖼", snippet: "![alt](url)",    cursorOffset: 7, selectLength: 3 },
+  { id: "table",    label: "Table",       description: "Markdown table",            category: "Advanced", icon: "▦", snippet: "| a | b |\n| --- | --- |\n|  |  |" },
+  { id: "quote",    label: "Quote",       description: "Block quote",               category: "Advanced", icon: "❝", snippet: "> " },
+  { id: "link",     label: "Link",        description: "Hyperlink",                 category: "Advanced", icon: "🔗", snippet: "[text](url)", cursorOffset: 1, selectLength: 4 },
+  { id: "ai-chat",  label: "AI Assistant", description: "Open AI assistant chat",    category: "Advanced", icon: "✨", snippet: "" },
 ];
 
 interface SlashMenuProps {
