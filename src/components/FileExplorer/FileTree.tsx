@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHand
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore, FileEntry, isRecentlyWritten } from "../../stores/editorStore";
 import { ContextMenu, type ContextMenuItem } from "../Layout/ContextMenu";
+import { getFileIconMeta } from "./fileIcons";
 import "./FileTree.css";
 
 export interface FileTreeHandle {
@@ -33,40 +34,19 @@ function setCustomDragImage(e: React.DragEvent, label: string, isDir: boolean) {
 }
 
 function FileIcon({ name, isDir }: { name: string; isDir: boolean }) {
-  if (isDir) return <span className="file-icon dir-icon">▶</span>;
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "typ") return <span className="file-icon typst-icon">T</span>;
-  if (ext === "bib") return <span className="file-icon bib-icon">B</span>;
-  if (ext === "pdf") return <span className="file-icon pdf-icon">P</span>;
-  if (["md", "mdx", "markdown"].includes(ext)) return <span className="file-icon md-icon">M</span>;
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "avif"].includes(ext)) return <span className="file-icon img-icon">⬛</span>;
-  if (["js", "mjs", "cjs"].includes(ext)) return <span className="file-icon js-icon">JS</span>;
-  if (["ts", "mts", "cts"].includes(ext)) return <span className="file-icon ts-icon">TS</span>;
-  if (["jsx", "tsx"].includes(ext)) return <span className="file-icon jsx-icon">⚛</span>;
-  if (ext === "rs") return <span className="file-icon rs-icon">Rs</span>;
-  if (ext === "py") return <span className="file-icon py-icon">Py</span>;
-  if (["json", "jsonc"].includes(ext)) return <span className="file-icon json-icon">{"{}"}</span>;
-  if (["yaml", "yml"].includes(ext)) return <span className="file-icon yaml-icon">Y</span>;
-  if (["toml", "ini"].includes(ext)) return <span className="file-icon toml-icon">⚙</span>;
-  if (["html", "htm"].includes(ext)) return <span className="file-icon html-icon">H</span>;
-  if (["css", "scss", "less"].includes(ext)) return <span className="file-icon css-icon">#</span>;
-  if (["sh", "bash", "zsh"].includes(ext)) return <span className="file-icon sh-icon">$</span>;
-  if (ext === "sql") return <span className="file-icon sql-icon">db</span>;
-  if (["go"].includes(ext)) return <span className="file-icon go-icon">Go</span>;
-  if (ext === "java") return <span className="file-icon java-icon">Jv</span>;
-  if (["c", "h"].includes(ext)) return <span className="file-icon c-icon">C</span>;
-  if (["cpp", "hpp", "cc"].includes(ext)) return <span className="file-icon cpp-icon">C+</span>;
-  if (ext === "lua") return <span className="file-icon lua-icon">Lu</span>;
-  if (ext === "rb") return <span className="file-icon rb-icon">Rb</span>;
-  if (ext === "swift") return <span className="file-icon swift-icon">Sw</span>;
-  if (ext === "kt") return <span className="file-icon kt-icon">Kt</span>;
-  if (ext === "php") return <span className="file-icon php-icon">Ph</span>;
-  if (ext === "r") return <span className="file-icon r-icon">R</span>;
-  if (ext === "cs") return <span className="file-icon cs-icon">C#</span>;
-  if (ext === "xml") return <span className="file-icon xml-icon">X</span>;
-  if (ext === "txt") return <span className="file-icon txt-icon">≡</span>;
-  if (["zip", "tar", "gz", "bz2", "7z", "rar"].includes(ext)) return <span className="file-icon zip-icon">ZIP</span>;
-  return <span className="file-icon generic-icon">·</span>;
+  const meta = getFileIconMeta(name, isDir);
+
+  if (meta.kind === "simple") {
+    return (
+      <span className={`file-icon simple-icon ${meta.className}`} title={meta.icon.title}>
+        <svg viewBox="0 0 24 24" role="img" aria-label={meta.icon.title}>
+          <path d={meta.icon.path} />
+        </svg>
+      </span>
+    );
+  }
+
+  return <span className={`file-icon ${meta.className}`}>{meta.label}</span>;
 }
 
 interface PendingCreate {

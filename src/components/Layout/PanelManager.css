@@ -376,15 +376,11 @@ body.pm-resizing-row * { cursor: row-resize !important; user-select: none !impor
   padding: 0 10px 0 12px;
   height: 40px;
   flex-shrink: 0;
-  background: #1a1a1e;
+  background: transparent;
   cursor: grab;
   user-select: none;
   position: relative;
   border-radius: 10px 10px 0 0;
-}
-
-[data-theme="claude"] .pm-panel-header {
-  background: #ededee;
 }
 .pm-panel-header:active { cursor: grabbing; }
 

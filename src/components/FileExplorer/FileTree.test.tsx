@@ -16,6 +16,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 }));
 
 import { FileTree } from "./FileTree";
+import { getFileIconMeta } from "./fileIcons";
 import { useEditorStore } from "../../stores/editorStore";
 
 function makeDataTransfer() {
@@ -89,5 +90,21 @@ describe("FileTree DnD", () => {
     // Allow any pending promise microtasks to drain
     await new Promise((r) => setTimeout(r, 0));
     expect(invokeMock).not.toHaveBeenCalledWith("rename_path", expect.anything());
+  });
+});
+
+describe("getFileIconMeta", () => {
+  it("uses official language logo metadata for common source files", () => {
+    expect(getFileIconMeta("main.typ", false)).toMatchObject({ kind: "simple", className: "typst-icon" });
+    expect(getFileIconMeta("main.ts", false)).toMatchObject({ kind: "simple", className: "ts-icon" });
+    expect(getFileIconMeta("component.tsx", false)).toMatchObject({ kind: "simple", className: "jsx-icon" });
+    expect(getFileIconMeta("script.py", false)).toMatchObject({ kind: "simple", className: "py-icon" });
+    expect(getFileIconMeta("lib.rs", false)).toMatchObject({ kind: "simple", className: "rs-icon" });
+    expect(getFileIconMeta("style.scss", false)).toMatchObject({ kind: "simple", className: "sass-icon" });
+  });
+
+  it("keeps non-language file types neutral", () => {
+    expect(getFileIconMeta("paper.pdf", false)).toMatchObject({ kind: "text", label: "P" });
+    expect(getFileIconMeta("archive.zip", false)).toMatchObject({ kind: "text", label: "ZIP" });
   });
 });

@@ -151,38 +151,54 @@
 .file-icon {
   font-size: 11px;
   flex-shrink: 0;
-  width: 14px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
-.typst-icon  { color: var(--icon-typst, #7c5cbf); font-weight: 700; font-size: 11px; }
+.simple-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: currentColor;
+}
+.typst-icon  { color: #239dad; font-weight: 700; font-size: 11px; }
 .bib-icon    { color: var(--icon-bib, #e0a040);   font-weight: 700; font-size: 11px; }
 .pdf-icon    { color: #e05050; font-weight: 700; font-size: 10px; }
-.md-icon     { color: #5a9fd4; font-weight: 700; font-size: 10px; }
+.md-icon     { color: var(--text-tree); font-weight: 700; font-size: 10px; }
+.mdx-icon    { color: #fcb32c; }
 .img-icon    { color: #c792ea; font-size: 9px; }
-.js-icon     { color: #f0db4f; font-weight: 700; font-size: 9px; }
+.svg-icon    { color: #ffb13b; }
+.js-icon     { color: #f7df1e; font-weight: 700; font-size: 9px; }
 .ts-icon     { color: #3178c6; font-weight: 700; font-size: 9px; }
 .jsx-icon    { color: #61dafb; font-size: 10px; }
-.rs-icon     { color: #ce422b; font-weight: 700; font-size: 9px; }
-.py-icon     { color: #4b8bbe; font-weight: 700; font-size: 9px; }
-.json-icon   { color: #ffe082; font-size: 9px; }
-.yaml-icon   { color: #cc5500; font-weight: 700; font-size: 10px; }
-.toml-icon   { color: #9a7fd6; font-size: 10px; }
-.html-icon   { color: #e34c26; font-weight: 700; font-size: 10px; }
-.css-icon    { color: #264de4; font-weight: 700; font-size: 11px; }
-.sh-icon     { color: #89e051; font-weight: 700; font-size: 10px; }
+.rs-icon     { color: var(--text-tree); font-weight: 700; font-size: 9px; }
+.py-icon     { color: #3776ab; font-weight: 700; font-size: 9px; }
+.json-icon   { color: var(--text-tree); font-size: 9px; }
+.yaml-icon   { color: #cb171e; font-weight: 700; font-size: 10px; }
+.toml-icon   { color: #9c4121; font-size: 10px; }
+.html-icon   { color: #e34f26; font-weight: 700; font-size: 10px; }
+.css-icon    { color: #663399; font-weight: 700; font-size: 11px; }
+.sass-icon   { color: #cc6699; }
+.less-icon   { color: #1d365d; }
+.sh-icon     { color: #4eaa25; font-weight: 700; font-size: 10px; }
+.zsh-icon    { color: #f15a24; }
 .sql-icon    { color: #e38c00; font-size: 9px; }
 .go-icon     { color: #00add8; font-weight: 700; font-size: 9px; }
-.java-icon   { color: #f89820; font-weight: 700; font-size: 9px; }
-.c-icon      { color: #555599; font-weight: 700; font-size: 10px; }
-.cpp-icon    { color: #6295cb; font-weight: 700; font-size: 9px; }
-.lua-icon    { color: #000080; font-weight: 700; font-size: 9px; }
+.java-icon   { color: #437291; font-weight: 700; font-size: 9px; }
+.c-icon      { color: #a8b9cc; font-weight: 700; font-size: 10px; }
+.cpp-icon    { color: #00599c; font-weight: 700; font-size: 9px; }
+.latex-icon  { color: #008080; }
+.lua-icon    { color: #2c2d72; font-weight: 700; font-size: 9px; }
 .rb-icon     { color: #cc342d; font-weight: 700; font-size: 9px; }
 .swift-icon  { color: #f05138; font-weight: 700; font-size: 9px; }
 .kt-icon     { color: #7f52ff; font-weight: 700; font-size: 9px; }
 .php-icon    { color: #777bb4; font-weight: 700; font-size: 9px; }
 .r-icon      { color: #276dc3; font-weight: 700; font-size: 10px; }
-.cs-icon     { color: #68217a; font-weight: 700; font-size: 9px; }
-.xml-icon    { color: #e37933; font-weight: 700; font-size: 10px; }
+.cs-icon     { color: #512bd4; font-weight: 700; font-size: 9px; }
+.xml-icon    { color: #005fad; font-weight: 700; font-size: 10px; }
 .txt-icon    { color: var(--text-muted); font-size: 10px; }
 .zip-icon    { color: #e8b455; font-size: 10px; }
 .dir-icon    { color: var(--icon-dir, #e8c07d); }

@@ -19,6 +19,10 @@
     padding: 0 48px;
 }
 
+.wme-page--line-numbers {
+    padding-left: 72px;
+}
+
 .wme-empty {
     display: flex;
     align-items: center;
@@ -42,6 +46,24 @@
     min-height: 400px;
     caret-color: var(--accent);
     font-size: 1.05rem;
+}
+
+.milkdown .ProseMirror > * {
+    position: relative;
+}
+
+.milkdown .ProseMirror .wme-line-number {
+    position: absolute;
+    left: -48px;
+    width: 32px;
+    color: var(--text-dim);
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 0.72em;
+    line-height: inherit;
+    text-align: right;
+    user-select: none;
+    pointer-events: none;
+    opacity: 0.72;
 }
 
 .milkdown .ProseMirror p.is-editor-empty:first-child::before {
@@ -311,6 +333,8 @@
     color: inherit;
     background: none !important;
     border-radius: 0;
+    white-space: pre;
+    word-break: normal;
 }
 
 

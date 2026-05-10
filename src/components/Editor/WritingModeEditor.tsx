@@ -34,8 +34,56 @@ import { typewriterPlugin } from "./typewriterPlugin";
 import { codeBlockViewPlugin } from "./codeBlockView";
 import { taskItemPlugin } from "./taskItemPlugin";
 import { historyPlugin } from "./historyPlugin";
+import { lineNumberPlugin } from "./lineNumberPlugin";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { refractor } from "refractor";
+
+// Register additional languages for code block highlighting
+void function registerExtraLanguages() {
+  refractor.languages.toml = {
+    comment: { pattern: /#.*/, greedy: true },
+    table: { pattern: /(^[\t ]*\[\s*(?:\[\s*)?)(?:[\w-]+|'[^'\n\r]*'|"(?:\\.|[^\\"\r\n])*")(?:\s*\.\s*(?:[\w-]+|'[^'\n\r]*'|"(?:\\.|[^\\"\r\n])*"))*(?=\s*\])/m, lookbehind: true, greedy: true, alias: "class-name" },
+    key: { pattern: /(^[\t ]*|[{,]\s*)(?:[\w-]+|'[^'\n\r]*'|"(?:\\.|[^\\"\r\n])*")(?:\s*\.\s*(?:[\w-]+|'[^'\n\r]*'|"(?:\\.|[^\\"\r\n])*"))*(?=\s*=)/m, lookbehind: true, greedy: true, alias: "property" },
+    string: { pattern: /"""(?:\\[\s\S]|[^\\])*?"""|'''[\s\S]*?'''|'[^'\n\r]*'|"(?:\\.|[^\\"\r\n])*"/, greedy: true },
+    date: [{ pattern: /\b\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?\b/i, alias: "number" }, { pattern: /\b\d{2}:\d{2}:\d{2}(?:\.\d+)?\b/, alias: "number" }],
+    number: /(?:\b0(?:x[\da-zA-Z]+(?:_[\da-zA-Z]+)*|o[0-7]+(?:_[0-7]+)*|b[10]+(?:_[10]+)*))\b|[-+]?\b\d+(?:_\d+)*(?:\.\d+(?:_\d+)*)?(?:[eE][+-]?\d+(?:_\d+)*)?\b|[-+]?\b(?:inf|nan)\b/,
+    boolean: /\b(?:false|true)\b/,
+    punctuation: /[.,=[\]{}]/
+  };
+  refractor.languages.latex = {
+    comment: /%.*/,
+    cdata: { pattern: /(\\begin\{((?:lstlisting|verbatim)\*?)\})[\s\S]*?(?=\\end\{\2\})/, lookbehind: true },
+    equation: [{ pattern: /\$\$(?:\\[\s\S]|[^\\$])+\$\$|\$(?:\\[\s\S]|[^\\$])+\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/, inside: { "equation-command": { pattern: /\\(?:[^a-z()[\]]|[a-z*]+)/i, alias: "regex" } }, alias: "string" }, { pattern: /(\\begin\{((?:align|eqnarray|equation|gather|math|multline)\*?)\})[\s\S]*?(?=\\end\{\2\})/, lookbehind: true, inside: { "equation-command": { pattern: /\\(?:[^a-z()[\]]|[a-z*]+)/i, alias: "regex" } }, alias: "string" }],
+    keyword: { pattern: /(\\(?:begin|cite|documentclass|end|label|ref|usepackage)(?:\[[^\]]+\])?\{)[^}]+(?=\})/, lookbehind: true },
+    url: { pattern: /(\\url\{)[^}]+(?=\})/, lookbehind: true },
+    headline: { pattern: /(\\(?:chapter|frametitle|paragraph|part|section|subparagraph|subsection|subsubparagraph|subsubsection|subsubsubparagraph)\*?(?:\[[^\]]+\])?\{)[^}]+(?=\})/, lookbehind: true, alias: "class-name" },
+    function: { pattern: /\\(?:[^a-z()[\]]|[a-z*]+)/i, alias: "selector" },
+    punctuation: /[[\]{}&]/
+  };
+  refractor.languages.graphql = {
+    comment: /#.*/,
+    description: { pattern: /(?:"""(?:[^"]|(?!""")")*"""|"(?:\\.|[^\\"\r\n])*")(?=\s*[a-z_])/i, greedy: true, alias: "string", inside: { "language-markdown": { pattern: /(^"(?:"")?)(?!\1)[\s\S]+(?=\1$)/, lookbehind: true } } },
+    string: { pattern: /"""(?:[^"]|(?!""")")*"""|"(?:\\.|[^\\"\r\n])*"/, greedy: true },
+    number: /(?:\B-|\b)\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
+    boolean: /\b(?:false|true)\b/,
+    variable: /\$[a-z_]\w*/i,
+    directive: { pattern: /@[a-z_]\w*/i, alias: "function" },
+    "attr-name": { pattern: /\b[a-z_]\w*(?=\s*(?:\((?:[^()"]|"(?:\\.|[^\\"\r\n])*")*\))?:)/i, greedy: true },
+    "atom-input": { pattern: /\b[A-Z]\w*Input\b/, alias: "class-name" },
+    scalar: /\b(?:Boolean|Float|ID|Int|String)\b/,
+    constant: /\b[A-Z][A-Z_\d]*\b/,
+    "class-name": { pattern: /(\b(?:enum|implements|interface|on|scalar|type|union)\s+|&\s*|:\s*|\[)[A-Z_]\w*/, lookbehind: true },
+    fragment: { pattern: /(\bfragment\s+|\.{3}\s*(?!on\b))[a-zA-Z_]\w*/, lookbehind: true, alias: "function" },
+    "definition-mutation": { pattern: /(\bmutation\s+)[a-zA-Z_]\w*/, lookbehind: true, alias: "function" },
+    "definition-query": { pattern: /(\bquery\s+)[a-zA-Z_]\w*/, lookbehind: true, alias: "function" },
+    keyword: /\b(?:directive|enum|extend|fragment|implements|input|interface|mutation|on|query|repeatable|scalar|schema|subscription|type|union)\b/,
+    operator: /[!=|&]|\.{3}/,
+    "property-query": /\w+(?=\s*\()/,
+    object: /\w+(?=\s*\{)/,
+    punctuation: /[!(){}\[\]:=,]/,
+    property: /\w+/
+  };
+}();
 import { FrontmatterPanel } from "./FrontmatterPanel";
 import { extractFrontmatter, restoreFrontmatter } from "./frontmatterUtil";
 import { remarkCitationPlugin, citationSchema, citationViewPlugin } from "./citationView";
@@ -162,6 +210,7 @@ function CiteDropdown({ query, refs, anchorRect, onSelect, onClose }: CiteDropdo
 function WritingModeEditorInner({ path, initialContent, externalContent, onSave, onSnapshot, onPreviewTrigger }: InnerProps) {
     const updateTabContent = useEditorStore((s) => s.updateTabContent);
     const fontSize = useEditorStore((s) => s.editorFontSize);
+    const lineNumbers = useEditorStore((s) => s.editorLineNumbers);
     const typewriterMode = useEditorStore((s) => s.typewriterMode);
     const references = useEditorStore((s) => s.references);
 
@@ -184,7 +233,9 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
     const [citeAnchor, setCiteAnchor] = useState<DOMRect | null>(null);
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const typewriterOptionsRef = useRef({ enabled: typewriterMode, containerRef: editorContainerRef });
+    const lineNumberOptionsRef = useRef({ enabled: lineNumbers });
     useEffect(() => { typewriterOptionsRef.current.enabled = typewriterMode; }, [typewriterMode]);
+    useEffect(() => { lineNumberOptionsRef.current.enabled = lineNumbers; }, [lineNumbers]);
 
     // ── Slash menu state ─────────────────────────────────────────────────────
     const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; filter: string } | null>(null);
@@ -267,6 +318,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
             .use(typewriterPlugin(typewriterOptionsRef.current))
             .use(codeBlockViewPlugin)
             .use(taskItemPlugin)
+            .use(lineNumberPlugin(lineNumberOptionsRef.current))
             .use(prism)
             .config((ctx) => {
                 ctx.set(prismConfig.key, { configureRefractor: () => refractor });
@@ -284,6 +336,15 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                 }
             }));
     });
+
+    useEffect(() => {
+        const editor = getEditor();
+        if (!editor) return;
+        editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            view.dispatch(view.state.tr);
+        });
+    }, [getEditor, lineNumbers]);
 
     // ── Insert text at cursor (for editor:insert and citation selection) ─────
     const insertAtCursor = useCallback((text: string) => {
@@ -633,7 +694,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
 
     return (
         <div className="wme-scroll" ref={editorContainerRef}>
-            <div className="wme-page" style={{ fontSize, maxWidth: editorWidth, fontFamily: editorMdFont }}>
+            <div className={`wme-page${lineNumbers ? " wme-page--line-numbers" : ""}`} style={{ fontSize, maxWidth: editorWidth, fontFamily: editorMdFont }}>
                 {frontmatterRef.current && (
                     <FrontmatterPanel raw={frontmatterRef.current} />
                 )}
@@ -657,7 +718,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                     onClose={() => setSlashMenu(null)}
                 />
             )}
-            <SelectionToolbar getEditor={getEditor} />
+            <SelectionToolbar getEditor={() => getEditor() ?? null} />
         </div>
     );
 }

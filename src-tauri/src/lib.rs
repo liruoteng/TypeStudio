@@ -7,7 +7,7 @@ mod typst_world;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -512,6 +512,18 @@ fn is_markdown_path(path: &Path) -> bool {
     )
 }
 
+/// Derive the temp .typ path for a markdown file's sidecar preview.
+/// Lives as a dotfile next to the source so relative image paths resolve.
+fn md_preview_typ_path(md_path: &str) -> PathBuf {
+    let path = Path::new(md_path);
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "untitled".to_string());
+    parent.join(format!(".{stem}.preview.typ"))
+}
+
 /// Build the Typst source for a Markdown file.
 /// Strips YAML front matter, generates a preamble from it, and combines with the body.
 /// If a `template.typ` exists next to the file it takes precedence over the built-in preamble.
@@ -740,12 +752,38 @@ async fn start_sidecar_preview(
 ) -> Result<String, String> {
     let tinymist = state.tinymist_path.lock().unwrap().clone();
     let sidecar = state.preview_sidecar.clone();
-    preview_sidecar::start(&sidecar, &tinymist, &path, &invert_colors).await
+
+    let input_path = if is_markdown_path(Path::new(&path)) {
+        let md_content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let (typst_content, _) = compose_markdown_source(Path::new(&path), &md_content);
+        let temp = md_preview_typ_path(&path);
+        fs::write(&temp, &typst_content).map_err(|e| e.to_string())?;
+        temp.to_string_lossy().to_string()
+    } else {
+        path
+    };
+
+    preview_sidecar::start(&sidecar, &tinymist, &input_path, &invert_colors).await
 }
 
 #[tauri::command]
 async fn stop_sidecar_preview(state: tauri::State<'_, AppState>) -> Result<(), String> {
     preview_sidecar::stop(&state.preview_sidecar).await;
+    Ok(())
+}
+
+/// Update the sidecar preview's content without restarting the process.
+/// For markdown: converts the in-memory content to Typst and writes to the
+/// temp .preview.typ file; tinymist's file watcher detects the change and
+/// recompiles automatically.
+/// For .typ files: no-op (auto-save handles writing to disk directly).
+#[tauri::command]
+fn write_preview_sidecar_content(path: String, content: String) -> Result<(), String> {
+    if is_markdown_path(Path::new(&path)) {
+        let (typst_content, _warnings) = compose_markdown_source(Path::new(&path), &content);
+        let temp_path = md_preview_typ_path(&path);
+        fs::write(&temp_path, &typst_content).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -1171,6 +1209,7 @@ pub fn run() {
             trigger_preview_compile,
             start_sidecar_preview,
             stop_sidecar_preview,
+            write_preview_sidecar_content,
             export_pdf,
             save_snapshot,
             list_snapshots,
@@ -1229,6 +1268,7 @@ pub fn run() {
             let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
             let m_toggle_outline = MenuItemBuilder::new("Toggle Outline").id("toggle-outline").build(handle)?;
             let m_toggle_writing = MenuItemBuilder::new("Toggle Writing Mode").id("toggle-writing-mode").build(handle)?;
+            let m_toggle_line_numbers = MenuItemBuilder::new("Toggle Line Numbers").id("toggle-line-numbers").build(handle)?;
             let m_toggle_sidecar = MenuItemBuilder::new("Toggle Sidecar Preview").id("toggle-sidecar-preview").accelerator("CmdOrCtrl+Shift+P").build(handle)?;
             let m_show_history   = MenuItemBuilder::new("Toggle File History").id("toggle-history").build(handle)?;
 
@@ -1264,6 +1304,7 @@ pub fn run() {
                 .item(&m_toggle_outline)
                 .separator()
                 .item(&m_toggle_writing)
+                .item(&m_toggle_line_numbers)
                 .separator()
                 .item(&m_show_history)
                 .item(&m_toggle_sidecar)
@@ -1299,7 +1340,7 @@ pub fn run() {
                     "new-file" | "new-file-md" | "new-from-template" | "open-file" | "open-folder"
                     | "save" | "save-all" | "close-tab" | "export-pdf" | "import-latex"
                     | "toggle-sidebar" | "toggle-preview" | "toggle-outline" | "toggle-writing-mode"
-                    | "toggle-sidecar-preview" | "toggle-history" | "open-settings" => {
+                    | "toggle-line-numbers" | "toggle-sidecar-preview" | "toggle-history" | "open-settings" => {
                         let _ = app.emit(&format!("menu:{id}"), ());
                     }
                     _ => {}

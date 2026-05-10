@@ -14,12 +14,8 @@
   gap: 6px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--border);
-  background: #1a1a1e;
+  background: transparent;
   flex-shrink: 0;
-}
-
-[data-theme="claude"] .ai-chat-topbar {
-  background: #ededee;
 }
 
 .ai-topbar-title {

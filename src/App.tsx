@@ -393,6 +393,11 @@ export default function App() {
       setWritingMode(!wm);
     }));
 
+    unlisteners.push(listen("menu:toggle-line-numbers", () => {
+      const { editorLineNumbers, setEditorLineNumbers } = useEditorStore.getState();
+      setEditorLineNumbers(!editorLineNumbers);
+    }));
+
     unlisteners.push(listen("menu:toggle-history", () => {
       setShowHistory((v) => !v);
     }));

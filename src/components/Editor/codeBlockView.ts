@@ -96,8 +96,8 @@ export class CodeBlockView implements NodeView {
     return true;
   }
 
-  ignoreMutation(): boolean {
-    return true;
+  ignoreMutation(record: MutationRecord): boolean {
+    return !this.contentDOM!.contains(record.target as Node);
   }
 
   destroy() {
