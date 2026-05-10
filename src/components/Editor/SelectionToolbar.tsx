@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { editorViewCtx } from "@milkdown/core";
+import type { Node as ProseNode } from "@milkdown/prose/model";
+import { setBlockType, toggleMark } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
+import { wrapInList } from "@milkdown/prose/schema-list";
 import "./SelectionToolbar.css";
 
 interface SelToolbarProps {
@@ -11,29 +14,33 @@ interface FormatAction {
   id: string;
   label: string;
   icon: string;
-  wrap?: string;
-  prefix?: string;
-  snippet?: string;
-  cursorOffset?: number;
-  selectLength?: number;
+  type: "mark" | "block";
 }
 
 const INLINE_ACTIONS: FormatAction[] = [
-  { id: "bold",   label: "Bold",          icon: "B",  wrap: "**" },
-  { id: "italic", label: "Italic",        icon: "I",  wrap: "*" },
-  { id: "strike", label: "Strikethrough", icon: "S̶", wrap: "~~" },
-  { id: "code",   label: "Code",          icon: "<>", wrap: "`" },
-  { id: "link",   label: "Link",          icon: "🔗", snippet: "[text](url)", cursorOffset: 1, selectLength: 4 },
+  { id: "bold",   label: "Bold",          icon: "B",  type: "mark" },
+  { id: "italic", label: "Italic",        icon: "I",  type: "mark" },
+  { id: "strike", label: "Strikethrough", icon: "S̶", type: "mark" },
+  { id: "code",   label: "Code",          icon: "<>", type: "mark" },
+  { id: "link",   label: "Link",          icon: "🔗", type: "mark" },
 ];
 
 const BLOCK_ACTIONS: FormatAction[] = [
-  { id: "h1",   label: "Heading 1",   icon: "H1", prefix: "# " },
-  { id: "h2",   label: "Heading 2",   icon: "H2", prefix: "## " },
-  { id: "h3",   label: "Heading 3",   icon: "H3", prefix: "### " },
-  { id: "bullet", label: "Bullet List",  icon: "•", prefix: "- " },
-  { id: "ordered", label: "Numbered List", icon: "1.", prefix: "1. " },
-  { id: "task",  label: "Task List",   icon: "☑", prefix: "- [ ] " },
+  { id: "h1",   label: "Heading 1",   icon: "H1", type: "block" },
+  { id: "h2",   label: "Heading 2",   icon: "H2", type: "block" },
+  { id: "h3",   label: "Heading 3",   icon: "H3", type: "block" },
+  { id: "bullet", label: "Bullet List",  icon: "•", type: "block" },
+  { id: "ordered", label: "Numbered List", icon: "1.", type: "block" },
+  { id: "task",  label: "Task List",   icon: "☑", type: "block" },
 ];
+
+const MARK_BY_ACTION: Record<string, string> = {
+  bold: "strong",
+  italic: "emphasis",
+  strike: "strike_through",
+  code: "inlineCode",
+  link: "link",
+};
 
 export function SelectionToolbar({ getEditor }: SelToolbarProps) {
   const [visible, setVisible] = useState(false);
@@ -97,27 +104,59 @@ export function SelectionToolbar({ getEditor }: SelToolbarProps) {
     editor.action((ctx: any) => {
       const view = ctx.get(editorViewCtx);
       const { state, dispatch } = view;
-      const { from, to, empty } = state.selection;
+      const { to, empty } = state.selection;
       if (empty) return;
 
-      if (action.prefix) {
-        const selectedText = state.doc.textBetween(from, to);
-        const newText = `${action.prefix}${selectedText}`;
-        const tr = state.tr.replaceWith(from, to, state.schema.text(newText));
-        dispatch(tr);
-      } else if (action.wrap) {
-        const selectedText = state.doc.textBetween(from, to);
-        const newText = `${action.wrap}${selectedText}${action.wrap}`;
-        const tr = state.tr.replaceWith(from, to, state.schema.text(newText));
-        dispatch(tr);
-      } else if (action.snippet && action.id === "link") {
-        const selectedText = state.doc.textBetween(from, to);
-        const newText = `[${selectedText}](url)`;
-        let tr = state.tr.replaceWith(from, to, state.schema.text(newText));
-        const insertEnd = from + newText.length;
-        const urlStart = from + selectedText.length + 3;
-        tr = tr.setSelection(TextSelection.create(tr.doc, urlStart, insertEnd - 1));
-        dispatch(tr);
+      if (action.type === "mark") {
+        const markName = MARK_BY_ACTION[action.id];
+        const markType = markName ? state.schema.marks[markName] : null;
+        if (!markType) return;
+
+        const attrs = action.id === "link" ? { href: "url" } : null;
+        const applied = toggleMark(markType, attrs)(state, dispatch);
+
+        if (applied && action.id === "link") {
+          const nextState = view.state;
+          const linkEnd = Math.min(to, nextState.doc.content.size);
+          view.dispatch(
+            nextState.tr.setSelection(TextSelection.create(nextState.doc, linkEnd))
+          );
+        }
+        return;
+      }
+
+      if (action.id === "h1" || action.id === "h2" || action.id === "h3") {
+        const heading = state.schema.nodes.heading;
+        if (!heading) return;
+        setBlockType(heading, { level: Number(action.id[1]) })(state, dispatch);
+        return;
+      }
+
+      if (action.id === "bullet" || action.id === "task") {
+        const bulletList = state.schema.nodes.bullet_list;
+        if (!bulletList) return;
+        wrapInList(bulletList)(state, dispatch);
+        if (action.id === "task") {
+          const nextState = view.state;
+          const { tr } = nextState;
+          const from = Math.max(0, nextState.selection.from - 4);
+          const to = Math.min(nextState.doc.content.size, nextState.selection.to + 4);
+          let changed = false;
+          tr.doc.nodesBetween(from, to, (node: ProseNode, pos: number) => {
+            if (node.type.name === "list_item" && node.attrs.checked == null) {
+              tr.setNodeAttribute(pos, "checked", false);
+              changed = true;
+            }
+          });
+          if (changed) dispatch(tr);
+        }
+        return;
+      }
+
+      if (action.id === "ordered") {
+        const orderedList = state.schema.nodes.ordered_list;
+        if (!orderedList) return;
+        wrapInList(orderedList, { order: 1 })(state, dispatch);
       }
     });
 

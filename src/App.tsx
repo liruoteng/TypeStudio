@@ -481,7 +481,10 @@ export default function App() {
               <WelcomeScreen onNewFile={handleNewFile} onOpenFolder={handleOpenFolder} />
             ) : null}
             <PanelManager
-              titleSuffixes={{ preview: <PreviewPageCount /> }}
+              titleSuffixes={{
+                editor: isMdFile ? <MarkdownEditorModeBadge /> : null,
+                preview: <PreviewPageCount />,
+              }}
               headerExtras={{
                 preview: <PreviewPanelControls onExportPdf={handleExportPdf} />,
                 editor: isMdFile ? <MdSourceToggle /> : null,
@@ -687,22 +690,33 @@ const MdSourceToggle = memo(function MdSourceToggle() {
   const mdSourceMode = useEditorStore((s) => s.mdSourceMode);
   const setMdSourceMode = useEditorStore((s) => s.setMdSourceMode);
   return (
-    <div className="md-source-toggle">
+    <div className="md-source-toggle" aria-label="Markdown editor mode">
       <button
         className={`md-source-toggle-btn${!mdSourceMode ? " active" : ""}`}
         onClick={() => setMdSourceMode(false)}
-        title="WYSIWYG mode"
+        title="Rich Markdown mode"
+        aria-pressed={!mdSourceMode}
       >
         <FileText size={13} />
       </button>
       <button
         className={`md-source-toggle-btn${mdSourceMode ? " active" : ""}`}
         onClick={() => setMdSourceMode(true)}
-        title="Source mode"
+        title="Markdown source mode"
+        aria-pressed={mdSourceMode}
       >
         <Code size={13} />
       </button>
     </div>
+  );
+});
+
+const MarkdownEditorModeBadge = memo(function MarkdownEditorModeBadge() {
+  const mdSourceMode = useEditorStore((s) => s.mdSourceMode);
+  return (
+    <span className="pm-panel-subtitle">
+      {mdSourceMode ? "Markdown source" : "Rich Markdown"}
+    </span>
   );
 });
 

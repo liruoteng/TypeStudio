@@ -37,3 +37,29 @@ export function parseFrontmatterRows(raw: string): Array<{ key: string; value: s
   }
   return rows;
 }
+
+export function updateFrontmatterValue(raw: string, key: string, value: string): string {
+  const lines = raw.split("\n");
+  const targetKey = key.trim();
+  const nextValue = value.trim();
+  let updated = false;
+
+  const next = lines.map((line) => {
+    const trimmed = line.trim();
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx === -1) return line;
+
+    const lineKey = trimmed.slice(0, colonIdx).trim();
+    if (lineKey !== targetKey) return line;
+
+    updated = true;
+    const indent = line.match(/^\s*/)?.[0] ?? "";
+    return `${indent}${targetKey}: ${nextValue}`;
+  });
+
+  if (!updated && targetKey) {
+    next.push(`${targetKey}: ${nextValue}`);
+  }
+
+  return next.join("\n").trim();
+}

@@ -35,6 +35,8 @@ import { codeBlockViewPlugin } from "./codeBlockView";
 import { taskItemPlugin } from "./taskItemPlugin";
 import { historyPlugin } from "./historyPlugin";
 import { lineNumberPlugin } from "./lineNumberPlugin";
+import { activeMarkdownSyntaxPlugin } from "./activeMarkdownSyntaxPlugin";
+import { tableControlsPlugin } from "./tableControlsPlugin";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { refractor } from "refractor";
 
@@ -217,6 +219,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
     // Split frontmatter from body so Milkdown never sees the YAML block
     const { frontmatter, body } = extractFrontmatter(initialContent);
     const frontmatterRef = useRef(frontmatter);
+    const [frontmatterState, setFrontmatterState] = useState(frontmatter);
     const bodyRef = useRef(body);
     const contentRef = useRef(initialContent);
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -319,6 +322,8 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
             .use(codeBlockViewPlugin)
             .use(taskItemPlugin)
             .use(lineNumberPlugin(lineNumberOptionsRef.current))
+            .use(activeMarkdownSyntaxPlugin)
+            .use(tableControlsPlugin)
             .use(prism)
             .config((ctx) => {
                 ctx.set(prismConfig.key, { configureRefractor: () => refractor });
@@ -375,10 +380,27 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
             const { state, dispatch } = view;
             const { frontmatter: fm, body } = extractFrontmatter(externalContent.content);
             frontmatterRef.current = fm;
+            setFrontmatterState(fm);
             const doc = state.schema.text(body);
             dispatch(state.tr.replaceWith(0, state.doc.content.size, doc));
         });
     }, [externalContent]);
+
+    const handleFrontmatterChange = useCallback((nextFrontmatter: string) => {
+        frontmatterRef.current = nextFrontmatter;
+        setFrontmatterState(nextFrontmatter);
+
+        const full = restoreFrontmatter(nextFrontmatter, bodyRef.current);
+        contentRef.current = full;
+        updateTabContent(pathRef.current, full);
+
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+        autoSaveTimer.current = setTimeout(() => {
+            onSaveRef.current?.(pathRef.current, full, false);
+        }, 1500);
+
+        onPreviewRef.current?.(pathRef.current, full);
+    }, [updateTabContent]);
 
     // ── Slash command selection ──────────────────────────────────────────────
     // Build content as ProseMirror nodes/marks so formatting renders immediately
@@ -694,9 +716,18 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
 
     return (
         <div className="wme-scroll" ref={editorContainerRef}>
-            <div className={`wme-page${lineNumbers ? " wme-page--line-numbers" : ""}`} style={{ fontSize, maxWidth: editorWidth, fontFamily: editorMdFont }}>
-                {frontmatterRef.current && (
-                    <FrontmatterPanel raw={frontmatterRef.current} />
+            <div
+                className={`wme-page${lineNumbers ? " wme-page--line-numbers" : ""}`}
+                style={{
+                    fontSize,
+                    maxWidth: editorWidth,
+                    fontFamily: editorMdFont,
+                    "--wme-line-number-font-size": `${Math.max(10, Math.round(fontSize * 0.82))}px`,
+                    "--wme-line-number-baseline-offset": `${Math.max(8, Math.round(fontSize * 0.66))}px`,
+                } as React.CSSProperties}
+            >
+                {frontmatterState && (
+                    <FrontmatterPanel raw={frontmatterState} onChange={handleFrontmatterChange} />
                 )}
                 <Milkdown />
             </div>

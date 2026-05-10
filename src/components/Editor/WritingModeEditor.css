@@ -54,12 +54,13 @@
 
 .milkdown .ProseMirror .wme-line-number {
     position: absolute;
+    top: calc(0.5lh + 0.3em - var(--wme-line-number-baseline-offset, 10px));
     left: -48px;
     width: 32px;
     color: var(--text-dim);
     font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-    font-size: 0.72em;
-    line-height: inherit;
+    font-size: var(--wme-line-number-font-size, 12px);
+    line-height: 1;
     text-align: right;
     user-select: none;
     pointer-events: none;
@@ -72,6 +73,41 @@
     pointer-events: none;
     float: left;
     height: 0;
+}
+
+.milkdown .ProseMirror .wme-md-syntax {
+    color: var(--text-muted);
+    display: inline-block;
+    font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+    font-size: 0.82em;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0.55;
+    user-select: none;
+    vertical-align: baseline;
+    white-space: pre;
+}
+
+.milkdown .ProseMirror .wme-md-syntax-marker {
+    border-radius: 3px;
+    cursor: text;
+    outline: none;
+    padding: 0 1px;
+}
+
+.milkdown .ProseMirror .wme-md-syntax-marker:focus {
+    background: var(--bg-hover);
+    box-shadow: 0 0 0 1px var(--border);
+    opacity: 0.9;
+}
+
+.milkdown .ProseMirror .wme-md-syntax--prefix {
+    margin-right: 0.15em;
+}
+
+.milkdown .ProseMirror li.wme-md-active-list-item {
+    list-style: none;
 }
 
 /* ── Block elements ─────────────────────────────────────────────────────────── */
@@ -347,6 +383,11 @@
     font-size: 0.92em;
 }
 
+.milkdown .ProseMirror table.wme-table--active {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 4px;
+}
+
 .milkdown .ProseMirror th,
 .milkdown .ProseMirror td {
     border: 1px solid var(--border);
@@ -362,6 +403,42 @@
 .milkdown .ProseMirror td p,
 .milkdown .ProseMirror th p {
     margin: 0;
+}
+
+.milkdown .ProseMirror .wme-table-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0.9em 0 -0.6em;
+    padding: 4px;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.milkdown .ProseMirror .wme-table-toolbar-btn {
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72em;
+    line-height: 1;
+    padding: 5px 7px;
+}
+
+.milkdown .ProseMirror .wme-table-toolbar-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.milkdown .ProseMirror .wme-table-toolbar-btn--danger:hover {
+    color: #ff8a7a;
 }
 
 /* ── Selection ──────────────────────────────────────────────────────────────── */
@@ -615,9 +692,8 @@
 .frontmatter-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
     padding: 8px 12px;
-    cursor: pointer;
     user-select: none;
     background: var(--bg-hover);
     transition: background 0.15s ease;
@@ -625,6 +701,34 @@
 
 .frontmatter-header:hover {
     background: var(--bg-active-item);
+}
+
+.frontmatter-header-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+}
+
+.frontmatter-add {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.82em;
+    padding: 2px 7px;
+}
+
+.frontmatter-add:hover {
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 .frontmatter-toggle {
@@ -667,12 +771,31 @@
     flex: 1;
 }
 
+.frontmatter-value-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    padding: 3px 6px;
+}
+
+.frontmatter-value-input:hover,
+.frontmatter-value-input:focus {
+    border-color: var(--border);
+    background: var(--bg-base);
+    outline: none;
+}
+
 /* ── Citation tag (for future NodeView) ─────────────────────────────────────── */
 
 .citation-tag {
     display: inline-flex;
     align-items: center;
-    padding: 1px 7px;
+    gap: 4px;
+    padding: 1px 6px;
     border-radius: 4px;
     background: rgba(74, 142, 255, 0.12);
     color: #4a8eff;
@@ -681,6 +804,46 @@
     cursor: pointer;
     user-select: none;
     vertical-align: baseline;
+}
+
+.citation-tag--missing {
+    background: rgba(255, 138, 122, 0.12);
+    color: #ff8a7a;
+}
+
+.citation-tag-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-width 0.15s ease, opacity 0.15s ease;
+}
+
+.citation-tag:hover .citation-tag-actions,
+.citation-tag:focus-within .citation-tag-actions {
+    max-width: 96px;
+    opacity: 1;
+}
+
+.citation-tag-action {
+    border: none;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78em;
+    padding: 1px 4px;
+}
+
+.citation-tag-action:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.citation-tag-action--danger:hover {
+    color: #ffb0a6;
 }
 
 /* ── Prism syntax highlighting overrides (Everforest) ───────────────────────── */
@@ -794,6 +957,76 @@
 [data-theme="claude"] .code-block-container pre code .token.important,
 [data-theme="claude"] .code-block-container pre code .token.variable {
     color: #b87b9d;
+}
+
+/* ── Images ───────────────────────────────────────────────────────────────── */
+
+.milkdown .ProseMirror .milkdown-image {
+    position: relative;
+    margin: 1.2em 0;
+    text-align: center;
+}
+
+.milkdown .ProseMirror .milkdown-image img {
+    display: inline-block;
+    max-width: 100%;
+    border-radius: 6px;
+}
+
+.milkdown .ProseMirror .milkdown-image-caption {
+    margin-top: 0.5em;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.milkdown .ProseMirror .milkdown-image-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+}
+
+.milkdown .ProseMirror .milkdown-image:hover .milkdown-image-actions,
+.milkdown .ProseMirror .milkdown-image:focus-within .milkdown-image-actions {
+    opacity: 1;
+}
+
+.milkdown .ProseMirror .milkdown-image-action {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72em;
+    padding: 3px 7px;
+}
+
+.milkdown .ProseMirror .milkdown-image-action:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.milkdown .ProseMirror .milkdown-image-broken {
+    display: none;
+    border: 1px dashed var(--border-medium);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+    font-size: 0.8em;
+    padding: 18px;
+}
+
+.milkdown .ProseMirror .milkdown-image--broken img {
+    display: none;
+}
+
+.milkdown .ProseMirror .milkdown-image--broken .milkdown-image-broken {
+    display: block;
 }
 
 /* ── Source mode ──────────────────────────────────────────────────────────────────── */

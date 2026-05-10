@@ -1,5 +1,5 @@
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import type { NodeView, NodeViewConstructor } from "@milkdown/prose/view";
+import type { NodeView, NodeViewConstructor, ViewMutationRecord } from "@milkdown/prose/view";
 import { EditorView } from "@milkdown/prose/view";
 import { codeBlockSchema } from "@milkdown/preset-commonmark";
 import { $view } from "@milkdown/utils";
@@ -96,7 +96,8 @@ export class CodeBlockView implements NodeView {
     return true;
   }
 
-  ignoreMutation(record: MutationRecord): boolean {
+  ignoreMutation(record: ViewMutationRecord): boolean {
+    if (record.type === "selection") return false;
     return !this.contentDOM!.contains(record.target as Node);
   }
 

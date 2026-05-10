@@ -839,7 +839,9 @@
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 5px 12px;
+  width: 28px;
+  height: 24px;
+  padding: 0;
   border: none;
   border-radius: 100px;
   background: transparent;

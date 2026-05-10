@@ -122,52 +122,108 @@ export const citationSchema = $nodeSchema("citation", () => ({
 export class CitationView implements NodeView {
   dom: HTMLElement;
   contentDOM?: HTMLElement;
+  private node: ProseNode;
+  private view: EditorView;
+  private getPos: () => number | undefined;
+  private label: HTMLElement;
 
-  constructor(node: ProseNode) {
-    const key = node.attrs.key as string;
-    const refs = useEditorStore.getState().references;
-    const ref = refs.find((r) => r.bibKey === key);
+  constructor(node: ProseNode, view: EditorView, getPos: () => number | undefined) {
+    this.node = node;
+    this.view = view;
+    this.getPos = getPos;
 
     const span = document.createElement("span");
     span.classList.add("citation-tag");
-    span.dataset.citationKey = key;
     span.contentEditable = "false";
 
-    // Display: try to show [Author Year], fallback to [@key]
-    let display = `[${key}]`;
-    if (ref) {
-      const author = ref.authors?.[0]?.split(",").pop()?.trim() || ref.authors?.[0] || "";
-      const family = author.split(" ").pop() || author;
-      if (family && ref.year) {
-        display = `[${family} ${ref.year}]`;
-      } else if (ref.title) {
-        display = `[${ref.title.slice(0, 20)}]`;
-      }
-    }
-    span.textContent = display;
+    this.label = document.createElement("span");
+    this.label.className = "citation-tag-label";
+    span.appendChild(this.label);
+
+    const actions = document.createElement("span");
+    actions.className = "citation-tag-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "citation-tag-action";
+    editBtn.textContent = "Edit";
+    editBtn.title = "Edit citation key";
+    editBtn.addEventListener("click", this.handleEdit);
+    actions.appendChild(editBtn);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "citation-tag-action citation-tag-action--danger";
+    removeBtn.textContent = "Remove";
+    removeBtn.title = "Remove citation";
+    removeBtn.addEventListener("click", this.handleRemove);
+    actions.appendChild(removeBtn);
+
+    span.appendChild(actions);
 
     this.dom = span;
+    this.render();
+  }
+
+  stopEvent(event: Event): boolean {
+    return (event.target as HTMLElement).closest(".citation-tag-action") !== null;
+  }
+
+  private displayForKey(key: string) {
+    const refs = useEditorStore.getState().references;
+    const ref = refs.find((r) => r.bibKey === key);
+    if (!ref) return { display: `[@${key}]`, missing: true };
+
+    const author = ref.authors?.[0]?.split(",").pop()?.trim() || ref.authors?.[0] || "";
+    const family = author.split(" ").pop() || author;
+    if (family && ref.year) return { display: `[${family} ${ref.year}]`, missing: false };
+    if (ref.title) return { display: `[${ref.title.slice(0, 20)}]`, missing: false };
+    return { display: `[${key}]`, missing: false };
+  }
+
+  private render() {
+    const key = this.node.attrs.key as string;
+    const { display, missing } = this.displayForKey(key);
+    this.dom.dataset.citationKey = key;
+    this.dom.classList.toggle("citation-tag--missing", missing);
+    this.dom.title = missing ? `Missing reference: ${key}` : `Citation: ${key}`;
+    this.label.textContent = display;
+  }
+
+  private handleEdit = (event: MouseEvent) => {
+    event.preventDefault();
+    const currentKey = (this.node.attrs.key as string) || "";
+    const nextKey = window.prompt("Citation key", currentKey);
+    if (nextKey === null) return;
+
+    const cleanKey = nextKey.trim().replace(/^@/, "");
+    if (!cleanKey) return;
+
+    const pos = this.getPos();
+    if (pos === undefined) return;
+
+    this.view.dispatch(
+      this.view.state.tr.setNodeMarkup(pos, undefined, {
+        ...this.node.attrs,
+        key: cleanKey,
+      })
+    );
+  };
+
+  private handleRemove = (event: MouseEvent) => {
+    event.preventDefault();
+    const pos = this.getPos();
+    if (pos === undefined) return;
+
+    this.view.dispatch(
+      this.view.state.tr.delete(pos, pos + this.node.nodeSize)
+    );
   }
 
   update(node: ProseNode): boolean {
     if (node.type.name !== "citation") return false;
-    const key = node.attrs.key as string;
-    if (this.dom.dataset.citationKey !== key) {
-      this.dom.dataset.citationKey = key;
-      const refs = useEditorStore.getState().references;
-      const ref = refs.find((r) => r.bibKey === key);
-      let display = `[${key}]`;
-      if (ref) {
-        const author = ref.authors?.[0]?.split(",").pop()?.trim() || ref.authors?.[0] || "";
-        const family = author.split(" ").pop() || author;
-        if (family && ref.year) {
-          display = `[${family} ${ref.year}]`;
-        } else if (ref.title) {
-          display = `[${ref.title.slice(0, 20)}]`;
-        }
-      }
-      this.dom.textContent = display;
-    }
+    this.node = node;
+    this.render();
     return true;
   }
 
@@ -181,7 +237,7 @@ export class CitationView implements NodeView {
 }
 
 export const citationViewPlugin = $view(citationSchema.node, (_ctx: Ctx) => {
-  return ((node: ProseNode, _view: EditorView, _getPos: () => number | undefined) => {
-    return new CitationView(node);
+  return ((node: ProseNode, view: EditorView, getPos: () => number | undefined) => {
+    return new CitationView(node, view, getPos);
   }) as NodeViewConstructor;
 });
