@@ -94,6 +94,7 @@
     cursor: text;
     outline: none;
     padding: 0 1px;
+    transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
 }
 
 .milkdown .ProseMirror .wme-md-syntax-marker:focus {

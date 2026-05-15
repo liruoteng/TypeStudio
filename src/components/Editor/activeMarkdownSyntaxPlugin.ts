@@ -1,6 +1,6 @@
 import type { Mark, Node as ProseNode } from "@milkdown/prose/model";
-import { EditorState, Plugin, PluginKey } from "@milkdown/prose/state";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
+import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
+import { Decoration, DecorationSet, type EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
 
 const activeMarkdownSyntaxKey = new PluginKey("active-markdown-syntax");
@@ -33,7 +33,7 @@ function syntaxWidget(text: string, className = "") {
   return span;
 }
 
-function markerWidget(text: string, range: MarkRange) {
+function markerWidget(text: string, range: MarkRange, edge: "start" | "end") {
   const span = document.createElement("span");
   span.className = "wme-md-syntax wme-md-syntax-marker";
   span.textContent = text;
@@ -44,11 +44,34 @@ function markerWidget(text: string, range: MarkRange) {
   span.dataset.mark = range.mark.type.name;
   span.dataset.from = String(range.from);
   span.dataset.to = String(range.to);
+  span.dataset.edge = edge;
   span.dataset.original = text;
   if (typeof range.mark.attrs.marker === "string") {
     span.dataset.markerStyle = range.mark.attrs.marker;
   }
   return span;
+}
+
+function markerBounds(marker: HTMLElement) {
+  const edge = marker.dataset.edge;
+  const from = Number(marker.dataset.from);
+  const to = Number(marker.dataset.to);
+
+  if ((edge !== "start" && edge !== "end") || !Number.isFinite(from) || !Number.isFinite(to)) {
+    return null;
+  }
+
+  return { edge, from, to };
+}
+
+function moveSelectionToMarkerBoundary(view: EditorView, marker: HTMLElement, key: string) {
+  const bounds = markerBounds(marker);
+  if (!bounds || (key !== "ArrowLeft" && key !== "ArrowRight")) return false;
+
+  const pos = bounds.edge === "start" ? bounds.from : bounds.to;
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+  return true;
 }
 
 function widgetOptions(key: string, side: number, editable = false) {
@@ -201,12 +224,12 @@ export const activeMarkdownSyntaxPlugin = $prose(() => {
 
           decorations.push(Decoration.widget(
             range.from,
-            markerWidget(marker[0], range),
+            markerWidget(marker[0], range, "start"),
             widgetOptions(`mark-start-${range.from}-${range.to}-${marker[0]}`, -1, true),
           ));
           decorations.push(Decoration.widget(
             range.to,
-            markerWidget(marker[1], range),
+            markerWidget(marker[1], range, "end"),
             widgetOptions(`mark-end-${range.from}-${range.to}-${marker[1]}`, 1, true),
           ));
         }
@@ -246,6 +269,11 @@ export const activeMarkdownSyntaxPlugin = $prose(() => {
             event.preventDefault();
             marker.blur();
             return true;
+          }
+
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            return moveSelectionToMarkerBoundary(view, marker, event.key);
           }
 
           if (event.key === "Escape") {

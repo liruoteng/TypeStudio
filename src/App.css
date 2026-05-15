@@ -118,6 +118,7 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 /* ── Main content (AI column + panel area) ───────────────────────────────── */
@@ -127,6 +128,8 @@
   min-width: 0;
   overflow: hidden;
   position: relative;
+  padding-left: var(--fsb-content-offset, 52px);
+  transition: padding-left 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Panel selector floating anchor (top-right, always visible) ──────────── */

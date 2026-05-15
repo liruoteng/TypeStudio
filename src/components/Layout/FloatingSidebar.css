@@ -1,17 +1,25 @@
-/* ── Rail / push sidebar ──────────────────────────────────────────────────── */
+/* ── Floating rail/sidebar ────────────────────────────────────────────────── */
 .fsb {
-  flex-shrink: 0;
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 350;
   width: 40px;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
-  border-right: 1px solid var(--border);
-  transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-medium);
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+  transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.16s ease, border-color 0.16s ease;
   overflow: hidden;
-  position: relative;
+  backdrop-filter: blur(14px);
 }
 .fsb--open {
   min-width: 160px;
+  border-color: var(--border-medium);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
 }
 
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
@@ -22,7 +30,7 @@
   padding: 0 8px;
   height: 42px;
   flex-shrink: 0;
-  background: var(--bg-toolbar);
+  background: transparent;
   gap: 0;
 }
 .fsb--open .fsb-topbar {
@@ -301,7 +309,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 5px;
+  width: 7px;
   cursor: col-resize;
   z-index: 10;
 }

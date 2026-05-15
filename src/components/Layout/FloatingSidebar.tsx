@@ -14,6 +14,9 @@ interface FloatingSidebarProps {
   onOpenFolder: () => void;
 }
 
+const SHOW_MEDIA_SECTION = false;
+const SHOW_REFERENCES_SECTION = false;
+
 function SidebarIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
@@ -86,6 +89,14 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const toggle = useCallback(() => setSidebarOpen(!sidebarOpen), [sidebarOpen, setSidebarOpen]);
+
+  useEffect(() => {
+    const offset = sidebarOpen ? sidebarWidth + 32 : 52;
+    document.documentElement.style.setProperty("--fsb-content-offset", `${offset}px`);
+    return () => {
+      document.documentElement.style.removeProperty("--fsb-content-offset");
+    };
+  }, [sidebarOpen, sidebarWidth]);
 
   // Debounced search
   useEffect(() => {
@@ -248,10 +259,10 @@ export function FloatingSidebar({ onOpenFolder }: FloatingSidebarProps) {
       </div>
 
       {/* ── Section 2: Media Management (temporarily hidden) ── */}
-      {/* <MediaSection /> */}
+      {SHOW_MEDIA_SECTION && <MediaSection />}
 
       {/* ── Section 3: References (temporarily hidden) ───── */}
-      {/* <ReferencesSection /> */}
+      {SHOW_REFERENCES_SECTION && <ReferencesSection />}
 
       {/* ── Bottom: profile + theme ──────────────────────────── */}
       <div className="fsb-bottom">
@@ -362,7 +373,6 @@ function SearchSection({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ReferencesSection() {
   const [urlValue, setUrlValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -418,7 +428,6 @@ function ReferencesSection() {
 }
 
 // ── Media Management Section ──────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MediaSection() {
   const workspacePath = useEditorStore((s) => s.workspacePath);
   const [mediaFiles, setMediaFiles] = useState<FileEntry[]>([]);
