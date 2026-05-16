@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { markdown } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { searchKeymap } from "@codemirror/search";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -27,6 +28,8 @@ import { useEditorStore, type Reference } from "../../stores/editorStore";
 import { copyImageFilesToAssets } from "../../lib/utils";
 import { getActiveDragSource } from "../FileExplorer/FileTree";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
+import { WidthHandle } from "./WidthHandle";
+import { normalizeTableDelimiterEscapes } from "./markdownEscapeUtil";
 import "katex/dist/katex.min.css";
 import "./MarkdownWysiwygEditor.css";
 
@@ -67,9 +70,17 @@ type MarkdownCodeBlock = {
   to: number;
   language: string;
   value: string;
+  closed: boolean;
 };
 
 type MarkdownMathBlock = {
+  from: number;
+  to: number;
+  value: string;
+  kind: "dollar" | "bracket" | "environment";
+};
+
+type InlineMathMatch = {
   from: number;
   to: number;
   value: string;
@@ -135,6 +146,12 @@ const prismAliases: Record<string, string> = {
   "objective-c": "objectivec",
 };
 
+const codeBlockLanguages = ["", ...refractor.listLanguages().sort((a, b) => a.localeCompare(b))];
+
+function codeBlockLanguageOptions(current: string) {
+  return [...new Set([current, ...codeBlockLanguages])];
+}
+
 function isMarkdownPath(path: string) {
   return path.endsWith(".md") || path.endsWith(".markdown");
 }
@@ -168,17 +185,97 @@ function inlineMarkerActive(markers: InlineRange[], cursorFrom: number, cursorTo
   return markers.some((marker) => cursorTo >= marker.from && cursorFrom <= marker.to);
 }
 
+function escaped(text: string, index: number) {
+  let slashCount = 0;
+  for (let pos = index - 1; pos >= 0 && text[pos] === "\\"; pos -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
+}
+
+function inlineMathRanges(lineText: string, lineFrom: number, fromOffset: number): InlineMathMatch[] {
+  const matches: InlineMathMatch[] = [];
+
+  for (let index = fromOffset; index < lineText.length - 2; index += 1) {
+    if (lineText[index] !== "\\" || lineText[index + 1] !== "(" || escaped(lineText, index)) continue;
+    const close = lineText.indexOf("\\)", index + 2);
+    if (close === -1) break;
+    if (close > index + 2 && !escaped(lineText, close)) {
+      matches.push({
+        from: lineFrom + index,
+        to: lineFrom + close + 2,
+        value: lineText.slice(index + 2, close).trim(),
+      });
+    }
+    index = close + 1;
+  }
+
+  for (let index = fromOffset; index < lineText.length; index += 1) {
+    if (lineText[index] !== "$" || escaped(lineText, index)) continue;
+    if (lineText[index + 1] === "$") {
+      index += 1;
+      continue;
+    }
+    const before = index === 0 ? "" : lineText[index - 1];
+    const after = lineText[index + 1] ?? "";
+    if (!after || /\s/.test(after) || /\d/.test(before)) continue;
+
+    for (let close = index + 1; close < lineText.length; close += 1) {
+      if (lineText[close] !== "$" || escaped(lineText, close)) continue;
+      if (lineText[close + 1] === "$") continue;
+      const beforeClose = lineText[close - 1] ?? "";
+      const afterClose = lineText[close + 1] ?? "";
+      if (/\s/.test(beforeClose) || /\d/.test(afterClose)) continue;
+      if (close > index + 1) {
+        matches.push({
+          from: lineFrom + index,
+          to: lineFrom + close + 1,
+          value: lineText.slice(index + 1, close).trim(),
+        });
+      }
+      index = close;
+      break;
+    }
+  }
+
+  return matches.sort((a, b) => a.from - b.from || a.to - b.to);
+}
+
 function splitTableRow(text: string) {
-  return text
-    .trim()
+  const normalized = normalizeTableDelimiterEscapes(text).trim();
+  const body = normalized
     .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
+    .replace(/\|$/, "");
+  const cells: string[] = [];
+  let current = "";
+
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    const next = body[index + 1];
+    if (char === "\\" && next === "|") {
+      current += "|";
+      index += 1;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function escapeTableCell(cell: string) {
+  return cell.replace(/\|/g, "\\|");
 }
 
 function formatTableRow(cells: string[]) {
-  return `| ${cells.join(" | ")} |`;
+  return `| ${cells.map(escapeTableCell).join(" | ")} |`;
+}
+
+function tableSnippet(snippet: string) {
+  return snippet.split("\n").map(normalizeTableDelimiterEscapes).join("\n");
 }
 
 function serializeTable(table: Pick<MarkdownTable, "header" | "alignments" | "rows">) {
@@ -215,7 +312,7 @@ function insertColumnIntoTable(table: MarkdownTable) {
 
 function parseTableAlignment(separator: string) {
   const cells = splitTableRow(separator);
-  if (cells.length < 2 || cells.some((cell) => !/^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")))) return null;
+  if (cells.length < 2 || cells.some((cell) => !/^:?-+:?$/.test(cell.replace(/\s+/g, "")))) return null;
 
   return cells.map((cell) => {
     const compact = cell.replace(/\s+/g, "");
@@ -229,7 +326,7 @@ function parseTableAlignment(separator: string) {
 }
 
 function isTableRow(text: string) {
-  return text.includes("|") && splitTableRow(text).length >= 2;
+  return normalizeTableDelimiterEscapes(text).includes("|") && splitTableRow(text).length >= 2;
 }
 
 function tableAt(source: MarkdownDocSource, lineNumber: number): MarkdownTable | null {
@@ -343,6 +440,7 @@ function codeBlockAt(source: MarkdownDocSource, lineNumber: number): MarkdownCod
         to: line.to,
         language,
         value: valueLines.join("\n"),
+        closed: true,
       };
     }
     valueLines.push(line.text);
@@ -353,24 +451,78 @@ function codeBlockAt(source: MarkdownDocSource, lineNumber: number): MarkdownCod
     to: lastLine.to,
     language,
     value: valueLines.join("\n"),
+    closed: false,
   };
 }
 
 function mathBlockAt(source: MarkdownDocSource, lineNumber: number): MarkdownMathBlock | null {
   const doc = markdownDoc(source);
   const openLine = doc.line(lineNumber);
-  if (!/^\s*\$\$\s*$/.test(openLine.text)) return null;
+
+  const singleLineDollar = openLine.text.match(/^\s*\$\$(.+?)\$\$\s*$/);
+  if (singleLineDollar) {
+    return {
+      from: openLine.from,
+      to: openLine.to,
+      value: singleLineDollar[1].trim(),
+      kind: "dollar",
+    };
+  }
+
+  const singleLineBracket = openLine.text.match(/^\s*\\\[(.+?)\\\]\s*$/);
+  if (singleLineBracket) {
+    return {
+      from: openLine.from,
+      to: openLine.to,
+      value: singleLineBracket[1].trim(),
+      kind: "bracket",
+    };
+  }
+
+  const environment = openLine.text.match(/^\s*\\begin\{(equation\*?|align\*?|gather\*?|multline\*?)\}\s*$/);
+  if (environment) {
+    const environmentName = environment[1];
+    const lines = [openLine.text.trim()];
+    let lastLine = openLine;
+    const closeRe = new RegExp(`^\\s*\\\\end\\{${environmentName.replace(/\*/g, "\\*")}\\}\\s*$`);
+    for (let nextLineNumber = lineNumber + 1; nextLineNumber <= doc.lines; nextLineNumber += 1) {
+      const line = doc.line(nextLineNumber);
+      lastLine = line;
+      lines.push(line.text.trimEnd());
+      if (closeRe.test(line.text)) {
+        return {
+          from: openLine.from,
+          to: line.to,
+          value: lines.join("\n").trim(),
+          kind: "environment",
+        };
+      }
+    }
+
+    return {
+      from: openLine.from,
+      to: lastLine.to,
+      value: lines.join("\n").trim(),
+      kind: "environment",
+    };
+  }
+
+  const dollarOpen = /^\s*\$\$\s*$/.test(openLine.text);
+  const bracketOpen = /^\s*\\\[\s*$/.test(openLine.text);
+  if (!dollarOpen && !bracketOpen) return null;
 
   const lines: string[] = [];
   let lastLine = openLine;
+  const closeRe = dollarOpen ? /^\s*\$\$\s*$/ : /^\s*\\\]\s*$/;
   for (let nextLineNumber = lineNumber + 1; nextLineNumber <= doc.lines; nextLineNumber += 1) {
     const line = doc.line(nextLineNumber);
     lastLine = line;
-    if (/^\s*\$\$\s*$/.test(line.text)) {
+    if (closeRe.test(line.text)) {
       return {
         from: openLine.from,
         to: line.to,
         value: lines.join("\n").trim(),
+        kind: dollarOpen ? "dollar" : "bracket",
       };
     }
     lines.push(line.text);
@@ -380,6 +532,7 @@ function mathBlockAt(source: MarkdownDocSource, lineNumber: number): MarkdownMat
     from: openLine.from,
     to: lastLine.to,
     value: lines.join("\n").trim(),
+    kind: dollarOpen ? "dollar" : "bracket",
   };
 }
 
@@ -501,100 +654,6 @@ function addSyntaxTokenDecorations(
   } catch {
     // Some Prism grammars are permissive enough to throw on partial lines.
     // In that case, keep the code readable without token colors.
-  }
-}
-
-function appendHighlightedCode(parent: HTMLElement, value: string, language: string) {
-  if (!language || !refractor.registered(language)) {
-    parent.textContent = value || " ";
-    return;
-  }
-
-  const appendNode = (target: HTMLElement, node: HastRoot | HastNode) => {
-    if (isHastText(node)) {
-      target.appendChild(document.createTextNode(node.value));
-      return;
-    }
-
-    if (isHastElement(node)) {
-      const span = document.createElement("span");
-      const classes = syntaxTokenClasses(hastClassNames(node));
-      if (classes.length > 0) span.className = `cm-md-token ${classes.join(" ")}`;
-      for (const child of node.children) appendNode(span, child);
-      target.appendChild(span);
-      return;
-    }
-
-    if ("children" in node) {
-      for (const child of node.children) appendNode(target, child);
-    }
-  };
-
-  try {
-    appendNode(parent, refractor.highlight(value || " ", language));
-  } catch {
-    parent.textContent = value || " ";
-  }
-}
-
-class MarkdownCodeBlockWidget extends WidgetType {
-  constructor(private readonly codeBlock: MarkdownCodeBlock) {
-    super();
-  }
-
-  eq(other: MarkdownCodeBlockWidget) {
-    return (
-      this.codeBlock.language === other.codeBlock.language &&
-      this.codeBlock.value === other.codeBlock.value
-    );
-  }
-
-  toDOM(view: EditorView) {
-    const wrap = document.createElement("div");
-    wrap.className = "cm-md-code-block-render";
-
-    const actions = document.createElement("div");
-    actions.className = "cm-md-code-block-actions";
-
-    if (this.codeBlock.language) {
-      const language = document.createElement("span");
-      language.className = "cm-md-code-block-language";
-      language.textContent = this.codeBlock.language;
-      actions.appendChild(language);
-    }
-
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "Edit source";
-    edit.addEventListener("mousedown", (event) => event.preventDefault());
-    edit.addEventListener("click", (event) => {
-      event.preventDefault();
-      view.dispatch({
-        selection: EditorSelection.cursor(this.codeBlock.from),
-        scrollIntoView: true,
-      });
-      view.focus();
-    });
-    actions.appendChild(edit);
-    wrap.appendChild(actions);
-
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    appendHighlightedCode(code, this.codeBlock.value, this.codeBlock.language);
-    pre.appendChild(code);
-    wrap.appendChild(pre);
-
-    wrap.addEventListener("mousedown", (event) => {
-      if ((event.target as HTMLElement).closest("button")) return;
-      event.preventDefault();
-      view.dispatch({
-        selection: EditorSelection.cursor(this.codeBlock.from),
-        scrollIntoView: true,
-      });
-      view.focus();
-    });
-
-    return wrap;
   }
 }
 
@@ -777,6 +836,7 @@ class FrontmatterWidget extends WidgetType {
     header.addEventListener("click", () => {
       body.hidden = !body.hidden;
       caret.textContent = body.hidden ? "▸" : "▾";
+      view.requestMeasure();
     });
 
     panel.appendChild(header);
@@ -820,8 +880,14 @@ class MarkdownImageWidget extends WidgetType {
     img.src = resolveMarkdownAssetSrc(this.image.src);
     img.alt = this.image.alt;
     img.title = this.image.title || this.image.alt || this.image.src;
-    img.addEventListener("error", () => figure.classList.add("cm-md-image-render--broken"));
-    img.addEventListener("load", () => figure.classList.remove("cm-md-image-render--broken"));
+    img.addEventListener("error", () => {
+      figure.classList.add("cm-md-image-render--broken");
+      view.requestMeasure();
+    });
+    img.addEventListener("load", () => {
+      figure.classList.remove("cm-md-image-render--broken");
+      view.requestMeasure();
+    });
     figure.appendChild(img);
 
     const broken = document.createElement("figcaption");
@@ -886,23 +952,218 @@ class MathWidget extends WidgetType {
   constructor(
     private readonly value: string,
     private readonly displayMode: boolean,
+    private readonly from: number,
+    private readonly to: number,
   ) {
     super();
   }
 
   eq(other: MathWidget) {
-    return this.value === other.value && this.displayMode === other.displayMode;
+    return (
+      this.value === other.value &&
+      this.displayMode === other.displayMode &&
+      this.from === other.from &&
+      this.to === other.to
+    );
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
     const span = document.createElement(this.displayMode ? "div" : "span");
     span.className = this.displayMode ? "cm-md-math cm-md-math-block-render" : "cm-md-math cm-md-math-inline-render";
     if (this.value.trim()) {
-      katex.render(this.value, span, { displayMode: this.displayMode, throwOnError: false });
+      try {
+        katex.render(this.value, span, {
+          displayMode: this.displayMode,
+          throwOnError: false,
+          strict: "warn",
+          trust: false,
+          output: "html",
+        });
+      } catch (error) {
+        span.classList.add("cm-md-math-error");
+        span.textContent = error instanceof Error ? error.message : "Invalid math";
+      }
     } else {
       span.classList.add("cm-md-math-empty");
     }
+    span.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({
+        selection: EditorSelection.range(this.from, this.to),
+        scrollIntoView: true,
+      });
+      view.focus();
+    });
     return span;
+  }
+}
+
+class HorizontalRuleWidget extends WidgetType {
+  constructor(
+    private readonly from: number,
+    private readonly to: number,
+  ) {
+    super();
+  }
+
+  eq(other: HorizontalRuleWidget) {
+    return this.from === other.from && this.to === other.to;
+  }
+
+  toDOM(view: EditorView) {
+    const hr = document.createElement("hr");
+    hr.className = "cm-md-horizontal-rule";
+    hr.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({
+        selection: EditorSelection.range(this.from, this.to),
+        scrollIntoView: true,
+      });
+      view.focus();
+    });
+    return hr;
+  }
+
+  ignoreEvent() {
+    return false;
+  }
+}
+
+class CodeBlockActionsWidget extends WidgetType {
+  private cleanup: (() => void) | null = null;
+
+  constructor(
+    private readonly codeBlock: MarkdownCodeBlock,
+    private readonly active: boolean,
+  ) {
+    super();
+  }
+
+  eq(other: CodeBlockActionsWidget) {
+    return (
+      this.codeBlock.from === other.codeBlock.from &&
+      this.codeBlock.value === other.codeBlock.value &&
+      this.codeBlock.language === other.codeBlock.language &&
+      this.active === other.active
+    );
+  }
+
+  toDOM(view: EditorView) {
+    const wrap = document.createElement("span");
+    wrap.className = "cm-md-code-actions-widget";
+    if (this.active) wrap.classList.add("is-active");
+
+    const stopMouse = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const languageButton = document.createElement("button");
+    languageButton.type = "button";
+    languageButton.className = "cm-md-code-action cm-md-code-language";
+    languageButton.textContent = this.codeBlock.language || "text";
+    languageButton.setAttribute("aria-label", "Change code block language");
+    languageButton.title = "Change language";
+    languageButton.addEventListener("mousedown", stopMouse);
+
+    const menu = document.createElement("div");
+    menu.className = "cm-md-code-language-menu";
+    menu.hidden = true;
+
+    const setMenuOpen = (open: boolean) => {
+      menu.hidden = !open;
+      wrap.classList.toggle("is-open", open);
+    };
+
+    const applyLanguage = (nextLanguage: string) => {
+      const openLine = view.state.doc.lineAt(this.codeBlock.from);
+      const open = openLine.text.match(/^(\s*)(`{3,}|~{3,})/);
+      if (!open) return;
+
+      const nextOpenLine = `${open[1]}${open[2]}${nextLanguage}`;
+      view.dispatch({
+        changes: { from: openLine.from, to: openLine.to, insert: nextOpenLine },
+        selection: EditorSelection.cursor(openLine.from + nextOpenLine.length),
+        scrollIntoView: true,
+      });
+      view.focus();
+    };
+
+    for (const language of codeBlockLanguageOptions(this.codeBlock.language)) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `cm-md-code-language-option${language === this.codeBlock.language ? " is-selected" : ""}`;
+      item.textContent = language || "Plain text";
+      item.addEventListener("mousedown", stopMouse);
+      item.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setMenuOpen(false);
+        applyLanguage(language);
+      });
+      menu.appendChild(item);
+    }
+
+    languageButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenuOpen(menu.hidden);
+    });
+    wrap.appendChild(languageButton);
+    wrap.appendChild(menu);
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "cm-md-code-action cm-md-code-copy";
+    copyButton.textContent = "⧉";
+    copyButton.setAttribute("aria-label", "Copy code");
+    copyButton.title = "Copy code";
+    copyButton.addEventListener("mousedown", stopMouse);
+    copyButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigator.clipboard?.writeText(this.codeBlock.value).then(() => {
+        copyButton.textContent = "✓";
+        window.setTimeout(() => {
+          copyButton.textContent = "⧉";
+        }, 900);
+      }).catch(() => {
+        copyButton.textContent = "!";
+        window.setTimeout(() => {
+          copyButton.textContent = "⧉";
+        }, 1100);
+      });
+    });
+    wrap.appendChild(copyButton);
+
+    const syncHover = (event: MouseEvent) => {
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      wrap.classList.toggle("is-hovered", pos !== null && pos >= this.codeBlock.from && pos <= this.codeBlock.to);
+    };
+    const clearHover = () => wrap.classList.remove("is-hovered");
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!wrap.contains(event.target as Node)) setMenuOpen(false);
+    };
+
+    view.scrollDOM.addEventListener("mousemove", syncHover);
+    view.scrollDOM.addEventListener("mouseleave", clearHover);
+    window.addEventListener("mousedown", closeOnOutside, true);
+    this.cleanup = () => {
+      view.scrollDOM.removeEventListener("mousemove", syncHover);
+      view.scrollDOM.removeEventListener("mouseleave", clearHover);
+      window.removeEventListener("mousedown", closeOnOutside, true);
+    };
+
+    return wrap;
+  }
+
+  destroy() {
+    this.cleanup?.();
+    this.cleanup = null;
+  }
+
+  ignoreEvent() {
+    return false;
   }
 }
 
@@ -954,11 +1215,11 @@ class TaskCheckboxWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       const next = this.checked ? " " : "x";
+      const selection = view.state.selection;
       view.dispatch({
         changes: { from: this.markerFrom + 3, to: this.markerFrom + 4, insert: next },
-        selection: EditorSelection.cursor(this.markerTo),
+        selection,
       });
-      view.focus();
     });
     return button;
   }
@@ -1018,20 +1279,23 @@ function addInlineDecorations(
     }
   }
 
-  const mathRe = /\\\(([^)\n]+?)\\\)|(?<!\\)\$([^$\n]+?)(?<!\\)\$/g;
-  mathRe.lastIndex = fromOffset;
-  while ((match = mathRe.exec(lineText)) !== null) {
-    const start = lineFrom + match.index;
-    const end = start + match[0].length;
-    const active = inlineMarkerActive([{ from: start, to: end }], cursorFrom, cursorTo);
+  for (const math of inlineMathRanges(lineText, lineFrom, fromOffset)) {
+    const overlapsInlineCode = ranges.some((range) => (
+      range.className?.includes("cm-md-code") &&
+      range.from < math.to &&
+      range.to > math.from
+    ));
+    if (overlapsInlineCode) continue;
+
+    const active = inlineMarkerActive([{ from: math.from, to: math.to }], cursorFrom, cursorTo);
     if (active) {
-      ranges.push(markerRange(start, end, true));
+      ranges.push(markerRange(math.from, math.to, true));
     } else {
       ranges.push({
-        from: start,
-        to: end,
+        from: math.from,
+        to: math.to,
         replace: true,
-        widget: new MathWidget(match[1] ?? match[2] ?? "", false),
+        widget: new MathWidget(math.value, false, math.from, math.to),
       });
     }
   }
@@ -1052,6 +1316,14 @@ function addInlineDecorations(
         widget: new CitationWidget(match[1].trim(), start, end),
       });
     }
+  }
+
+  const emojiRe = /\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)*|\p{Regional_Indicator}{2}/gu;
+  emojiRe.lastIndex = fromOffset;
+  while ((match = emojiRe.exec(lineText)) !== null) {
+    const start = lineFrom + match.index;
+    const end = start + match[0].length;
+    ranges.push({ from: start, to: end, className: "cm-md-emoji" });
   }
 }
 
@@ -1117,7 +1389,7 @@ function buildMarkdownDecorations(state: EditorState) {
           to: mathBlock.to,
           replace: true,
           block: true,
-          widget: new MathWidget(mathBlock.value, true),
+          widget: new MathWidget(mathBlock.value, true, mathBlock.from, mathBlock.to),
         });
       }
 
@@ -1130,29 +1402,37 @@ function buildMarkdownDecorations(state: EditorState) {
       const activeCodeBlock = cursorTo >= codeBlock.from && cursorFrom <= codeBlock.to;
       const lastCodeLineNumber = doc.lineAt(codeBlock.to).number;
 
-      if (activeCodeBlock) {
-        for (let codeLineNumber = line.number; codeLineNumber <= lastCodeLineNumber; codeLineNumber += 1) {
-          const codeLine = doc.line(codeLineNumber);
-          const isFenceLine = codeLineNumber === line.number || codeLineNumber === lastCodeLineNumber;
-          const lineClasses = [
-            "cm-md-code-block-line",
-            codeLineNumber === line.number ? "cm-md-code-block-line--first" : "",
-            codeLineNumber === lastCodeLineNumber ? "cm-md-code-block-line--last" : "",
-          ].filter(Boolean).join(" ");
-          ranges.push({ from: codeLine.from, to: codeLine.from, line: true, className: lineClasses });
+      for (let codeLineNumber = line.number; codeLineNumber <= lastCodeLineNumber; codeLineNumber += 1) {
+        const codeLine = doc.line(codeLineNumber);
+        const isOpenFenceLine = codeLineNumber === line.number;
+        const isCloseFenceLine = codeBlock.closed && codeLineNumber === lastCodeLineNumber;
+        const isFenceLine = isOpenFenceLine || isCloseFenceLine;
+        const isFirstLine = codeLineNumber === line.number;
+        const isLastLine = codeLineNumber === lastCodeLineNumber;
+
+        const lineClasses = [
+          "cm-md-code-block-line",
+          isFirstLine ? "cm-md-code-block-line--first" : "",
+          isLastLine ? "cm-md-code-block-line--last" : "",
+        ].filter(Boolean).join(" ");
+        ranges.push({ from: codeLine.from, to: codeLine.from, line: true, className: lineClasses });
+        if (isFenceLine && !activeCodeBlock) {
+          ranges.push({ from: codeLine.from, to: codeLine.to, className: "cm-md-code-fence-hidden" });
+        } else {
           ranges.push({ from: codeLine.from, to: codeLine.to, className: "cm-md-code-block-source" });
-          if (!isFenceLine) {
-            addSyntaxTokenDecorations(ranges, codeLine.text, codeLine.from, codeBlock.language);
-          }
         }
-      } else {
-        ranges.push({
-          from: codeBlock.from,
-          to: codeBlock.to,
-          replace: true,
-          block: true,
-          widget: new MarkdownCodeBlockWidget(codeBlock),
-        });
+        if (isOpenFenceLine) {
+          ranges.push({
+            from: codeLine.from,
+            to: codeLine.from,
+            point: true,
+            side: 1,
+            widget: new CodeBlockActionsWidget(codeBlock, activeCodeBlock),
+          });
+        }
+        if (!isFenceLine) {
+          addSyntaxTokenDecorations(ranges, codeLine.text, codeLine.from, codeBlock.language);
+        }
       }
 
       lineNumber = lastCodeLineNumber;
@@ -1208,11 +1488,21 @@ function buildMarkdownDecorations(state: EditorState) {
 
     if (heading) {
       const level = Math.min(heading[1].length, 6);
-      ranges.push(markerRange(line.from, line.from + heading[0].length, activeLine));
+      ranges.push(markerRange(line.from, line.from + heading[0].length, activeLine, `cm-heading-marker-${level}`));
       ranges.push({ from: line.from + heading[0].length, to: line.to, className: `cm-md-heading cm-md-h${level}` });
       addInlineDecorations(ranges, text, line.from, heading[0].length, cursorFrom, cursorTo);
-    } else if (/^([-*_])\1{2,}\s*$/.test(text)) {
-      ranges.push({ from: line.from, to: line.to, className: "cm-md-rule" });
+    } else if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(text)) {
+      if (!selection.empty) {
+        ranges.push({ from: line.from, to: line.to, className: "cm-md-rule-source" });
+      } else {
+        ranges.push({
+          from: line.from,
+          to: line.to,
+          replace: true,
+          block: true,
+          widget: new HorizontalRuleWidget(line.from, line.to),
+        });
+      }
     } else if (blockquote) {
       ranges.push({ from: line.from, to: line.from, line: true, className: "cm-md-blockquote-line" });
       ranges.push(markerRange(line.from, line.from + blockquote[1].length, activeLine));
@@ -1221,7 +1511,8 @@ function buildMarkdownDecorations(state: EditorState) {
     } else if (task) {
       const markerFrom = line.from + task[1].length;
       const markerTo = line.from + task[0].length;
-      if (activeLine) {
+      const activeTaskMarker = cursorTo >= markerFrom && cursorFrom <= markerTo;
+      if (activeTaskMarker) {
         ranges.push(markerRange(markerFrom, markerTo, true));
       } else {
         ranges.push({
@@ -1494,6 +1785,27 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     highlightActiveLine(),
     bracketMatching(),
     markdown(),
+    syntaxHighlighting(HighlightStyle.define([
+      { tag: tags.meta, color: "#404740" },
+      { tag: tags.link, textDecoration: "underline" },
+      { tag: tags.heading, fontWeight: "bold" },
+      { tag: tags.emphasis, fontStyle: "italic" },
+      { tag: tags.strong, fontWeight: "bold" },
+      { tag: tags.strikethrough, textDecoration: "line-through" },
+      { tag: tags.keyword, color: "#708" },
+      { tag: [tags.atom, tags.bool, tags.url, tags.contentSeparator, tags.labelName], color: "#219" },
+      { tag: [tags.literal, tags.inserted], color: "#164" },
+      { tag: [tags.string, tags.deleted], color: "#a11" },
+      { tag: [tags.regexp, tags.escape, tags.special(tags.string)], color: "#e40" },
+      { tag: tags.definition(tags.variableName), color: "#00f" },
+      { tag: tags.local(tags.variableName), color: "#30a" },
+      { tag: [tags.typeName, tags.namespace], color: "#085" },
+      { tag: tags.className, color: "#167" },
+      { tag: [tags.special(tags.variableName), tags.macroName], color: "#256" },
+      { tag: tags.definition(tags.propertyName), color: "#00c" },
+      { tag: tags.comment, color: "#940" },
+      { tag: tags.invalid, color: "#f00" },
+    ])),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     markdownWysiwygDecorations(),
     EditorView.lineWrapping,
@@ -1686,7 +1998,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
       return;
     }
 
-    const snippet = command.snippet;
+    const snippet = command.id === "table" ? tableSnippet(command.snippet) : command.snippet;
     const offset = snippetOffset(snippet, command.cursorOffset ?? snippet.length);
     const selectLength = command.selectLength ?? 0;
     const anchor = slashStart + offset;
@@ -1769,6 +2081,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
           }}
         />
       )}
+      <WidthHandle />
     </div>
   );
 }

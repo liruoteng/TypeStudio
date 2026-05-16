@@ -13,4 +13,14 @@ describe("normalizeWysiwygMarkdownEscapes", () => {
   it("does not normalize escapes inside fenced code blocks", () => {
     expect(normalizeWysiwygMarkdownEscapes("```md\n\\*literal\\*\n```\n\\*text\\*")).toBe("```md\n\\*literal\\*\n```\n*text*");
   });
+
+  it("removes serializer escapes from table row delimiters", () => {
+    expect(
+      normalizeWysiwygMarkdownEscapes("\\| Header 1 \\| Header 2 \\|\n\\| --- \\| --- \\|\n\\| Cell \\| Cell \\|")
+    ).toBe("| Header 1 | Header 2 |\n| --- | --- |\n| Cell | Cell |");
+  });
+
+  it("keeps escaped literal pipes inside table cells", () => {
+    expect(normalizeWysiwygMarkdownEscapes("| A \\| B | C |")).toBe("| A \\| B | C |");
+  });
 });

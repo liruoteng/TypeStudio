@@ -37,7 +37,7 @@ const COMMANDS: SlashCommand[] = [
   { id: "math-block",  label: "Display Math",  description: "Block math expression",  category: "Math", icon: "∫", snippet: "$$\nx\n$$", cursorOffset: 3, selectLength: 1 },
   // Advanced — Markdown-compatible
   { id: "image",    label: "Image",       description: "Image with alt text",       category: "Advanced", icon: "🖼", snippet: "![alt](url)",    cursorOffset: 7, selectLength: 3 },
-  { id: "table",    label: "Table",       description: "Markdown table",            category: "Advanced", icon: "▦", snippet: "| a | b |\n| --- | --- |\n|  |  |" },
+  { id: "table",    label: "Table",       description: "Markdown table",            category: "Advanced", icon: "▦", snippet: "| Header 1 | Header 2 | Header 3 |\n| --- | --- | --- |\n| Cell | Cell | Cell |", cursorOffset: 2, selectLength: 8 },
   { id: "quote",    label: "Quote",       description: "Block quote",               category: "Advanced", icon: "❝", snippet: "> " },
   { id: "link",     label: "Link",        description: "Hyperlink",                 category: "Advanced", icon: "🔗", snippet: "[text](url)", cursorOffset: 1, selectLength: 4 },
   { id: "ai-chat",  label: "AI Assistant", description: "Open AI assistant chat",    category: "Advanced", icon: "✨", snippet: "" },

@@ -135,6 +135,17 @@ describe("SlashMenu", () => {
     expect((onSelect.mock.calls[0][0] as SlashCommand).id).toBe("bold");
   });
 
+  it("provides an unescaped table snippet with the first header selected", async () => {
+    const { onSelect } = renderMenu({ filter: "table" });
+    const tableItem = screen.getByText("Table").closest(".slash-menu-item")!;
+    await userEvent.click(tableItem);
+    const cmd = onSelect.mock.calls[0][0] as SlashCommand;
+    expect(cmd.snippet).toBe("| Header 1 | Header 2 | Header 3 |\n| --- | --- | --- |\n| Cell | Cell | Cell |");
+    expect(cmd.snippet).not.toContain("\\|");
+    expect(cmd.cursorOffset).toBe(2);
+    expect(cmd.selectLength).toBe(8);
+  });
+
   it("hovering an item updates the selection", async () => {
     renderMenu();
     const boldItem = screen.getByText("Bold").closest(".slash-menu-item")!;

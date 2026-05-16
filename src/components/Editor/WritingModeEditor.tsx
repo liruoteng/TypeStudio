@@ -86,6 +86,7 @@ void function registerExtraLanguages() {
     property: /\w+/
   };
 }();
+import { WidthHandle } from "./WidthHandle";
 import { FrontmatterPanel } from "./FrontmatterPanel";
 import { extractFrontmatter, restoreFrontmatter } from "./frontmatterUtil";
 import { normalizeWysiwygMarkdownEscapes } from "./markdownEscapeUtil";
@@ -541,10 +542,19 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                                 return ct.create(null, c);
                             };
                             content = tbl.create(null, [
-                                hdrRow.create(null, [mkCell("a", true), mkCell("b", true)]),
-                                row.create(null, [mkCell("", false), mkCell("", false)]),
+                                hdrRow.create(null, [
+                                    mkCell("Header 1", true),
+                                    mkCell("Header 2", true),
+                                    mkCell("Header 3", true),
+                                ]),
+                                row.create(null, [
+                                    mkCell("Cell", false),
+                                    mkCell("Cell", false),
+                                    mkCell("Cell", false),
+                                ]),
                             ]);
-                            cursorPos = deleteFrom + 1;
+                            cursorPos = deleteFrom + 4;
+                            selectLen = 8;
                         } else {
                             content = s.text(command.snippet || "");
                             cursorPos = deleteFrom + (command.cursorOffset ?? (command.snippet || "").length);
@@ -752,6 +762,7 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                 />
             )}
             <SelectionToolbar getEditor={() => getEditor() ?? null} />
+            <WidthHandle />
         </div>
     );
 }
