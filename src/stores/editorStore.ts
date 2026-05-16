@@ -239,6 +239,7 @@ const PERSISTED_KEYS = [
   "chatSessions",
   "activeChatSessionId",
   "writingMode",
+  "mdSourceMode",
   "references",
   "sidebarTab",
   "aiDockHeight",
@@ -514,6 +515,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (Array.isArray(parsed.chatSessions)) patch.chatSessions = parsed.chatSessions as AiChatSession[];
       if (typeof parsed.activeChatSessionId === "string") patch.activeChatSessionId = parsed.activeChatSessionId;
       if (typeof parsed.writingMode === "boolean") patch.writingMode = parsed.writingMode;
+      if (typeof parsed.mdSourceMode === "boolean") patch.mdSourceMode = parsed.mdSourceMode;
       if (Array.isArray(parsed.references)) patch.references = parsed.references as Reference[];
       if (parsed.sidebarTab === "files" || parsed.sidebarTab === "references") {
         patch.sidebarTab = parsed.sidebarTab;
@@ -529,7 +531,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setWritingMode: (v) => { set({ writingMode: v }); schedulePersist(get); },
 
   mdSourceMode: false,
-  setMdSourceMode: (v) => set({ mdSourceMode: v }),
+  setMdSourceMode: (v) => { set({ mdSourceMode: v }); schedulePersist(get); },
 
   references: [],
   addReference: (ref) => {

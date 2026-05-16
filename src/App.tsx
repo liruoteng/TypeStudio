@@ -17,7 +17,7 @@ import { FloatingSidebar } from "./components/Layout/FloatingSidebar";
 import { PanelManager, ALL_PANELS } from "./components/Layout/PanelManager";
 import type { PanelId } from "./components/Layout/PanelManager";
 import { MonacoEditor } from "./components/Editor/MonacoEditor";
-import { WritingModeEditor } from "./components/Editor/WritingModeEditor";
+import { MarkdownWysiwygEditor } from "./components/Editor/MarkdownWysiwygEditor";
 import { SidecarPreviewPanel } from "./components/Preview/SidecarPreviewPanel";
 import { TableOfContents } from "./components/Preview/TableOfContents";
 import { HistoryPanel } from "./components/FileHistory/HistoryPanel";
@@ -496,7 +496,7 @@ export default function App() {
               contents={{
                 ai: <AIChatPanel />,
                 editor: isMdFile && !mdSourceMode ? (
-                  <WritingModeEditor
+                  <MarkdownWysiwygEditor
                     onSave={handleSave}
                     onSnapshot={handleSnapshot}
                     onPreviewTrigger={handlePreviewTrigger}

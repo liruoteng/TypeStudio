@@ -88,6 +88,7 @@ void function registerExtraLanguages() {
 }();
 import { FrontmatterPanel } from "./FrontmatterPanel";
 import { extractFrontmatter, restoreFrontmatter } from "./frontmatterUtil";
+import { normalizeWysiwygMarkdownEscapes } from "./markdownEscapeUtil";
 import { remarkCitationPlugin, citationSchema, citationViewPlugin } from "./citationView";
 import "katex/dist/katex.min.css";
 import "prismjs/themes/prism-tomorrow.css";
@@ -286,8 +287,9 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                     { plugin: remarkCitationPlugin as unknown as Plugin<[Record<string, unknown>], Root>, options: {} },
                 ]);
                 ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-                    bodyRef.current = markdown;
-                    const full = restoreFrontmatter(frontmatterRef.current, markdown);
+                    const normalizedMarkdown = normalizeWysiwygMarkdownEscapes(markdown);
+                    bodyRef.current = normalizedMarkdown;
+                    const full = restoreFrontmatter(frontmatterRef.current, normalizedMarkdown);
                     contentRef.current = full;
                     updateTabContent(pathRef.current, full);
 
