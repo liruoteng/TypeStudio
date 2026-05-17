@@ -367,7 +367,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   setPreviewLoading: (v) => set(v ? { previewLoading: true, compileStartedAt: performance.now() } : { previewLoading: false }),
-  setPreviewError: (err) => set({ previewError: err, previewLoading: false, compileStatus: "error" }),
+  setPreviewError: (err) => set({
+    previewError: err,
+    previewLoading: false,
+    compileStatus: err ? "error" : "success",
+  }),
   setPreviewZoom: (zoom) => set({ previewZoom: Math.min(4, Math.max(0.25, zoom)) }),
 
   useSidecarPreview: (localStorage.getItem("use-sidecar-preview") ?? "1") === "1",

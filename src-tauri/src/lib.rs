@@ -553,6 +553,20 @@ fn compose_markdown_source(md_path: &Path, md_content: &str) -> (String, Vec<Str
     (typst, warnings)
 }
 
+fn validate_typst_source(path: &Path, content: &str) -> Result<(), String> {
+    let mut world = typst_world::TypstWorld::new(path)?;
+    world.set_source(path, content)?;
+    let warned = typst::compile::<typst::layout::PagedDocument>(&world);
+    match warned.output {
+        Ok(_) => Ok(()),
+        Err(errors) => Err(errors
+            .iter()
+            .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")),
+    }
+}
+
 #[tauri::command]
 async fn fetch_doi(doi: String) -> Result<serde_json::Value, String> {
     let url = format!("https://api.crossref.org/works/{doi}");
@@ -757,6 +771,7 @@ async fn start_sidecar_preview(
         let md_content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let (typst_content, _) = compose_markdown_source(Path::new(&path), &md_content);
         let temp = md_preview_typ_path(&path);
+        validate_typst_source(&temp, &typst_content)?;
         fs::write(&temp, &typst_content).map_err(|e| e.to_string())?;
         temp.to_string_lossy().to_string()
     } else {
@@ -782,6 +797,7 @@ fn write_preview_sidecar_content(path: String, content: String) -> Result<(), St
     if is_markdown_path(Path::new(&path)) {
         let (typst_content, _warnings) = compose_markdown_source(Path::new(&path), &content);
         let temp_path = md_preview_typ_path(&path);
+        validate_typst_source(&temp_path, &typst_content)?;
         fs::write(&temp_path, &typst_content).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1009,6 +1025,19 @@ mod tests {
         let tmpl_pos = out.find("#set page(margin: 3cm)").expect("template missing");
         let body_pos = out.find("= Hello").expect("body missing");
         assert!(tmpl_pos < body_pos, "template must come before body");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_typst_source_rejects_compile_errors() {
+        let dir = std::env::temp_dir().join("ts_validate_typst_error");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let typ = dir.join("doc.typ");
+
+        let err = validate_typst_source(&typ, "#let broken =").unwrap_err();
+        assert!(!err.is_empty());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1264,6 +1293,9 @@ pub fn run() {
             let m_export_pdf    = MenuItemBuilder::new("Export PDF…").id("export-pdf").accelerator("CmdOrCtrl+E").build(handle)?;
             let m_import_latex  = MenuItemBuilder::new("Import LaTeX Template…").id("import-latex").build(handle)?;
 
+            let m_undo           = MenuItemBuilder::new("Undo").id("undo").accelerator("CmdOrCtrl+Z").build(handle)?;
+            let m_redo           = MenuItemBuilder::new("Redo").id("redo").accelerator("CmdOrCtrl+Shift+Z").build(handle)?;
+
             let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar").id("toggle-sidebar").accelerator("CmdOrCtrl+B").build(handle)?;
             let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
             let m_toggle_outline = MenuItemBuilder::new("Toggle Outline").id("toggle-outline").build(handle)?;
@@ -1289,8 +1321,8 @@ pub fn run() {
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(handle, "Edit")
-                .undo()
-                .redo()
+                .item(&m_undo)
+                .item(&m_redo)
                 .separator()
                 .cut()
                 .copy()

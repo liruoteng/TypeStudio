@@ -8,6 +8,17 @@
   position: relative;
 }
 
+.preview-sidecar-panel {
+  flex-direction: column;
+}
+
+.preview-sidecar-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
 /* Inner scroll area */
 .preview-pages-scroll {
   flex: 1;
@@ -118,6 +129,12 @@
 
 /* Stale preview: dim pages slightly when showing last-good render after a syntax error */
 .preview-stale .preview-pages-content {
+  opacity: 0.55;
+  filter: saturate(0.85);
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+
+.preview-stale .preview-sidecar-frame {
   opacity: 0.55;
   filter: saturate(0.85);
   transition: opacity 120ms ease, filter 120ms ease;

@@ -9,7 +9,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import katex from "katex";
 import { refractor } from "refractor/all";
 import type { Element as HastElement, Nodes as HastNode, Root as HastRoot, Text as HastText } from "hast";
-import { EditorSelection, EditorState, RangeSetBuilder, StateField } from "@codemirror/state";
+import { EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
@@ -56,6 +56,31 @@ type InlineRange = {
   from: number;
   to: number;
 };
+
+const editTableSourceEffect = StateEffect.define<InlineRange | null>();
+
+const tableSourceEditRangeField = StateField.define<InlineRange | null>({
+  create: () => null,
+  update(value, transaction) {
+    if (value && transaction.docChanged) {
+      value = {
+        from: transaction.changes.mapPos(value.from),
+        to: transaction.changes.mapPos(value.to),
+      };
+    }
+
+    for (const effect of transaction.effects) {
+      if (effect.is(editTableSourceEffect)) value = effect.value;
+    }
+
+    if (value && transaction.selection) {
+      const selection = transaction.state.selection.main;
+      if (selection.to < value.from || selection.from > value.to) return null;
+    }
+
+    return value;
+  },
+});
 
 type MarkdownTable = {
   from: number;
@@ -669,6 +694,77 @@ class MarkdownTableWidget extends WidgetType {
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
     wrap.className = "cm-md-table-render";
+    const draftHeader = [...this.table.header];
+    const draftRows = this.table.rows.map((row) => [...row]);
+    const tableFrom = this.table.from;
+    let tableTo = this.table.to;
+    let committedSource = view.state.sliceDoc(tableFrom, tableTo);
+
+    const commitTableEdit = () => {
+      const nextSource = serializeTable({
+        header: draftHeader,
+        alignments: this.table.alignments,
+        rows: draftRows,
+      });
+      if (committedSource === nextSource) return;
+
+      view.dispatch({
+        changes: { from: tableFrom, to: tableTo, insert: nextSource },
+      });
+      tableTo = tableFrom + nextSource.length;
+      committedSource = nextSource;
+    };
+
+    const makeEditableCell = (
+      cell: HTMLTableCellElement,
+      value: string,
+      onChange: (nextValue: string) => void,
+    ) => {
+      cell.contentEditable = "true";
+      cell.setAttribute("contenteditable", "true");
+      cell.spellcheck = true;
+      cell.textContent = value;
+
+      const updateValue = () => {
+        onChange((cell.textContent ?? "").replace(/\s*\n+\s*/g, " "));
+      };
+
+      cell.addEventListener("mousedown", (event) => {
+        event.stopPropagation();
+      });
+      cell.addEventListener("input", updateValue);
+      cell.addEventListener("blur", () => {
+        updateValue();
+        commitTableEdit();
+      });
+      cell.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          updateValue();
+          commitTableEdit();
+          cell.blur();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cell.textContent = value;
+          updateValue();
+          cell.blur();
+        }
+      });
+      cell.addEventListener("paste", (event) => {
+        const text = event.clipboardData?.getData("text/plain");
+        if (text == null) return;
+        event.preventDefault();
+
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return;
+
+        selection.deleteFromDocument();
+        selection.getRangeAt(0).insertNode(document.createTextNode(text.replace(/\s*\n+\s*/g, " ")));
+        selection.collapseToEnd();
+        updateValue();
+      });
+    };
 
     const actions = document.createElement("div");
     actions.className = "cm-md-table-actions";
@@ -680,6 +776,7 @@ class MarkdownTableWidget extends WidgetType {
     editBtn.addEventListener("click", (event) => {
       event.preventDefault();
       view.dispatch({
+        effects: editTableSourceEffect.of({ from: this.table.from, to: this.table.to }),
         selection: EditorSelection.cursor(this.table.from),
         scrollIntoView: true,
       });
@@ -720,12 +817,8 @@ class MarkdownTableWidget extends WidgetType {
     wrap.appendChild(actions);
 
     wrap.addEventListener("mousedown", (event) => {
-      if ((event.target as HTMLElement).closest("button")) return;
+      if ((event.target as HTMLElement).closest("button, [contenteditable='true']")) return;
       event.preventDefault();
-      view.dispatch({
-        selection: EditorSelection.cursor(this.table.from),
-        scrollIntoView: true,
-      });
       view.focus();
     });
 
@@ -734,7 +827,9 @@ class MarkdownTableWidget extends WidgetType {
     const headRow = document.createElement("tr");
     for (const [index, cell] of this.table.header.entries()) {
       const th = document.createElement("th");
-      th.textContent = cell;
+      makeEditableCell(th, cell, (nextValue) => {
+        draftHeader[index] = nextValue;
+      });
       if (this.table.alignments[index]) th.style.textAlign = this.table.alignments[index]!;
       headRow.appendChild(th);
     }
@@ -742,11 +837,13 @@ class MarkdownTableWidget extends WidgetType {
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    for (const row of this.table.rows) {
+    for (const [rowIndex, row] of this.table.rows.entries()) {
       const tr = document.createElement("tr");
       for (let index = 0; index < this.table.header.length; index += 1) {
         const td = document.createElement("td");
-        td.textContent = row[index] ?? "";
+        makeEditableCell(td, row[index] ?? "", (nextValue) => {
+          draftRows[rowIndex][index] = nextValue;
+        });
         if (this.table.alignments[index]) td.style.textAlign = this.table.alignments[index]!;
         tr.appendChild(td);
       }
@@ -756,6 +853,11 @@ class MarkdownTableWidget extends WidgetType {
     wrap.appendChild(table);
 
     return wrap;
+  }
+
+  ignoreEvent(event: Event) {
+    const target = event.target as HTMLElement | null;
+    return !!target?.closest("button, [contenteditable='true']");
   }
 }
 
@@ -1347,6 +1449,7 @@ function buildMarkdownDecorations(state: EditorState) {
   const cursorTo = selection.to;
   const doc = state.doc;
   const frontmatter = frontmatterAtTop(state);
+  const tableSourceEditRange = state.field(tableSourceEditRangeField, false);
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -1458,7 +1561,7 @@ function buildMarkdownDecorations(state: EditorState) {
 
     const table = tableAt(state, line.number);
     if (table) {
-      const activeTable = cursorTo >= table.from && cursorFrom <= table.to;
+      const activeTable = !!tableSourceEditRange && tableSourceEditRange.to >= table.from && tableSourceEditRange.from <= table.to;
       const lastTableLineNumber = doc.lineAt(table.to).number;
       if (activeTable) {
         for (let tableLineNumber = line.number; tableLineNumber <= lastTableLineNumber; tableLineNumber += 1) {
@@ -1488,6 +1591,7 @@ function buildMarkdownDecorations(state: EditorState) {
 
     if (heading) {
       const level = Math.min(heading[1].length, 6);
+      ranges.push({ from: line.from, to: line.from, line: true, className: `cm-md-heading-line cm-md-hl-${level}` });
       ranges.push(markerRange(line.from, line.from + heading[0].length, activeLine, `cm-heading-marker-${level}`));
       ranges.push({ from: line.from + heading[0].length, to: line.to, className: `cm-md-heading cm-md-h${level}` });
       addInlineDecorations(ranges, text, line.from, heading[0].length, cursorFrom, cursorTo);
@@ -1807,6 +1911,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
       { tag: tags.invalid, color: "#f00" },
     ])),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    tableSourceEditRangeField,
     markdownWysiwygDecorations(),
     EditorView.lineWrapping,
     keymap.of([

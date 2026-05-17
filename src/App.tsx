@@ -258,8 +258,11 @@ export default function App() {
     // and write to the temp .preview.typ file. tinymist's file watcher detects
     // the change and recompiles automatically.
     if (path.endsWith(".md") || path.endsWith(".markdown")) {
-      invoke("write_preview_sidecar_content", { path, content }).catch((e) => {
+      invoke("write_preview_sidecar_content", { path, content }).then(() => {
+        useEditorStore.getState().setPreviewError(null);
+      }).catch((e) => {
         console.error("write_preview_sidecar_content failed:", JSON.stringify(e), e);
+        useEditorStore.getState().setPreviewError(String(e));
       });
       return;
     }
@@ -323,6 +326,20 @@ export default function App() {
   // ── Native menu wiring ───────────────────────────────────────────────────
   useEffect(() => {
     const unlisteners: Promise<() => void>[] = [];
+
+    const isMac = navigator.platform.startsWith("Mac");
+    const modKey = isMac ? "metaKey" : "ctrlKey";
+
+    unlisteners.push(listen("menu:undo", () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", [modKey]: true, bubbles: true, cancelable: true })
+      );
+    }));
+    unlisteners.push(listen("menu:redo", () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "z", [modKey]: true, shiftKey: true, bubbles: true, cancelable: true })
+      );
+    }));
 
     unlisteners.push(listen("menu:new-file", () => handleNewFile("typ")));
     unlisteners.push(listen("menu:new-file-md", () => handleNewFile("md")));

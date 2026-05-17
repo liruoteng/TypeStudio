@@ -22,6 +22,7 @@ function isPreviewablePath(path: string | null): boolean {
 export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
   const activeTabPath = useEditorStore((s) => s.activeTabPath);
   const theme = useEditorStore((s) => s.theme);
+  const previewError = useEditorStore((s) => s.previewError);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,10 +89,18 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
   }
 
   return (
-    <iframe
-      title="Typst Preview"
-      src={url}
-      style={{ width: "100%", height: "100%", border: "none", background: "white" }}
-    />
+    <div className={`preview-panel preview-sidecar-panel${previewError ? " preview-stale" : ""}`}>
+      {previewError && (
+        <div className="preview-error-banner" title={previewError}>
+          <span className="preview-error-banner-icon"><AlertTriangle size={13} /></span>
+          <span>Syntax error — showing last successful preview</span>
+        </div>
+      )}
+      <iframe
+        className="preview-sidecar-frame"
+        title="Typst Preview"
+        src={url}
+      />
+    </div>
   );
 });
