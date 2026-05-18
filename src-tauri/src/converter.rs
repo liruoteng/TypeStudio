@@ -764,7 +764,7 @@ fn is_typst_math_identifier(word: &str) -> bool {
             | "product"
             | "integral"
             | "infinity"
-            | "diff"
+            | "partial"
             | "nabla"
             | "times"
             | "dot"
@@ -796,8 +796,15 @@ fn is_typst_math_identifier(word: &str) -> bool {
             | "plus.minus"
             | "minus.plus"
             | "dot.op"
+            | "in.not"
             | "integral.cont"
             | "integral.double"
+            | "dots.h"
+            | "dots.c"
+            | "dots.v"
+            | "dots.down"
+            | "angle.l"
+            | "angle.r"
             | "AA"
             | "BB"
             | "CC"
@@ -828,7 +835,8 @@ fn is_typst_math_identifier(word: &str) -> bool {
 }
 
 fn normalize_preview_typst_math(expr: &str) -> String {
-    let mut out = String::with_capacity(expr.len());
+    let out = normalize_math_subscripts(expr);
+    let mut result = String::with_capacity(out.len());
     let mut word = String::new();
 
     let flush_word = |out: &mut String, word: &mut String| {
@@ -847,15 +855,70 @@ fn normalize_preview_typst_math(expr: &str) -> String {
         word.clear();
     };
 
-    for ch in expr.chars() {
+    for ch in out.chars() {
         if ch.is_ascii_alphabetic() || (ch == '.' && !word.is_empty()) {
             word.push(ch);
         } else {
-            flush_word(&mut out, &mut word);
-            out.push(ch);
+            flush_word(&mut result, &mut word);
+            result.push(ch);
         }
     }
-    flush_word(&mut out, &mut word);
+    flush_word(&mut result, &mut word);
+    result
+}
+
+fn normalize_math_subscripts(expr: &str) -> String {
+    let chars: Vec<char> = expr.chars().collect();
+    let mut out = String::with_capacity(expr.len());
+    let mut i = 0;
+
+    while i < chars.len() {
+        if (chars[i] == '_' || chars[i] == '^') && i + 1 < chars.len() && chars[i + 1] == '{' {
+            out.push(chars[i]);
+            out.push('{');
+            i += 2;
+            let start = i;
+            let mut depth = 1;
+            while i < chars.len() && depth > 0 {
+                match chars[i] {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+                if depth > 0 {
+                    i += 1;
+                }
+            }
+            let content: String = chars[start..i].iter().collect();
+            out.push_str(&space_alphanumeric(&content));
+            if i < chars.len() {
+                out.push('}');
+                i += 1;
+            }
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn space_alphanumeric(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len() * 2);
+    for (i, &ch) in chars.iter().enumerate() {
+        if i > 0 {
+            let prev = chars[i - 1];
+            let prev_is_letter = prev.is_ascii_alphabetic();
+            let curr_is_letter = ch.is_ascii_alphabetic();
+            let prev_is_digit = prev.is_ascii_digit();
+            let curr_is_digit = ch.is_ascii_digit();
+            if (prev_is_letter && curr_is_digit) || (prev_is_digit && curr_is_letter) {
+                out.push(' ');
+            }
+        }
+        out.push(ch);
+    }
     out
 }
 
@@ -1218,7 +1281,7 @@ const LATEX_MATH_COMMANDS: &[LatexMathCommand] = &[
     },
     LatexMathCommand {
         latex: "\\partial",
-        typst: "diff",
+        typst: "partial",
         standalone: true,
     },
     LatexMathCommand {
