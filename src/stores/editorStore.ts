@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type { LspStatus } from "../components/Editor/lsp-client";
+import { extractOutline, formatOutlineForContext, formatReferencesForContext, formatTabsForContext, type OutlineItem } from "../lib/utils";
 
 // Tracks paths that were just written by the app so the FS watcher
 // can skip re-reading them (avoids redundant content update after save).
@@ -85,6 +86,9 @@ interface EditorState {
   // AI editor integration
   selectedText: string | null;
   setSelectedText: (text: string | null) => void;
+  documentOutline: OutlineItem[];
+  setDocumentOutline: (outline: OutlineItem[]) => void;
+  getAiContext: () => string;
   aiProvider: "claude-cli" | "ollama";
   setAiProvider: (p: "claude-cli" | "ollama") => void;
   ollamaUrl: string;
@@ -322,6 +326,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectedText: null,
   setSelectedText: (text) => set({ selectedText: text }),
+  documentOutline: [],
+  setDocumentOutline: (outline) => set({ documentOutline: outline }),
+  getAiContext: () => {
+    const s = get();
+    const parts: string[] = [];
+
+    const activeTab = s.tabs.find((t) => t.path === s.activeTabPath);
+    if (activeTab?.content) {
+      const outline = extractOutline(activeTab.content);
+      const outlineStr = formatOutlineForContext(outline);
+      if (outlineStr) parts.push(outlineStr);
+    }
+
+    const refStr = formatReferencesForContext(s.references);
+    if (refStr) parts.push(refStr);
+
+    const tabsStr = formatTabsForContext(s.tabs, s.activeTabPath);
+    if (tabsStr) parts.push(tabsStr);
+
+    return parts.join("\n\n");
+  },
   aiProvider: "claude-cli",
   setAiProvider: (p) => { set({ aiProvider: p }); schedulePersist(get); },
   ollamaUrl: "http://localhost:11434",

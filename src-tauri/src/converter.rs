@@ -4,15 +4,15 @@ use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct FrontMatter {
-    pub title:     Option<String>,
-    pub authors:   Vec<String>,
-    pub template:  Option<String>,
+    pub title: Option<String>,
+    pub authors: Vec<String>,
+    pub template: Option<String>,
     pub abstract_text: Option<String>,
     pub bibliography: Option<String>,
     /// Path (relative to the .md file) of the .typ file that should be compiled
     /// for preview instead of the markdown file itself. Used by the hybrid workflow
     /// where content.md is included into main.typ via `#include "content.typ"`.
-    pub compile:   Option<String>,
+    pub compile: Option<String>,
 }
 
 /// Strip YAML front matter from `content` (the `---…---` block at the top).
@@ -21,13 +21,25 @@ pub fn strip_front_matter(content: &str) -> (&str, Option<&str>) {
     if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
         return (content, None);
     }
-    let after_open = if content.starts_with("---\r\n") { &content[5..] } else { &content[4..] };
+    let after_open = if content.starts_with("---\r\n") {
+        &content[5..]
+    } else {
+        &content[4..]
+    };
     // Find the closing `---` line
     for (off, _) in after_open.match_indices("\n---") {
         let rest = &after_open[off + 4..];
         if rest.starts_with('\n') || rest.starts_with('\r') || rest.is_empty() {
             let yaml = &after_open[..off];
-            let body_start = off + 4 + if rest.starts_with("\r\n") { 2 } else if rest.starts_with('\n') { 1 } else { 0 };
+            let body_start = off
+                + 4
+                + if rest.starts_with("\r\n") {
+                    2
+                } else if rest.starts_with('\n') {
+                    1
+                } else {
+                    0
+                };
             return (&after_open[body_start..], Some(yaml));
         }
     }
@@ -41,10 +53,20 @@ pub fn parse_front_matter(yaml: &str) -> FrontMatter {
     let mut in_authors = false;
     for line in yaml.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() { in_authors = false; continue; }
+        if trimmed.is_empty() {
+            in_authors = false;
+            continue;
+        }
         if trimmed.starts_with('-') && in_authors {
-            let author = trimmed.trim_start_matches('-').trim().trim_matches('"').trim_matches('\'').to_string();
-            if !author.is_empty() { fm.authors.push(author); }
+            let author = trimmed
+                .trim_start_matches('-')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            if !author.is_empty() {
+                fm.authors.push(author);
+            }
             continue;
         }
         in_authors = false;
@@ -52,7 +74,7 @@ pub fn parse_front_matter(yaml: &str) -> FrontMatter {
             let key = key.trim().to_lowercase();
             let val = val.trim().trim_matches('"').trim_matches('\'').to_string();
             match key.as_str() {
-                "title"    => fm.title = Some(val),
+                "title" => fm.title = Some(val),
                 "template" => fm.template = Some(val),
                 "abstract" => fm.abstract_text = if val.is_empty() { None } else { Some(val) },
                 "bibliography" => fm.bibliography = Some(val),
@@ -76,7 +98,7 @@ pub fn build_preamble(fm: &FrontMatter) -> String {
     let template = fm.template.as_deref().unwrap_or("default");
     match template {
         "ieee" => build_ieee_preamble(fm),
-        "acm"  => build_acm_preamble(fm),
+        "acm" => build_acm_preamble(fm),
         "neurips" => build_neurips_preamble(fm),
         _ => build_default_preamble(fm),
     }
@@ -96,14 +118,25 @@ fn build_default_preamble(fm: &FrontMatter) -> String {
     out.push_str("#set text(font: \"Linux Libertine\", size: 11pt)\n");
     out.push_str("#set par(justify: true)\n");
     if let Some(title) = &fm.title {
-        out.push_str(&format!("#align(center, text(size: 18pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+        out.push_str(&format!(
+            "#align(center, text(size: 18pt, weight: \"bold\")[{}])\n\n",
+            quote_typst(title)
+        ));
     }
     if !fm.authors.is_empty() {
-        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(", ");
+        let joined = fm
+            .authors
+            .iter()
+            .map(|a| quote_typst(a))
+            .collect::<Vec<_>>()
+            .join(", ");
         out.push_str(&format!("#align(center)[{}]\n\n", joined));
     }
     if let Some(abs) = &fm.abstract_text {
-        out.push_str(&format!("#block(inset: (x: 1.5cm))[*Abstract.* {}]\n\n", quote_typst(abs)));
+        out.push_str(&format!(
+            "#block(inset: (x: 1.5cm))[*Abstract.* {}]\n\n",
+            quote_typst(abs)
+        ));
     }
     out
 }
@@ -117,8 +150,16 @@ fn build_ieee_preamble(fm: &FrontMatter) -> String {
         out.push_str(&format!("#place(top + center, scope: \"parent\", float: true,\n  text(size: 14pt, weight: \"bold\")[{}]\n)\n\n", quote_typst(title)));
     }
     if !fm.authors.is_empty() {
-        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" · ");
-        out.push_str(&format!("#place(top + center, scope: \"parent\", float: true,\n  [{}]\n)\n\n", joined));
+        let joined = fm
+            .authors
+            .iter()
+            .map(|a| quote_typst(a))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        out.push_str(&format!(
+            "#place(top + center, scope: \"parent\", float: true,\n  [{}]\n)\n\n",
+            joined
+        ));
     }
     if let Some(abs) = &fm.abstract_text {
         out.push_str(&format!("#place(top, scope: \"parent\", float: true,\n  block(width: 100%, inset: 4pt)[\n    *Abstract*---{}\n  ]\n)\n\n", quote_typst(abs)));
@@ -132,14 +173,25 @@ fn build_acm_preamble(fm: &FrontMatter) -> String {
     out.push_str("#set text(font: \"Linux Libertine\", size: 10.5pt)\n");
     out.push_str("#set par(justify: true)\n");
     if let Some(title) = &fm.title {
-        out.push_str(&format!("#align(center, text(size: 16pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+        out.push_str(&format!(
+            "#align(center, text(size: 16pt, weight: \"bold\")[{}])\n\n",
+            quote_typst(title)
+        ));
     }
     if !fm.authors.is_empty() {
-        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" and ");
+        let joined = fm
+            .authors
+            .iter()
+            .map(|a| quote_typst(a))
+            .collect::<Vec<_>>()
+            .join(" and ");
         out.push_str(&format!("#align(center)[{}]\n\n", joined));
     }
     if let Some(abs) = &fm.abstract_text {
-        out.push_str(&format!("#block(stroke: (left: 2pt + gray), inset: (left: 8pt))[*ABSTRACT.* {}]\n\n", quote_typst(abs)));
+        out.push_str(&format!(
+            "#block(stroke: (left: 2pt + gray), inset: (left: 8pt))[*ABSTRACT.* {}]\n\n",
+            quote_typst(abs)
+        ));
     }
     out
 }
@@ -150,10 +202,18 @@ fn build_neurips_preamble(fm: &FrontMatter) -> String {
     out.push_str("#set text(font: \"Linux Libertine\", size: 10pt)\n");
     out.push_str("#set par(justify: true)\n");
     if let Some(title) = &fm.title {
-        out.push_str(&format!("#align(center, text(size: 14pt, weight: \"bold\")[{}])\n\n", quote_typst(title)));
+        out.push_str(&format!(
+            "#align(center, text(size: 14pt, weight: \"bold\")[{}])\n\n",
+            quote_typst(title)
+        ));
     }
     if !fm.authors.is_empty() {
-        let joined = fm.authors.iter().map(|a| quote_typst(a)).collect::<Vec<_>>().join(" · ");
+        let joined = fm
+            .authors
+            .iter()
+            .map(|a| quote_typst(a))
+            .collect::<Vec<_>>()
+            .join(" · ");
         out.push_str(&format!("#align(center)[{}]\n\n", joined));
     }
     if let Some(abs) = &fm.abstract_text {
@@ -167,22 +227,28 @@ fn build_neurips_preamble(fm: &FrontMatter) -> String {
 /// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables,
 ///          `[@cite]` citations, inline math `$...$`, and block math `$$...$$`.
 pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
-    markdown_to_typst_with_options(content, MarkdownOptions {
-        raw_typst_passthrough: true,
-        typst_citations: true,
-        preview_safe: false,
-    })
+    markdown_to_typst_with_options(
+        content,
+        MarkdownOptions {
+            raw_typst_passthrough: true,
+            typst_citations: true,
+            preview_safe: false,
+        },
+    )
 }
 
 /// Markdown → Typst for live preview. This avoids constructs that commonly
 /// make partial drafts fail to compile, leaving tinymist as the only compiler
 /// in the hot path.
 pub fn markdown_to_typst_preview(content: &str) -> (String, Vec<String>) {
-    markdown_to_typst_with_options(content, MarkdownOptions {
-        raw_typst_passthrough: false,
-        typst_citations: false,
-        preview_safe: true,
-    })
+    markdown_to_typst_with_options(
+        content,
+        MarkdownOptions {
+            raw_typst_passthrough: false,
+            typst_citations: false,
+            preview_safe: true,
+        },
+    )
 }
 
 struct MarkdownOptions {
@@ -191,7 +257,10 @@ struct MarkdownOptions {
     preview_safe: bool,
 }
 
-fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (String, Vec<String>) {
+fn markdown_to_typst_with_options(
+    content: &str,
+    options: MarkdownOptions,
+) -> (String, Vec<String>) {
     let (body, _) = strip_front_matter(content);
     let expanded = expand_references(body);
     let content = expanded.as_str();
@@ -226,7 +295,9 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                 continue;
             }
             if in_html_comment {
-                if t.contains("-->") { in_html_comment = false; }
+                if t.contains("-->") {
+                    in_html_comment = false;
+                }
                 i += 1;
                 continue;
             }
@@ -240,7 +311,9 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                 math_lines.push(lines[i]);
                 i += 1;
             }
-            if i < lines.len() { i += 1; } // skip closing $$
+            if i < lines.len() {
+                i += 1;
+            } // skip closing $$
             let expr = math_lines.join("\n");
             if options.preview_safe {
                 out.push_str(&preview_math(&expr, true));
@@ -251,7 +324,11 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             continue;
         }
         // Single-line $$expr$$
-        if let Some(rest) = line.trim().strip_prefix("$$").and_then(|s| s.strip_suffix("$$")) {
+        if let Some(rest) = line
+            .trim()
+            .strip_prefix("$$")
+            .and_then(|s| s.strip_suffix("$$"))
+        {
             if !in_code_block {
                 if options.preview_safe {
                     out.push_str(&preview_math(rest.trim(), true));
@@ -271,7 +348,9 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                 math_lines.push(lines[i]);
                 i += 1;
             }
-            if i < lines.len() { i += 1; }
+            if i < lines.len() {
+                i += 1;
+            }
             let expr = math_lines.join("\n");
             out.push_str(&preview_math(&expr, true));
             prev_blank = true;
@@ -284,7 +363,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                 .strip_prefix("\\begin{")
                 .and_then(|s| s.split('}').next())
                 .unwrap_or("");
-            if matches!(env, "equation" | "align" | "aligned" | "gather" | "multline") {
+            if matches!(
+                env,
+                "equation" | "align" | "aligned" | "gather" | "multline"
+            ) {
                 let end_marker = format!("\\end{{{env}}}");
                 let mut math_lines = vec![line];
                 i += 1;
@@ -304,7 +386,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
         }
 
         // ── Fenced code blocks ────────────────────────────────────────────────
-        if let Some(rest) = line.strip_prefix("```").or_else(|| line.strip_prefix("~~~")) {
+        if let Some(rest) = line
+            .strip_prefix("```")
+            .or_else(|| line.strip_prefix("~~~"))
+        {
             if in_code_block {
                 let body = code_buf.join("\n");
                 if code_lang == "typst" && options.raw_typst_passthrough {
@@ -313,7 +398,11 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                     out.push_str("\n\n");
                     typst_block_count += 1;
                 } else if options.preview_safe {
-                    let lang = if code_lang.is_empty() { None } else { Some(code_lang.as_str()) };
+                    let lang = if code_lang.is_empty() {
+                        None
+                    } else {
+                        Some(code_lang.as_str())
+                    };
                     out.push_str(&typst_raw(&body, lang, true));
                     out.push('\n');
                 } else if code_lang.is_empty() {
@@ -349,7 +438,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
         let heading = parse_heading(line);
         if let Some((level, text)) = heading {
             let marks: String = "=".repeat(level);
-            out.push_str(&format!("{marks} {}\n", inline_with_options(text, &options)));
+            out.push_str(&format!(
+                "{marks} {}\n",
+                inline_with_options(text, &options)
+            ));
             prev_blank = false;
             i += 1;
             continue;
@@ -361,7 +453,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             if !line.trim().is_empty() && (next.starts_with("===") || next.starts_with("---")) {
                 let level = if next.starts_with("===") { 1 } else { 2 };
                 let marks: String = "=".repeat(level);
-                out.push_str(&format!("{marks} {}\n", inline_with_options(line, &options)));
+                out.push_str(&format!(
+                    "{marks} {}\n",
+                    inline_with_options(line, &options)
+                ));
                 prev_blank = false;
                 i += 2;
                 continue;
@@ -382,18 +477,31 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
 
         // ── Unordered list ────────────────────────────────────────────────────
         let list_line = line.trim_start();
+        let list_indent = leading_whitespace(line);
         if let Some(rest) = list_line
             .strip_prefix("- ")
             .or_else(|| list_line.strip_prefix("* "))
             .or_else(|| list_line.strip_prefix("+ "))
         {
-            if prev_blank { }
+            if prev_blank {}
             if let Some(content) = rest.strip_prefix("[ ] ") {
-                out.push_str(&format!("- ☐ {}\n", inline_with_options(content, &options)));
-            } else if let Some(content) = rest.strip_prefix("[x] ").or_else(|| rest.strip_prefix("[X] ")) {
-                out.push_str(&format!("- ☑ {}\n", inline_with_options(content, &options)));
+                out.push_str(&format!(
+                    "{list_indent}- ☐ {}\n",
+                    inline_with_options(content, &options)
+                ));
+            } else if let Some(content) = rest
+                .strip_prefix("[x] ")
+                .or_else(|| rest.strip_prefix("[X] "))
+            {
+                out.push_str(&format!(
+                    "{list_indent}- ☑ {}\n",
+                    inline_with_options(content, &options)
+                ));
             } else {
-                out.push_str(&format!("- {}\n", inline_with_options(rest, &options)));
+                out.push_str(&format!(
+                    "{list_indent}- {}\n",
+                    inline_with_options(rest, &options)
+                ));
             }
             prev_blank = false;
             i += 1;
@@ -402,7 +510,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
 
         // ── Ordered list ──────────────────────────────────────────────────────
         if let Some(rest) = strip_ordered_list(line.trim_start()) {
-            out.push_str(&format!("+ {}\n", inline_with_options(rest, &options)));
+            out.push_str(&format!(
+                "{list_indent}+ {}\n",
+                inline_with_options(rest, &options)
+            ));
             prev_blank = false;
             i += 1;
             continue;
@@ -410,7 +521,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
 
         // ── Blockquote ────────────────────────────────────────────────────────
         if let Some(rest) = line.strip_prefix("> ").or_else(|| line.strip_prefix(">")) {
-            out.push_str(&format!("#quote[{}]\n\n", inline_with_options(rest.trim(), &options)));
+            out.push_str(&format!(
+                "#quote[{}]\n\n",
+                inline_with_options(rest.trim(), &options)
+            ));
             prev_blank = true;
             i += 1;
             continue;
@@ -430,11 +544,15 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             let t = line.trim();
             let looks_like_html = t.starts_with('<')
                 && t.len() > 1
-                && t.chars().nth(1).map(|c| c.is_alphabetic() || c == '/').unwrap_or(false);
+                && t.chars()
+                    .nth(1)
+                    .map(|c| c.is_alphabetic() || c == '/')
+                    .unwrap_or(false);
             if looks_like_html {
                 warnings.push(
                     "HTML elements detected — they will appear as literal text in the PDF. \
-                     Use a ```typst block for raw Typst instead.".to_string(),
+                     Use a ```typst block for raw Typst instead."
+                        .to_string(),
                 );
                 html_warned = true;
             }
@@ -455,7 +573,11 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             out.push_str("\n\n");
             typst_block_count += 1;
         } else if options.preview_safe {
-            let lang = if code_lang.is_empty() { None } else { Some(code_lang.as_str()) };
+            let lang = if code_lang.is_empty() {
+                None
+            } else {
+                Some(code_lang.as_str())
+            };
             out.push_str(&typst_raw(&body, lang, true));
             out.push('\n');
         } else {
@@ -479,17 +601,27 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
 fn parse_heading(line: &str) -> Option<(usize, &str)> {
     let trimmed = line.trim_start_matches('#');
     let level = line.len() - trimmed.len();
-    if level == 0 || level > 6 { return None; }
-    if !trimmed.starts_with(' ') && !trimmed.is_empty() { return None; }
+    if level == 0 || level > 6 {
+        return None;
+    }
+    if !trimmed.starts_with(' ') && !trimmed.is_empty() {
+        return None;
+    }
     Some((level, trimmed.trim()))
 }
 
 fn strip_ordered_list(line: &str) -> Option<&str> {
     let bytes = line.as_bytes();
     let mut j = 0;
-    while j < bytes.len() && bytes[j].is_ascii_digit() { j += 1; }
-    if j == 0 || j >= bytes.len() { return None; }
-    if bytes[j] != b'.' && bytes[j] != b')' { return None; }
+    while j < bytes.len() && bytes[j].is_ascii_digit() {
+        j += 1;
+    }
+    if j == 0 || j >= bytes.len() {
+        return None;
+    }
+    if bytes[j] != b'.' && bytes[j] != b')' {
+        return None;
+    }
     if j + 1 < bytes.len() && bytes[j + 1] == b' ' {
         Some(&line[j + 2..])
     } else {
@@ -497,12 +629,24 @@ fn strip_ordered_list(line: &str) -> Option<&str> {
     }
 }
 
+fn leading_whitespace(line: &str) -> &str {
+    let end = line
+        .char_indices()
+        .find_map(|(idx, ch)| if ch.is_whitespace() { None } else { Some(idx) })
+        .unwrap_or(line.len());
+    &line[..end]
+}
+
 fn collect_table<'a>(lines: &[&'a str], start: usize) -> (Vec<Vec<&'a str>>, usize) {
     let mut rows: Vec<Vec<&str>> = Vec::new();
     let mut i = start;
     while i < lines.len() && (lines[i].contains('|') || lines[i].contains('-')) {
         let line = lines[i];
-        if line.trim().chars().all(|c| c == '|' || c == '-' || c == ':' || c == ' ') {
+        if line
+            .trim()
+            .chars()
+            .all(|c| c == '|' || c == '-' || c == ':' || c == ' ')
+        {
             i += 1;
             continue;
         }
@@ -519,7 +663,9 @@ fn collect_table<'a>(lines: &[&'a str], start: usize) -> (Vec<Vec<&'a str>>, usi
 }
 
 fn render_table_with_options(rows: &[Vec<&str>], options: &MarkdownOptions) -> String {
-    if rows.is_empty() { return String::new(); }
+    if rows.is_empty() {
+        return String::new();
+    }
     let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
     let mut out = String::from("#table(\n  columns: ");
     out.push_str(&cols.to_string());
@@ -574,12 +720,121 @@ fn is_preview_typst_math_safe(expr: &str) -> bool {
         && !expr.contains(']')
 }
 
+fn is_typst_math_identifier(word: &str) -> bool {
+    matches!(
+        word,
+        "alpha"
+            | "beta"
+            | "gamma"
+            | "delta"
+            | "epsilon"
+            | "zeta"
+            | "eta"
+            | "theta"
+            | "iota"
+            | "kappa"
+            | "lambda"
+            | "mu"
+            | "nu"
+            | "xi"
+            | "pi"
+            | "rho"
+            | "sigma"
+            | "tau"
+            | "upsilon"
+            | "phi"
+            | "chi"
+            | "psi"
+            | "omega"
+            | "Gamma"
+            | "Delta"
+            | "Theta"
+            | "Lambda"
+            | "Xi"
+            | "Pi"
+            | "Sigma"
+            | "Upsilon"
+            | "Phi"
+            | "Psi"
+            | "Omega"
+            | "sqrt"
+            | "root"
+            | "lim"
+            | "sum"
+            | "product"
+            | "integral"
+            | "infinity"
+            | "diff"
+            | "nabla"
+            | "times"
+            | "dot"
+            | "approx"
+            | "equiv"
+            | "tilde"
+            | "prop"
+            | "union"
+            | "sect"
+            | "forall"
+            | "exists"
+            | "arrow"
+            | "hat"
+            | "overline"
+            | "underline"
+            | "upright"
+            | "bold"
+            | "italic"
+            | "sin"
+            | "cos"
+            | "tan"
+            | "log"
+            | "ln"
+            | "exp"
+            | "min"
+            | "max"
+            | "epsilon.alt"
+            | "phi.alt"
+            | "plus.minus"
+            | "minus.plus"
+            | "dot.op"
+            | "integral.cont"
+            | "integral.double"
+            | "AA"
+            | "BB"
+            | "CC"
+            | "DD"
+            | "EE"
+            | "FF"
+            | "GG"
+            | "HH"
+            | "II"
+            | "JJ"
+            | "KK"
+            | "LL"
+            | "MM"
+            | "NN"
+            | "OO"
+            | "PP"
+            | "QQ"
+            | "RR"
+            | "SS"
+            | "TT"
+            | "UU"
+            | "VV"
+            | "WW"
+            | "XX"
+            | "YY"
+            | "ZZ"
+    )
+}
+
 fn normalize_preview_typst_math(expr: &str) -> String {
     let mut out = String::with_capacity(expr.len());
     let mut word = String::new();
 
     let flush_word = |out: &mut String, word: &mut String| {
-        if word.len() > 1 {
+        if is_typst_math_identifier(word) {
+            out.push_str(word);
+        } else if word.len() > 1 {
             for (index, ch) in word.chars().enumerate() {
                 if index > 0 {
                     out.push(' ');
@@ -593,7 +848,7 @@ fn normalize_preview_typst_math(expr: &str) -> String {
     };
 
     for ch in expr.chars() {
-        if ch.is_ascii_alphabetic() {
+        if ch.is_ascii_alphabetic() || (ch == '.' && !word.is_empty()) {
             word.push(ch);
         } else {
             flush_word(&mut out, &mut word);
@@ -604,10 +859,812 @@ fn normalize_preview_typst_math(expr: &str) -> String {
     out
 }
 
+#[derive(Clone, Copy)]
+struct LatexMathCommand {
+    latex: &'static str,
+    typst: &'static str,
+    #[cfg_attr(not(test), allow(dead_code))]
+    standalone: bool,
+}
+
+#[cfg(test)]
+type LatexMathCoverage = (&'static str, &'static str, bool);
+
+const LATEX_MATH_COMMANDS: &[LatexMathCommand] = &[
+    LatexMathCommand {
+        latex: "\\varepsilon",
+        typst: "epsilon.alt",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\varphi",
+        typst: "phi.alt",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\rightarrow",
+        typst: "->",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\leftarrow",
+        typst: "<-",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Rightarrow",
+        typst: "=>",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Leftarrow",
+        typst: "<=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\leftrightarrow",
+        typst: "<->",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Leftrightarrow",
+        typst: "<=>",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{A}",
+        typst: "AA",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{B}",
+        typst: "BB",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{C}",
+        typst: "CC",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{D}",
+        typst: "DD",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{E}",
+        typst: "EE",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{F}",
+        typst: "FF",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{G}",
+        typst: "GG",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{H}",
+        typst: "HH",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{I}",
+        typst: "II",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{J}",
+        typst: "JJ",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{K}",
+        typst: "KK",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{L}",
+        typst: "LL",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{M}",
+        typst: "MM",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{N}",
+        typst: "NN",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{O}",
+        typst: "OO",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{P}",
+        typst: "PP",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{Q}",
+        typst: "QQ",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{R}",
+        typst: "RR",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{S}",
+        typst: "SS",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{T}",
+        typst: "TT",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{U}",
+        typst: "UU",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{V}",
+        typst: "VV",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{W}",
+        typst: "WW",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{X}",
+        typst: "XX",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{Y}",
+        typst: "YY",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mathbb{Z}",
+        typst: "ZZ",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\alpha",
+        typst: "alpha",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\beta",
+        typst: "beta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\gamma",
+        typst: "gamma",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\delta",
+        typst: "delta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\epsilon",
+        typst: "epsilon",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\zeta",
+        typst: "zeta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\eta",
+        typst: "eta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\theta",
+        typst: "theta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\iota",
+        typst: "iota",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\kappa",
+        typst: "kappa",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\lambda",
+        typst: "lambda",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mu",
+        typst: "mu",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\nu",
+        typst: "nu",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\xi",
+        typst: "xi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\pi",
+        typst: "pi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\rho",
+        typst: "rho",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\sigma",
+        typst: "sigma",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\tau",
+        typst: "tau",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\upsilon",
+        typst: "upsilon",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\phi",
+        typst: "phi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\chi",
+        typst: "chi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\psi",
+        typst: "psi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\omega",
+        typst: "omega",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Gamma",
+        typst: "Gamma",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Delta",
+        typst: "Delta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Theta",
+        typst: "Theta",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Lambda",
+        typst: "Lambda",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Xi",
+        typst: "Xi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Pi",
+        typst: "Pi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Sigma",
+        typst: "Sigma",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Upsilon",
+        typst: "Upsilon",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Phi",
+        typst: "Phi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Psi",
+        typst: "Psi",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\Omega",
+        typst: "Omega",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\infty",
+        typst: "infinity",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\partial",
+        typst: "diff",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\nabla",
+        typst: "nabla",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\sum",
+        typst: "sum",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\prod",
+        typst: "product",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\int",
+        typst: "integral",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\oint",
+        typst: "integral.cont",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\iint",
+        typst: "integral.double",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\lim",
+        typst: "lim",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\sin",
+        typst: "sin",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\cos",
+        typst: "cos",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\tan",
+        typst: "tan",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\log",
+        typst: "log",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\ln",
+        typst: "ln",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\exp",
+        typst: "exp",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\min",
+        typst: "min",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\max",
+        typst: "max",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\leq",
+        typst: "<=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\le",
+        typst: "<=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\geq",
+        typst: ">=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\ge",
+        typst: ">=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\neq",
+        typst: "!=",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\approx",
+        typst: "approx",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\equiv",
+        typst: "equiv",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\sim",
+        typst: "tilde",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\propto",
+        typst: "prop",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\notin",
+        typst: "in.not",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\in",
+        typst: "in",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\subset",
+        typst: "subset",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\supset",
+        typst: "supset",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\cup",
+        typst: "union",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\cap",
+        typst: "sect",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\times",
+        typst: "times",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\cdot",
+        typst: "dot.op",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\pm",
+        typst: "plus.minus",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\mp",
+        typst: "minus.plus",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\ldots",
+        typst: "dots.h",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\cdots",
+        typst: "dots.c",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\vdots",
+        typst: "dots.v",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\ddots",
+        typst: "dots.down",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\to",
+        typst: "->",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\forall",
+        typst: "forall",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\exists",
+        typst: "exists",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\langle",
+        typst: "angle.l",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\rangle",
+        typst: "angle.r",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\left",
+        typst: "",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\right",
+        typst: "",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\nonumber",
+        typst: "",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\notag",
+        typst: "",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\quad",
+        typst: "quad",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\qquad",
+        typst: "quad quad",
+        standalone: true,
+    },
+    LatexMathCommand {
+        latex: "\\,",
+        typst: " ",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\;",
+        typst: " ",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\:",
+        typst: " ",
+        standalone: false,
+    },
+    LatexMathCommand {
+        latex: "\\!",
+        typst: "",
+        standalone: false,
+    },
+];
+
+#[cfg(test)]
+pub(crate) fn latex_math_command_coverage() -> impl Iterator<Item = LatexMathCoverage> {
+    LATEX_MATH_COMMANDS
+        .iter()
+        .map(|command| (command.latex, command.typst, command.standalone))
+}
+
+fn translate_latex_math_for_preview(expr: &str) -> String {
+    let mut out = strip_latex_math_environments(expr);
+    out = replace_latex_frac(&out);
+    out = replace_latex_sqrt(&out);
+    out = replace_latex_command_arg(&out, "\\text", |body| format!("\"{body}\""));
+    out = replace_latex_command_arg(&out, "\\mathrm", |body| format!("upright({body})"));
+    out = replace_latex_command_arg(&out, "\\mathbf", |body| format!("bold({body})"));
+    out = replace_latex_command_arg(&out, "\\mathit", |body| format!("italic({body})"));
+    out = replace_latex_command_arg(&out, "\\hat", |body| format!("hat({body})"));
+    out = replace_latex_command_arg(&out, "\\bar", |body| format!("overline({body})"));
+    out = replace_latex_command_arg(&out, "\\tilde", |body| format!("tilde({body})"));
+    out = replace_latex_command_arg(&out, "\\vec", |body| format!("arrow({body})"));
+    out = replace_latex_command_arg(&out, "\\overline", |body| format!("overline({body})"));
+    out = replace_latex_command_arg(&out, "\\underline", |body| format!("underline({body})"));
+
+    let mut commands = LATEX_MATH_COMMANDS.to_vec();
+    commands.sort_by(|a, b| b.latex.len().cmp(&a.latex.len()));
+    for command in commands {
+        out = out.replace(command.latex, command.typst);
+    }
+    out = out.replace("\\\\", "\n");
+    out = out.replace('&', "");
+    out
+}
+
+fn strip_latex_math_environments(expr: &str) -> String {
+    let mut out = expr.to_string();
+    for env in ["equation", "align", "aligned", "gather", "multline"] {
+        out = out.replace(&format!("\\begin{{{env}}}"), "");
+        out = out.replace(&format!("\\end{{{env}}}"), "");
+    }
+    out
+}
+
+fn replace_latex_frac(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(pos) = rest.find("\\frac") {
+        out.push_str(&rest[..pos]);
+        rest = &rest[pos + 5..];
+        let chars: Vec<char> = rest.chars().collect();
+        let mut i = 0;
+        while chars.get(i) == Some(&' ') {
+            i += 1;
+        }
+        if chars.get(i) == Some(&'{') {
+            if let Some((num, after_num)) = read_latex_brace_group(&chars, i) {
+                i = after_num;
+                while chars.get(i) == Some(&' ') {
+                    i += 1;
+                }
+                if chars.get(i) == Some(&'{') {
+                    if let Some((den, after_den)) = read_latex_brace_group(&chars, i) {
+                        let num = translate_latex_math_for_preview(&num);
+                        let den = translate_latex_math_for_preview(&den);
+                        out.push_str(&format!("({num})/({den})"));
+                        rest = &rest[after_den..];
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str("\\frac");
+    }
+    out.push_str(rest);
+    out
+}
+
+fn replace_latex_sqrt(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(pos) = rest.find("\\sqrt") {
+        out.push_str(&rest[..pos]);
+        rest = &rest[pos + 5..];
+        let chars: Vec<char> = rest.chars().collect();
+        let mut i = 0;
+        while chars.get(i) == Some(&' ') {
+            i += 1;
+        }
+        let nth = if chars.get(i) == Some(&'[') {
+            if let Some(end) = rest[i + 1..].find(']') {
+                let n = rest[i + 1..i + 1 + end].to_string();
+                i += 2 + end;
+                Some(translate_latex_math_for_preview(&n))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if chars.get(i) == Some(&'{') {
+            if let Some((body, after)) = read_latex_brace_group(&chars, i) {
+                let body = translate_latex_math_for_preview(&body);
+                rest = &rest[after..];
+                if let Some(n) = nth {
+                    out.push_str(&format!("root({n}, {body})"));
+                } else {
+                    out.push_str(&format!("sqrt({body})"));
+                }
+                continue;
+            }
+        }
+        out.push_str("\\sqrt");
+    }
+    out.push_str(rest);
+    out
+}
+
+fn replace_latex_command_arg<F>(s: &str, command: &str, render: F) -> String
+where
+    F: Fn(&str) -> String,
+{
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(pos) = rest.find(command) {
+        out.push_str(&rest[..pos]);
+        rest = &rest[pos + command.len()..];
+        let chars: Vec<char> = rest.chars().collect();
+        let mut i = 0;
+        while chars.get(i) == Some(&' ') {
+            i += 1;
+        }
+        if chars.get(i) == Some(&'{') {
+            if let Some((body, after)) = read_latex_brace_group(&chars, i) {
+                let body = translate_latex_math_for_preview(&body);
+                out.push_str(&render(&body));
+                rest = &rest[after..];
+                continue;
+            }
+        }
+        out.push_str(command);
+    }
+    out.push_str(rest);
+    out
+}
+
+fn read_latex_brace_group(chars: &[char], start: usize) -> Option<(String, usize)> {
+    if chars.get(start)? != &'{' {
+        return None;
+    }
+    let mut depth = 1;
+    let mut i = start + 1;
+    let body_start = i;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' if i + 1 < chars.len() => {
+                i += 2;
+                continue;
+            }
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let body: String = chars[body_start..i].iter().collect();
+                    return Some((body, i + 1));
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 fn preview_math(expr: &str, block: bool) -> String {
     let trimmed = expr.trim();
-    if is_preview_typst_math_safe(trimmed) {
-        let normalized = normalize_preview_typst_math(trimmed);
+    let translated = translate_latex_math_for_preview(trimmed);
+    let safe_expr = translated.trim();
+    if is_preview_typst_math_safe(safe_expr) {
+        let normalized = normalize_preview_typst_math(safe_expr);
         if block {
             format!("$ {normalized} $\n\n")
         } else {
@@ -696,7 +1753,11 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
                     .collect();
                 if !keys.is_empty() {
                     let marker = if options.typst_citations { "@" } else { "\\@" };
-                    let cites = keys.iter().map(|k| format!("{marker}{k}")).collect::<Vec<_>>().join(" ");
+                    let cites = keys
+                        .iter()
+                        .map(|k| format!("{marker}{k}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     result.push_str(&cites);
                     i = close + 1;
                     continue;
@@ -708,7 +1769,10 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
         if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
             if let Some((alt, url, end)) = parse_link(&chars, i + 1) {
                 if options.preview_safe {
-                    result.push_str(&format!("#link(\"{url}\")[{}]", inline_with_options(&alt, options)));
+                    result.push_str(&format!(
+                        "#link(\"{url}\")[{}]",
+                        inline_with_options(&alt, options)
+                    ));
                 } else if url.starts_with("http://") || url.starts_with("https://") {
                     // Typst image() only accepts local paths; render as a link instead
                     result.push_str(&format!("#link(\"{url}\")[{alt}]"));
@@ -757,10 +1821,16 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
 
         // Bold: **text** or __text__
         let bold_marker: Option<char> = if i + 1 < chars.len() {
-            if chars[i] == '*' && chars[i + 1] == '*' { Some('*') }
-            else if chars[i] == '_' && chars[i + 1] == '_' { Some('_') }
-            else { None }
-        } else { None };
+            if chars[i] == '*' && chars[i + 1] == '*' {
+                Some('*')
+            } else if chars[i] == '_' && chars[i + 1] == '_' {
+                Some('_')
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         if let Some(m) = bold_marker {
             let start = i + 2;
@@ -845,8 +1915,12 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
 
 fn find_closing_char(chars: &[char], start: usize, delim: char) -> Option<usize> {
     for i in start..chars.len() {
-        if chars[i] == delim { return Some(i); }
-        if chars[i] == '\n' { return None; }
+        if chars[i] == delim {
+            return Some(i);
+        }
+        if chars[i] == '\n' {
+            return None;
+        }
     }
     None
 }
@@ -854,8 +1928,12 @@ fn find_closing_char(chars: &[char], start: usize, delim: char) -> Option<usize>
 fn find_double_closing(chars: &[char], start: usize, delim: char) -> Option<usize> {
     let mut i = start;
     while i + 1 < chars.len() {
-        if chars[i] == delim && chars[i + 1] == delim { return Some(i); }
-        if chars[i] == '\n' { return None; }
+        if chars[i] == delim && chars[i + 1] == delim {
+            return Some(i);
+        }
+        if chars[i] == '\n' {
+            return None;
+        }
         i += 1;
     }
     None
@@ -867,7 +1945,9 @@ fn find_triple_closing(chars: &[char], start: usize, delim: char) -> Option<usiz
         if chars[i] == delim && chars[i + 1] == delim && chars[i + 2] == delim {
             return Some(i);
         }
-        if chars[i] == '\n' { return None; }
+        if chars[i] == '\n' {
+            return None;
+        }
         i += 1;
     }
     None
@@ -875,10 +1955,14 @@ fn find_triple_closing(chars: &[char], start: usize, delim: char) -> Option<usiz
 
 /// Parse `[text](url)` or `(url)` part. Returns (inner_text, url, next_i).
 fn parse_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
-    if chars[start] != '[' { return None; }
+    if chars[start] != '[' {
+        return None;
+    }
     let text_end = find_closing_char(chars, start + 1, ']')?;
     let inner_text: String = chars[start + 1..text_end].iter().collect();
-    if text_end + 1 >= chars.len() || chars[text_end + 1] != '(' { return None; }
+    if text_end + 1 >= chars.len() || chars[text_end + 1] != '(' {
+        return None;
+    }
     let url_end = find_closing_char(chars, text_end + 2, ')')?;
     let url_raw: String = chars[text_end + 2..url_end].iter().collect();
     let url = url_raw.split_whitespace().next().unwrap_or("").to_string();
@@ -889,12 +1973,16 @@ fn parse_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
 
 fn parse_ref_def(line: &str) -> Option<(String, String)> {
     let line = line.trim();
-    if !line.starts_with('[') { return None; }
+    if !line.starts_with('[') {
+        return None;
+    }
     let bracket_end = line.find("]:")?;
     let key = line[1..bracket_end].to_lowercase();
     let rest = line[bracket_end + 2..].trim();
     let url = rest.split_whitespace().next()?.to_string();
-    if url.is_empty() { return None; }
+    if url.is_empty() {
+        return None;
+    }
     Some((key, url))
 }
 
@@ -925,11 +2013,19 @@ fn expand_ref_links(line: &str, refs: &HashMap<String, String>) -> String {
     let mut i = 0;
     while i < chars.len() {
         if chars[i] == '[' {
-            if let Some(text_end) = chars[i + 1..].iter().position(|&c| c == ']').map(|p| i + 1 + p) {
+            if let Some(text_end) = chars[i + 1..]
+                .iter()
+                .position(|&c| c == ']')
+                .map(|p| i + 1 + p)
+            {
                 let text: String = chars[i + 1..text_end].iter().collect();
                 if text_end + 1 < chars.len() && chars[text_end + 1] == '[' {
                     let ref_start = text_end + 2;
-                    if let Some(ref_end) = chars[ref_start..].iter().position(|&c| c == ']').map(|p| ref_start + p) {
+                    if let Some(ref_end) = chars[ref_start..]
+                        .iter()
+                        .position(|&c| c == ']')
+                        .map(|p| ref_start + p)
+                    {
                         let ref_key: String = chars[ref_start..ref_end].iter().collect();
                         if let Some(url) = refs.get(&ref_key.to_lowercase()) {
                             result.push_str(&format!("[{text}]({url})"));
@@ -1135,6 +2231,12 @@ mod tests {
     }
 
     #[test]
+    fn nested_unordered_list_preserves_indent() {
+        let out = convert("- parent\n  - child\n    - grandchild\n");
+        assert!(out.contains("- parent\n  - child\n    - grandchild"), "got: {out}");
+    }
+
+    #[test]
     fn ordered_list() {
         assert!(convert("1. first\n").contains("+ first"));
         assert!(convert("2. second\n").contains("+ second"));
@@ -1144,6 +2246,18 @@ mod tests {
     #[test]
     fn indented_ordered_list_marker() {
         assert!(convert("   1. nested\n").contains("+ nested"));
+    }
+
+    #[test]
+    fn nested_ordered_list_preserves_indent() {
+        let out = convert("1. parent\n   1. child\n      1. grandchild\n");
+        assert!(out.contains("+ parent\n   + child\n      + grandchild"), "got: {out}");
+    }
+
+    #[test]
+    fn mixed_nested_lists_preserve_indent() {
+        let out = convert("1. parent\n   - child\n     1. grandchild\n");
+        assert!(out.contains("+ parent\n   - child\n     + grandchild"), "got: {out}");
     }
 
     #[test]
@@ -1303,7 +2417,10 @@ mod tests {
     fn citation_single() {
         let out = convert("See [@vaswani2017] for details.\n");
         assert!(out.contains("@vaswani2017"), "got: {out}");
-        assert!(!out.contains("[@vaswani2017]"), "should not contain raw citation: {out}");
+        assert!(
+            !out.contains("[@vaswani2017]"),
+            "should not contain raw citation: {out}"
+        );
     }
 
     #[test]
@@ -1350,15 +2467,68 @@ mod tests {
     }
 
     #[test]
-    fn preview_quotes_latex_command_math() {
+    fn preview_translates_latex_fraction_math() {
         let out = markdown_to_typst_preview("We use $\\frac{1}{2}$ here.\n").0;
-        assert!(out.contains("#raw(\"\\\\frac{1}{2}\""), "got: {out}");
+        assert!(out.contains("$(1)/(2)$"), "got: {out}");
+        assert!(!out.contains("#raw(\"\\\\frac{1}{2}\""), "got: {out}");
+    }
+
+    #[test]
+    fn preview_translates_latex_sqrt_and_greek_math() {
+        let out = markdown_to_typst_preview("We use $\\alpha + \\sqrt{b^2 - 4ac}$ here.\n").0;
+        assert!(out.contains("$alpha + sqrt(b^2 - 4a c)$"), "got: {out}");
+    }
+
+    #[test]
+    fn preview_translates_display_latex_operators() {
+        let out = markdown_to_typst_preview(
+            "$$\n\\lim_{n \\to \\infty} \\left(1 + \\frac{1}{n}\\right)^n = e\n$$\n",
+        )
+        .0;
+        assert!(
+            out.contains("$ lim_{n -> infinity} (1 + (1)/(n))^n = e $"),
+            "got: {out}"
+        );
+        assert!(!out.contains("#raw("), "got: {out}");
+    }
+
+    #[test]
+    fn latex_math_command_coverage_is_unique() {
+        let mut commands = std::collections::HashSet::new();
+        for (latex, _typst, _standalone) in latex_math_command_coverage() {
+            assert!(
+                commands.insert(latex),
+                "duplicate LaTeX math command: {latex}"
+            );
+        }
+        assert!(
+            commands.len() >= 100,
+            "coverage unexpectedly small: {}",
+            commands.len()
+        );
+    }
+
+    #[test]
+    fn preview_translates_declared_latex_math_commands() {
+        for (latex, typst, _standalone) in latex_math_command_coverage() {
+            let translated = translate_latex_math_for_preview(latex);
+            assert!(
+                !translated.contains(latex),
+                "{latex} was not translated: {translated}"
+            );
+            if !typst.trim().is_empty() {
+                assert_eq!(translated, typst, "{latex} translated unexpectedly");
+            }
+        }
     }
 
     #[test]
     fn inline_math_no_escaped_at() {
         let out = convert("Formula $\\alpha$ done.\n");
-        assert!(!out.contains("\\@"), "@ should not be escaped inside math: {out}");
+        assert!(
+            !out.contains("\\@"),
+            "@ should not be escaped inside math: {out}"
+        );
     }
 
     // ── Block math ────────────────────────────────────────────────────────────
@@ -1367,13 +2537,19 @@ mod tests {
     fn block_math_fenced() {
         let md = "$$\nE = mc^2\n$$\n";
         let out = convert(md);
-        assert!(out.contains("$ E = mc^2 $") || out.contains("$E = mc^2$"), "got: {out}");
+        assert!(
+            out.contains("$ E = mc^2 $") || out.contains("$E = mc^2$"),
+            "got: {out}"
+        );
     }
 
     #[test]
     fn block_math_inline_double_dollar() {
         let out = convert("$$x + y = z$$\n");
-        assert!(out.contains("$ x + y = z $") || out.contains("$x + y = z$"), "got: {out}");
+        assert!(
+            out.contains("$ x + y = z $") || out.contains("$x + y = z$"),
+            "got: {out}"
+        );
     }
 
     // ── Front matter ─────────────────────────────────────────────────────────
@@ -1382,7 +2558,10 @@ mod tests {
     fn front_matter_stripped_from_body() {
         let md = "---\ntitle: \"My Paper\"\n---\n\n# Introduction\n";
         let out = convert(md);
-        assert!(!out.contains("title:"), "front matter key should be stripped: {out}");
+        assert!(
+            !out.contains("title:"),
+            "front matter key should be stripped: {out}"
+        );
         assert!(out.contains("= Introduction"), "body should remain: {out}");
     }
 
@@ -1410,7 +2589,10 @@ mod tests {
 
     #[test]
     fn build_preamble_has_title() {
-        let fm = FrontMatter { title: Some("Test".into()), ..Default::default() };
+        let fm = FrontMatter {
+            title: Some("Test".into()),
+            ..Default::default()
+        };
         let p = build_preamble(&fm);
         assert!(p.contains("Test"), "got: {p}");
         assert!(p.contains("#set page"), "got: {p}");

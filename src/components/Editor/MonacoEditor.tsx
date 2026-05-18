@@ -5,7 +5,7 @@ import { registerTypstLanguage } from "./typst-language";
 import { useEditorStore } from "../../stores/editorStore";
 import { useLspClient } from "../../hooks/useLspClient";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
-import { copyImageFilesToAssets } from "../../lib/utils";
+import { copyImageFilesToAssets, extractOutline } from "../../lib/utils";
 import "./MonacoEditor.css";
 
 interface MonacoEditorProps {
@@ -241,6 +241,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
   // @monaco-editor/react, which calls model.pushEditOperations() — very slow.
   const activeTabPath  = useEditorStore((s) => s.activeTabPath);
   const updateTabContent = useEditorStore((s) => s.updateTabContent);
+  const setDocumentOutline = useEditorStore((s) => s.setDocumentOutline);
   const appTheme       = useEditorStore((s) => s.theme);
   const monacoTheme    = appTheme === "claude" ? "typst-light" : "typst-dark";
   const editorFontSize = useEditorStore((s) => s.editorFontSize);
@@ -286,10 +287,15 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
     const tab = useEditorStore.getState().activeTab();
     setEditorFile(tab ? { path: tab.path, content: tab.content } : null);
 
-    // Close slash menu on tab switch
     setSlashMenu(null);
     slashStartPos.current = null;
     useEditorStore.getState().setSelectedText(null);
+
+    if (tab?.content) {
+      setDocumentOutline(extractOutline(tab.content));
+    } else {
+      setDocumentOutline([]);
+    }
 
     if (lspClient && tab && tab.path !== prevTabPath.current) {
       prevTabPath.current = tab.path;
@@ -297,7 +303,7 @@ export function MonacoEditor({ onSave, onSnapshot, onNewFile, onPreviewTrigger, 
         lspClient.notifyOpen(pathToUri(tab.path), tab.content);
       }
     }
-  }, [activeTabPath, lspClient]);
+  }, [activeTabPath, lspClient, setDocumentOutline]);
 
   // Switch Monaco theme live when the app theme changes
   useEffect(() => {

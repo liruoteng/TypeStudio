@@ -39,7 +39,7 @@ pub struct AppState {
 
 #[derive(Serialize)]
 pub struct SnapshotEntry {
-    pub timestamp: u64,  // Unix seconds — JS formats this
+    pub timestamp: u64, // Unix seconds — JS formats this
     pub path: String,
 }
 
@@ -213,8 +213,15 @@ fn save_snapshot(path: String) -> Result<(), String> {
         return Ok(());
     }
     let parent = src.parent().unwrap_or(Path::new("."));
-    let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let ext = src.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = src
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let ext = src
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     let history_dir = parent.join(".history").join(&stem);
     fs::create_dir_all(&history_dir).map_err(|e| e.to_string())?;
@@ -223,7 +230,11 @@ fn save_snapshot(path: String) -> Result<(), String> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let filename = if ext.is_empty() { format!("{secs}") } else { format!("{secs}.{ext}") };
+    let filename = if ext.is_empty() {
+        format!("{secs}")
+    } else {
+        format!("{secs}.{ext}")
+    };
     fs::copy(src, history_dir.join(&filename)).map_err(|e| e.to_string())?;
 
     // Prune oldest snapshots beyond 200
@@ -246,7 +257,11 @@ fn save_snapshot(path: String) -> Result<(), String> {
 fn list_snapshots(path: String) -> Result<Vec<SnapshotEntry>, String> {
     let src = Path::new(&path);
     let parent = src.parent().unwrap_or(Path::new("."));
-    let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let stem = src
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let history_dir = parent.join(".history").join(&stem);
 
     if !history_dir.exists() {
@@ -260,7 +275,10 @@ fn list_snapshots(path: String) -> Result<Vec<SnapshotEntry>, String> {
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
             let ts: u64 = name.split('.').next()?.parse().ok()?;
-            Some(SnapshotEntry { timestamp: ts, path: e.path().to_string_lossy().to_string() })
+            Some(SnapshotEntry {
+                timestamp: ts,
+                path: e.path().to_string_lossy().to_string(),
+            })
         })
         .collect();
 
@@ -277,7 +295,7 @@ fn path_exists(path: String) -> bool {
 /// Returns one of: "Replace", "Keep Both", "Stop".
 #[tauri::command]
 fn show_move_conflict_dialog(src_name: String, dest_dir_name: String) -> String {
-    let safe_src  = src_name.replace('\\', "\\\\").replace('"', "\\\"");
+    let safe_src = src_name.replace('\\', "\\\\").replace('"', "\\\"");
     let safe_dest = dest_dir_name.replace('\\', "\\\\").replace('"', "\\\"");
     let script = format!(
         "display dialog \"\\\"{}\\\" already exists in \\\"{}\\\". \
@@ -289,7 +307,11 @@ fn show_move_conflict_dialog(src_name: String, dest_dir_name: String) -> String 
          with icon caution",
         safe_src, safe_dest
     );
-    match std::process::Command::new("osascript").arg("-e").arg(&script).output() {
+    match std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+    {
         Ok(out) => {
             let s = String::from_utf8_lossy(&out.stdout);
             s.trim()
@@ -359,10 +381,7 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
 // ── App settings (persisted to config dir) ─────────────────────────────────
 
 fn settings_file_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join("settings.json"))
 }
@@ -438,7 +457,9 @@ fn run_tinymist_compile(
         cmd.current_dir(r);
     }
 
-    let out = cmd.output().map_err(|e| format!("Failed to run tinymist: {e}"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("Failed to run tinymist: {e}"))?;
 
     if out.status.success() {
         Ok(())
@@ -481,15 +502,16 @@ pub struct PreviewError {
 /// Returns `(target_path, target_content, sidecar_path, sidecar_content)`.
 fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String, String, String)> {
     let (_, fm_yaml) = converter::strip_front_matter(md_content);
-    let compile_rel = fm_yaml
-        .and_then(|y| {
-            let fm = converter::parse_front_matter(y);
-            fm.compile
-        })?;
+    let compile_rel = fm_yaml.and_then(|y| {
+        let fm = converter::parse_front_matter(y);
+        fm.compile
+    })?;
 
     let dir = md_path.parent().unwrap_or(Path::new("."));
     let target = dir.join(&compile_rel);
-    if !target.exists() { return None; }
+    if !target.exists() {
+        return None;
+    }
 
     let (body_typst, _) = converter::markdown_to_typst(md_content);
     let stem = md_path.file_stem()?.to_string_lossy();
@@ -507,7 +529,10 @@ fn resolve_md_hybrid(md_path: &Path, md_content: &str) -> Option<(String, String
 
 fn is_markdown_path(path: &Path) -> bool {
     matches!(
-        path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref(),
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .as_deref(),
         Some("md") | Some("markdown")
     )
 }
@@ -529,7 +554,9 @@ fn md_preview_typ_path(md_path: &str) -> PathBuf {
 /// If a `template.typ` exists next to the file it takes precedence over the built-in preamble.
 fn compose_markdown_source(md_path: &Path, md_content: &str) -> (String, Vec<String>) {
     let (body_md, fm_yaml) = converter::strip_front_matter(md_content);
-    let fm = fm_yaml.map(converter::parse_front_matter).unwrap_or_default();
+    let fm = fm_yaml
+        .map(converter::parse_front_matter)
+        .unwrap_or_default();
     let (body, warnings) = converter::markdown_to_typst(body_md);
 
     // Explicit template.typ in the same directory wins over built-in preamble.
@@ -555,7 +582,9 @@ fn compose_markdown_source(md_path: &Path, md_content: &str) -> (String, Vec<Str
 
 fn compose_markdown_preview_source(md_path: &Path, md_content: &str) -> (String, Vec<String>) {
     let (body_md, fm_yaml) = converter::strip_front_matter(md_content);
-    let fm = fm_yaml.map(converter::parse_front_matter).unwrap_or_default();
+    let fm = fm_yaml
+        .map(converter::parse_front_matter)
+        .unwrap_or_default();
     let (body, warnings) = converter::markdown_to_typst_preview(body_md);
 
     let explicit_template = md_path
@@ -586,7 +615,10 @@ fn validate_typst_source(path: &Path, content: &str) -> Result<(), String> {
     match warned.output {
         Ok(_) => Ok(()),
         Err(errors) => {
-            eprintln!("[markdown-preview] Typst validation failed for {}", path.display());
+            eprintln!(
+                "[markdown-preview] Typst validation failed for {}",
+                path.display()
+            );
             for (index, error) in errors.iter().enumerate() {
                 eprintln!("[markdown-preview] error {}: {}", index + 1, error.message);
                 eprintln!("[markdown-preview] diagnostic {index}: {error:?}");
@@ -693,7 +725,10 @@ fn escape_missing_label_refs(source: &str, diagnostics: &str) -> Option<String> 
     while i < source.len() {
         let rest = &source[i..];
         if rest.starts_with('@') && (i == 0 || !source[..i].ends_with('\\')) {
-            if let Some(label) = labels.iter().find(|label| rest[1..].starts_with(label.as_str())) {
+            if let Some(label) = labels
+                .iter()
+                .find(|label| rest[1..].starts_with(label.as_str()))
+            {
                 out.push_str("\\@");
                 out.push_str(label);
                 i += 1 + label.len();
@@ -735,7 +770,10 @@ fn recover_typst_chunks(
         skipped.push(msg);
         eprintln!("[markdown-preview] skipped invalid generated Typst chunk:");
         eprintln!("{}", chunks[0]);
-        eprintln!("[markdown-preview] skipped chunk error: {}", skipped.last().unwrap());
+        eprintln!(
+            "[markdown-preview] skipped chunk error: {}",
+            skipped.last().unwrap()
+        );
         return String::new();
     }
 
@@ -924,6 +962,32 @@ mod markdown_preview_tests {
 
         let _ = fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn fast_markdown_preview_compiles_latex_math_coverage() {
+        let dir = temp_test_dir("markdown-preview-math-coverage");
+        let md_path = dir.join("math-coverage.md");
+        let mut md = String::from("# Math coverage\n\n");
+
+        for (latex, _typst, standalone) in converter::latex_math_command_coverage() {
+            if standalone {
+                md.push_str(&format!("$x {latex} y$\n\n"));
+            }
+        }
+        md.push_str("$$\n\\frac{\\sqrt{\\alpha}}{\\mathbb{R}} + \\lim_{n \\to \\infty} n\n$$\n");
+
+        write_markdown_preview_source_fast(&md_path.to_string_lossy(), &md).unwrap();
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let source = fs::read_to_string(&preview_path).unwrap();
+
+        assert!(
+            !source.contains("#raw("),
+            "coverage math fell back to raw: {source}"
+        );
+        validate_typst_source(&preview_path, &source).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }
 
 #[tauri::command]
@@ -945,14 +1009,9 @@ async fn fetch_doi(doi: String) -> Result<serde_json::Value, String> {
     let msg = &json["message"];
 
     let title = msg["title"][0].as_str().unwrap_or("").to_string();
-    let year = msg["published"]["date-parts"][0][0]
-        .as_u64()
-        .unwrap_or(0) as u32;
+    let year = msg["published"]["date-parts"][0][0].as_u64().unwrap_or(0) as u32;
     let doi_str = msg["DOI"].as_str().unwrap_or(&doi).to_string();
-    let venue = msg["container-title"][0]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let venue = msg["container-title"][0].as_str().unwrap_or("").to_string();
 
     let authors: Vec<String> = msg["author"]
         .as_array()
@@ -969,12 +1028,14 @@ async fn fetch_doi(doi: String) -> Result<serde_json::Value, String> {
         })
         .collect();
 
-    let first_family = msg["author"][0]["family"]
-        .as_str()
-        .unwrap_or("unknown");
+    let first_family = msg["author"][0]["family"].as_str().unwrap_or("unknown");
     let bib_key = format!(
         "{}{}",
-        first_family.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>(),
+        first_family
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>(),
         year
     );
 
@@ -989,8 +1050,8 @@ async fn fetch_doi(doi: String) -> Result<serde_json::Value, String> {
 }
 
 fn hash_svg(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
     s.hash(&mut h);
     h.finish()
@@ -1005,7 +1066,9 @@ async fn compile_actor(
     let mut prev_hashes: Vec<u64> = Vec::new();
 
     loop {
-        if rx.changed().await.is_err() { break; }
+        if rx.changed().await.is_err() {
+            break;
+        }
         let req = rx.borrow_and_update().clone();
         let Some(req) = req else { continue };
 
@@ -1030,16 +1093,26 @@ async fn compile_actor(
                 *guard = Some(typst_world::TypstWorld::new(main_path)?);
             }
             if let Some((sidecar_path, sidecar_content)) = &req.sidecar {
-                guard.as_mut().unwrap().cache_source(Path::new(sidecar_path), sidecar_content);
+                guard
+                    .as_mut()
+                    .unwrap()
+                    .cache_source(Path::new(sidecar_path), sidecar_content);
             }
-            guard.as_mut().unwrap().set_source(main_path, &source_content)?;
+            guard
+                .as_mut()
+                .unwrap()
+                .set_source(main_path, &source_content)?;
 
             let warned = typst::compile::<typst::layout::PagedDocument>(guard.as_ref().unwrap());
             drop(guard);
             comemo::evict(30);
 
             match warned.output {
-                Ok(doc) => Ok(doc.pages.iter().map(|p| typst_svg::svg(p)).collect::<Vec<_>>()),
+                Ok(doc) => Ok(doc
+                    .pages
+                    .iter()
+                    .map(|p| typst_svg::svg(p))
+                    .collect::<Vec<_>>()),
                 Err(errors) => {
                     eprintln!("[preview] Typst compile failed for {}", main_path.display());
                     for (index, error) in errors.iter().enumerate() {
@@ -1051,7 +1124,7 @@ async fn compile_actor(
                         .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
                         .collect::<Vec<_>>()
                         .join("\n"))
-                },
+                }
             }
         })
         .await;
@@ -1067,13 +1140,25 @@ async fn compile_actor(
                     .map(|(index, svg)| PageUpdate { index, svg })
                     .collect();
                 prev_hashes = hashes;
-                let _ = app_handle.emit("preview-result", PreviewResult {
-                    total_pages: prev_hashes.len(),
-                    updates,
-                });
+                let _ = app_handle.emit(
+                    "preview-result",
+                    PreviewResult {
+                        total_pages: prev_hashes.len(),
+                        updates,
+                    },
+                );
             }
-            Ok(Err(msg)) => { let _ = app_handle.emit("preview-error", PreviewError { message: msg }); }
-            Err(e) => { let _ = app_handle.emit("preview-error", PreviewError { message: e.to_string() }); }
+            Ok(Err(msg)) => {
+                let _ = app_handle.emit("preview-error", PreviewError { message: msg });
+            }
+            Err(e) => {
+                let _ = app_handle.emit(
+                    "preview-error",
+                    PreviewError {
+                        message: e.to_string(),
+                    },
+                );
+            }
         }
     }
 }
@@ -1086,17 +1171,22 @@ fn update_preview_source(
     content: String,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    let (compile_path, compile_content, sidecar) =
-        if is_markdown_path(Path::new(&path)) {
-            if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
-                (tp, tc, Some((sp, sc)))
-            } else {
-                (path, content, None)
-            }
+    let (compile_path, compile_content, sidecar) = if is_markdown_path(Path::new(&path)) {
+        if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
+            (tp, tc, Some((sp, sc)))
         } else {
             (path, content, None)
-        };
-    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content, sidecar }))
+        }
+    } else {
+        (path, content, None)
+    };
+    state
+        .compile_tx
+        .send(Some(CompileRequest {
+            path: compile_path,
+            content: compile_content,
+            sidecar,
+        }))
         .map_err(|e| e.to_string())
 }
 
@@ -1104,17 +1194,22 @@ fn update_preview_source(
 #[tauri::command]
 fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Result<(), String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let (compile_path, compile_content, sidecar) =
-        if is_markdown_path(Path::new(&path)) {
-            if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
-                (tp, tc, Some((sp, sc)))
-            } else {
-                (path, content, None)
-            }
+    let (compile_path, compile_content, sidecar) = if is_markdown_path(Path::new(&path)) {
+        if let Some((tp, tc, sp, sc)) = resolve_md_hybrid(Path::new(&path), &content) {
+            (tp, tc, Some((sp, sc)))
         } else {
             (path, content, None)
-        };
-    state.compile_tx.send(Some(CompileRequest { path: compile_path, content: compile_content, sidecar }))
+        }
+    } else {
+        (path, content, None)
+    };
+    state
+        .compile_tx
+        .send(Some(CompileRequest {
+            path: compile_path,
+            content: compile_content,
+            sidecar,
+        }))
         .map_err(|e| e.to_string())
 }
 
@@ -1138,7 +1233,12 @@ async fn start_sidecar_preview(
         let md_content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let temp = md_preview_typ_path(&path);
         write_markdown_preview_source_fast(&path, &md_content)?;
-        let _ = app_handle.emit("preview-error", PreviewError { message: String::new() });
+        let _ = app_handle.emit(
+            "preview-error",
+            PreviewError {
+                message: String::new(),
+            },
+        );
         temp.to_string_lossy().to_string()
     } else {
         path
@@ -1179,9 +1279,7 @@ fn export_pdf(
     let tinymist = resolve_tinymist(&state);
 
     let input_path = Path::new(&path);
-    let root = input_path
-        .parent()
-        .map(|p| p.to_string_lossy().to_string());
+    let root = input_path.parent().map(|p| p.to_string_lossy().to_string());
 
     // For .md files, convert to Typst and compile from a temporary sibling .typ.
     // The temp file lives next to the source so relative image paths still resolve.
@@ -1231,9 +1329,13 @@ pub struct TemplateInfo {
 fn templates_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
     if let Ok(res) = app.path().resource_dir() {
         let p = res.join("resources").join("templates");
-        if p.exists() { return p; }
+        if p.exists() {
+            return p;
+        }
         let p2 = res.join("templates");
-        if p2.exists() { return p2; }
+        if p2.exists() {
+            return p2;
+        }
     }
     std::env::current_dir()
         .unwrap_or_default()
@@ -1245,19 +1347,24 @@ fn templates_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
 fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateInfo>, String> {
     let dir = templates_dir(&app);
     let mut templates = Vec::new();
-    let entries = fs::read_dir(&dir).map_err(|e| format!("cannot read templates dir {dir:?}: {e}"))?;
+    let entries =
+        fs::read_dir(&dir).map_err(|e| format!("cannot read templates dir {dir:?}: {e}"))?;
     for entry in entries.flatten() {
-        if !entry.path().is_dir() { continue; }
+        if !entry.path().is_dir() {
+            continue;
+        }
         let manifest = entry.path().join("template.json");
-        if !manifest.exists() { continue; }
+        if !manifest.exists() {
+            continue;
+        }
         let raw = fs::read_to_string(&manifest).map_err(|e| e.to_string())?;
         let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
         templates.push(TemplateInfo {
-            id:          v["id"].as_str().unwrap_or("").to_string(),
-            name:        v["name"].as_str().unwrap_or("").to_string(),
+            id: v["id"].as_str().unwrap_or("").to_string(),
+            name: v["name"].as_str().unwrap_or("").to_string(),
             description: v["description"].as_str().unwrap_or("").to_string(),
-            category:    v["category"].as_str().unwrap_or("").to_string(),
-            main:        v["main"].as_str().unwrap_or("main.md").to_string(),
+            category: v["category"].as_str().unwrap_or("").to_string(),
+            main: v["main"].as_str().unwrap_or("main.md").to_string(),
         });
     }
     templates.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1283,13 +1390,16 @@ fn create_project_from_template(
 
     // Read main filename from template.json
     let manifest_raw = fs::read_to_string(src.join("template.json")).map_err(|e| e.to_string())?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).map_err(|e| e.to_string())?;
+    let manifest: serde_json::Value =
+        serde_json::from_str(&manifest_raw).map_err(|e| e.to_string())?;
     let main_file = manifest["main"].as_str().unwrap_or("main.md").to_string();
 
     for entry in fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str == "template.json" { continue; }
+        if name_str == "template.json" {
+            continue;
+        }
         fs::copy(entry.path(), dest.join(&name)).map_err(|e| e.to_string())?;
     }
 
@@ -1305,7 +1415,8 @@ fn create_project_from_template(
                 .is_some();
             if has_compile {
                 let (body_typst, _) = converter::markdown_to_typst(&md_content);
-                let stem = Path::new(&main_file).file_stem()
+                let stem = Path::new(&main_file)
+                    .file_stem()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| "content".to_string());
                 let _ = fs::write(dest.join(format!("{stem}.typ")), body_typst);
@@ -1385,7 +1496,9 @@ mod tests {
         fs::write(dir.join("template.typ"), "#set page(margin: 3cm)\n").unwrap();
 
         let (out, _) = compose_markdown_source(&md, "# Hello\n");
-        let tmpl_pos = out.find("#set page(margin: 3cm)").expect("template missing");
+        let tmpl_pos = out
+            .find("#set page(margin: 3cm)")
+            .expect("template missing");
         let body_pos = out.find("= Hello").expect("body missing");
         assert!(tmpl_pos < body_pos, "template must come before body");
 
@@ -1475,7 +1588,10 @@ mod tests {
 
         let snaps = list_snapshots(file.to_string_lossy().to_string()).unwrap();
         assert_eq!(snaps.len(), 2);
-        assert!(snaps[0].timestamp > snaps[1].timestamp, "newest should be first");
+        assert!(
+            snaps[0].timestamp > snaps[1].timestamp,
+            "newest should be first"
+        );
         assert_eq!(snaps[0].timestamp, 200);
         assert_eq!(snaps[1].timestamp, 100);
 
@@ -1585,7 +1701,9 @@ pub fn run() {
             tinymist_path: Mutex::new(String::new()),
             compile_tx,
             typst_world: Arc::clone(&world_arc),
-            preview_sidecar: Arc::new(tokio::sync::Mutex::new(preview_sidecar::PreviewSidecar::default())),
+            preview_sidecar: Arc::new(tokio::sync::Mutex::new(
+                preview_sidecar::PreviewSidecar::default(),
+            )),
         })
         .invoke_handler(tauri::generate_handler![
             read_file,
@@ -1645,27 +1763,78 @@ pub fn run() {
             // in the editor/React) so macOS shows them and dispatches them.
             let handle = app.handle();
 
-            let m_new_file      = MenuItemBuilder::new("New Typst Document").id("new-file").accelerator("CmdOrCtrl+N").build(handle)?;
-            let m_new_md        = MenuItemBuilder::new("New Markdown Document").id("new-file-md").accelerator("CmdOrCtrl+Shift+N").build(handle)?;
-            let m_new_template  = MenuItemBuilder::new("New Project from Template…").id("new-from-template").build(handle)?;
-            let m_open_file     = MenuItemBuilder::new("Open File…").id("open-file").accelerator("CmdOrCtrl+O").build(handle)?;
-            let m_open_folder   = MenuItemBuilder::new("Open Folder…").id("open-folder").accelerator("CmdOrCtrl+Shift+O").build(handle)?;
-            let m_save          = MenuItemBuilder::new("Save").id("save").accelerator("CmdOrCtrl+S").build(handle)?;
-            let m_save_all      = MenuItemBuilder::new("Save All").id("save-all").accelerator("CmdOrCtrl+Alt+S").build(handle)?;
-            let m_close_tab     = MenuItemBuilder::new("Close Tab").id("close-tab").accelerator("CmdOrCtrl+W").build(handle)?;
-            let m_export_pdf    = MenuItemBuilder::new("Export PDF…").id("export-pdf").accelerator("CmdOrCtrl+E").build(handle)?;
-            let m_import_latex  = MenuItemBuilder::new("Import LaTeX Template…").id("import-latex").build(handle)?;
+            let m_new_file = MenuItemBuilder::new("New Typst Document")
+                .id("new-file")
+                .accelerator("CmdOrCtrl+N")
+                .build(handle)?;
+            let m_new_md = MenuItemBuilder::new("New Markdown Document")
+                .id("new-file-md")
+                .accelerator("CmdOrCtrl+Shift+N")
+                .build(handle)?;
+            let m_new_template = MenuItemBuilder::new("New Project from Template…")
+                .id("new-from-template")
+                .build(handle)?;
+            let m_open_file = MenuItemBuilder::new("Open File…")
+                .id("open-file")
+                .accelerator("CmdOrCtrl+O")
+                .build(handle)?;
+            let m_open_folder = MenuItemBuilder::new("Open Folder…")
+                .id("open-folder")
+                .accelerator("CmdOrCtrl+Shift+O")
+                .build(handle)?;
+            let m_save = MenuItemBuilder::new("Save")
+                .id("save")
+                .accelerator("CmdOrCtrl+S")
+                .build(handle)?;
+            let m_save_all = MenuItemBuilder::new("Save All")
+                .id("save-all")
+                .accelerator("CmdOrCtrl+Alt+S")
+                .build(handle)?;
+            let m_close_tab = MenuItemBuilder::new("Close Tab")
+                .id("close-tab")
+                .accelerator("CmdOrCtrl+W")
+                .build(handle)?;
+            let m_export_pdf = MenuItemBuilder::new("Export PDF…")
+                .id("export-pdf")
+                .accelerator("CmdOrCtrl+E")
+                .build(handle)?;
+            let m_import_latex = MenuItemBuilder::new("Import LaTeX Template…")
+                .id("import-latex")
+                .build(handle)?;
 
-            let m_undo           = MenuItemBuilder::new("Undo").id("undo").accelerator("CmdOrCtrl+Z").build(handle)?;
-            let m_redo           = MenuItemBuilder::new("Redo").id("redo").accelerator("CmdOrCtrl+Shift+Z").build(handle)?;
+            let m_undo = MenuItemBuilder::new("Undo")
+                .id("undo")
+                .accelerator("CmdOrCtrl+Z")
+                .build(handle)?;
+            let m_redo = MenuItemBuilder::new("Redo")
+                .id("redo")
+                .accelerator("CmdOrCtrl+Shift+Z")
+                .build(handle)?;
 
-            let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar").id("toggle-sidebar").accelerator("CmdOrCtrl+B").build(handle)?;
-            let m_toggle_preview = MenuItemBuilder::new("Toggle Preview").id("toggle-preview").accelerator("CmdOrCtrl+Shift+V").build(handle)?;
-            let m_toggle_outline = MenuItemBuilder::new("Toggle Outline").id("toggle-outline").build(handle)?;
-            let m_toggle_writing = MenuItemBuilder::new("Toggle Writing Mode").id("toggle-writing-mode").build(handle)?;
-            let m_toggle_line_numbers = MenuItemBuilder::new("Toggle Line Numbers").id("toggle-line-numbers").build(handle)?;
-            let m_toggle_sidecar = MenuItemBuilder::new("Toggle Sidecar Preview").id("toggle-sidecar-preview").accelerator("CmdOrCtrl+Shift+P").build(handle)?;
-            let m_show_history   = MenuItemBuilder::new("Toggle File History").id("toggle-history").build(handle)?;
+            let m_toggle_sidebar = MenuItemBuilder::new("Toggle Sidebar")
+                .id("toggle-sidebar")
+                .accelerator("CmdOrCtrl+B")
+                .build(handle)?;
+            let m_toggle_preview = MenuItemBuilder::new("Toggle Preview")
+                .id("toggle-preview")
+                .accelerator("CmdOrCtrl+Shift+V")
+                .build(handle)?;
+            let m_toggle_outline = MenuItemBuilder::new("Toggle Outline")
+                .id("toggle-outline")
+                .build(handle)?;
+            let m_toggle_writing = MenuItemBuilder::new("Toggle Writing Mode")
+                .id("toggle-writing-mode")
+                .build(handle)?;
+            let m_toggle_line_numbers = MenuItemBuilder::new("Toggle Line Numbers")
+                .id("toggle-line-numbers")
+                .build(handle)?;
+            let m_toggle_sidecar = MenuItemBuilder::new("Toggle Sidecar Preview")
+                .id("toggle-sidecar-preview")
+                .accelerator("CmdOrCtrl+Shift+P")
+                .build(handle)?;
+            let m_show_history = MenuItemBuilder::new("Toggle File History")
+                .id("toggle-history")
+                .build(handle)?;
 
             let file_menu = SubmenuBuilder::new(handle, "File")
                 .item(&m_new_file)
@@ -1705,7 +1874,10 @@ pub fn run() {
                 .item(&m_toggle_sidecar)
                 .build()?;
 
-            let m_settings = MenuItemBuilder::new("Settings…").id("open-settings").accelerator("CmdOrCtrl+,").build(handle)?;
+            let m_settings = MenuItemBuilder::new("Settings…")
+                .id("open-settings")
+                .accelerator("CmdOrCtrl+,")
+                .build(handle)?;
 
             let app_menu = SubmenuBuilder::new(handle, "Type Studio")
                 .about(Some(AboutMetadata::default()))
@@ -1732,10 +1904,24 @@ pub fn run() {
                 let id = event.id().as_ref();
                 // Every app-owned item simply forwards a `menu:<id>` event.
                 match id {
-                    "new-file" | "new-file-md" | "new-from-template" | "open-file" | "open-folder"
-                    | "save" | "save-all" | "close-tab" | "export-pdf" | "import-latex"
-                    | "toggle-sidebar" | "toggle-preview" | "toggle-outline" | "toggle-writing-mode"
-                    | "toggle-line-numbers" | "toggle-sidecar-preview" | "toggle-history" | "open-settings" => {
+                    "new-file"
+                    | "new-file-md"
+                    | "new-from-template"
+                    | "open-file"
+                    | "open-folder"
+                    | "save"
+                    | "save-all"
+                    | "close-tab"
+                    | "export-pdf"
+                    | "import-latex"
+                    | "toggle-sidebar"
+                    | "toggle-preview"
+                    | "toggle-outline"
+                    | "toggle-writing-mode"
+                    | "toggle-line-numbers"
+                    | "toggle-sidecar-preview"
+                    | "toggle-history"
+                    | "open-settings" => {
                         let _ = app.emit(&format!("menu:{id}"), ());
                     }
                     _ => {}
