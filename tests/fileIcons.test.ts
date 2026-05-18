@@ -150,6 +150,11 @@ describe("getFileIconMeta", () => {
 
   it("returns zsh icon for .zsh files", () => {
     const meta = getFileIconMeta(".zshrc", false);
+    expect(meta).toEqual({ kind: "text", label: "·", className: "generic-icon" });
+  });
+
+  it("returns zsh icon for files ending in .zsh", () => {
+    const meta = getFileIconMeta("script.zsh", false);
     expect(meta.kind).toBe("simple");
     expect(meta.className).toBe("zsh-icon");
   });

@@ -9,8 +9,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import katex from "katex";
 import { refractor } from "refractor/all";
 import type { Element as HastElement, Nodes as HastNode, Root as HastRoot, Text as HastText } from "hast";
-import { EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import type { Extension } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
+import type { Extension, Range as CodeMirrorRange } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -172,6 +172,8 @@ const prismAliases: Record<string, string> = {
 };
 
 const codeBlockLanguages = ["", ...refractor.listLanguages().sort((a, b) => a.localeCompare(b))];
+const codeSyntaxHighlightMaxDocLength = 20_000;
+const previewUpdateDebounceMs = 500;
 
 function codeBlockLanguageOptions(current: string) {
   return [...new Set([current, ...codeBlockLanguages])];
@@ -316,23 +318,6 @@ function serializeTable(table: Pick<MarkdownTable, "header" | "alignments" | "ro
     formatTableRow(separator),
     ...table.rows.map(formatTableRow),
   ].join("\n");
-}
-
-function insertRowIntoTable(table: MarkdownTable) {
-  return serializeTable({
-    header: table.header,
-    alignments: table.alignments,
-    rows: [...table.rows, table.header.map(() => "")],
-  });
-}
-
-function insertColumnIntoTable(table: MarkdownTable) {
-  const nextColumn = `Column ${table.header.length + 1}`;
-  return serializeTable({
-    header: [...table.header, nextColumn],
-    alignments: [...table.alignments, null],
-    rows: table.rows.map((row) => [...row, ""]),
-  });
 }
 
 function parseTableAlignment(separator: string) {
@@ -683,6 +668,8 @@ function addSyntaxTokenDecorations(
 }
 
 class MarkdownTableWidget extends WidgetType {
+  private cleanup: (() => void) | null = null;
+
   constructor(private readonly table: MarkdownTable) {
     super();
   }
@@ -692,18 +679,176 @@ class MarkdownTableWidget extends WidgetType {
   }
 
   toDOM(view: EditorView) {
+    this.cleanup?.();
     const wrap = document.createElement("div");
     wrap.className = "cm-md-table-render";
+    wrap.tabIndex = -1;
     const draftHeader = [...this.table.header];
+    const draftAlignments = [...this.table.alignments];
     const draftRows = this.table.rows.map((row) => [...row]);
     const tableFrom = this.table.from;
     let tableTo = this.table.to;
     let committedSource = view.state.sliceDoc(tableFrom, tableTo);
+    const renderedCells = new Map<string, HTMLTableCellElement>();
+    let selectionAnchor: { row: number; col: number } | null = null;
+    let lastClickedCell: { row: number; col: number } | null = null;
+    let selectedRange: { startRow: number; endRow: number; startCol: number; endCol: number } | null = null;
+    let draggingTableSelection = false;
+    let removeDragListeners: (() => void) | null = null;
+    let originalBodyUserSelect = "";
+
+    const cellKey = (row: number, col: number) => `${row}:${col}`;
+    const cellPosition = (cell: HTMLTableCellElement | null) => {
+      if (!cell || !wrap.contains(cell)) return null;
+      const row = Number(cell.dataset.row);
+      const col = Number(cell.dataset.col);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
+      return { row, col };
+    };
+    const cellFromTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return cellPosition(element?.closest<HTMLTableCellElement>(".cm-md-table-render th, .cm-md-table-render td") ?? null);
+    };
+    const cellFromEvent = (event: MouseEvent) => {
+      if (typeof document.elementFromPoint !== "function") return null;
+      const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+      return cellFromTarget(target);
+    };
+    const normalizeRange = (from: { row: number; col: number }, to: { row: number; col: number }) => ({
+      startRow: Math.min(from.row, to.row),
+      endRow: Math.max(from.row, to.row),
+      startCol: Math.min(from.col, to.col),
+      endCol: Math.max(from.col, to.col),
+    });
+
+    const clearBrowserSelection = () => {
+      window.getSelection()?.removeAllRanges();
+    };
+
+    const beginTableSelectionDrag = () => {
+      if (draggingTableSelection) return;
+      draggingTableSelection = true;
+      wrap.classList.add("is-selecting-cells");
+      originalBodyUserSelect = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+      if (wrap.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+      for (const cell of renderedCells.values()) {
+        cell.contentEditable = "false";
+        cell.setAttribute("contenteditable", "false");
+      }
+      clearBrowserSelection();
+      requestAnimationFrame(clearBrowserSelection);
+    };
+
+    const finishTableSelectionDrag = () => {
+      if (!draggingTableSelection) return;
+      document.body.style.userSelect = originalBodyUserSelect;
+      for (const cell of renderedCells.values()) {
+        cell.contentEditable = "true";
+        cell.setAttribute("contenteditable", "true");
+      }
+      clearBrowserSelection();
+    };
+
+    const endDragTracking = () => {
+      removeDragListeners?.();
+      removeDragListeners = null;
+      finishTableSelectionDrag();
+      wrap.classList.remove("is-selecting-cells");
+      selectionAnchor = null;
+      draggingTableSelection = false;
+    };
+
+    const tableValueAt = (row: number, col: number) => {
+      if (row === 0) return draftHeader[col] ?? "";
+      return draftRows[row - 1]?.[col] ?? "";
+    };
+
+    const selectedTableText = () => {
+      if (!selectedRange) return "";
+
+      const rows: string[] = [];
+      for (let row = selectedRange.startRow; row <= selectedRange.endRow; row += 1) {
+        const cells: string[] = [];
+        for (let col = selectedRange.startCol; col <= selectedRange.endCol; col += 1) {
+          cells.push(tableValueAt(row, col));
+        }
+        rows.push(cells.join("\t"));
+      }
+      return rows.join("\n");
+    };
+
+    const applyTableSelection = (from: { row: number; col: number }, to: { row: number; col: number }) => {
+      selectedRange = normalizeRange(from, to);
+      for (const cell of renderedCells.values()) {
+        const row = Number(cell.dataset.row);
+        const col = Number(cell.dataset.col);
+        const selected =
+          row >= selectedRange.startRow &&
+          row <= selectedRange.endRow &&
+          col >= selectedRange.startCol &&
+          col <= selectedRange.endCol;
+        cell.classList.toggle("is-selected", selected);
+        cell.classList.toggle("is-selection-anchor", selected && row === from.row && col === from.col);
+        if (selected) cell.setAttribute("aria-selected", "true");
+        else cell.removeAttribute("aria-selected");
+      }
+    };
+
+    const updateDragSelection = (nextCell: { row: number; col: number } | null, event: MouseEvent) => {
+      if (!selectionAnchor || !nextCell) return;
+      if (nextCell.row === selectionAnchor.row && nextCell.col === selectionAnchor.col && !draggingTableSelection) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      beginTableSelectionDrag();
+      clearBrowserSelection();
+      applyTableSelection(selectionAnchor, nextCell);
+    };
+
+    const trackCellSelectionDrag = () => {
+      removeDragListeners?.();
+
+      const onMouseMove = (event: MouseEvent) => {
+        updateDragSelection(cellFromEvent(event) ?? cellFromTarget(event.target), event);
+      };
+
+      const onMouseOver = (event: MouseEvent) => {
+        updateDragSelection(cellFromTarget(event.target), event);
+      };
+
+      const onSelectStart = (event: Event) => {
+        if (!draggingTableSelection) return;
+        event.preventDefault();
+      };
+
+      const onMouseUp = (event: MouseEvent) => {
+        if (draggingTableSelection) {
+          event.preventDefault();
+          clearBrowserSelection();
+          wrap.focus();
+        }
+        endDragTracking();
+      };
+
+      document.addEventListener("mousemove", onMouseMove, true);
+      document.addEventListener("mouseup", onMouseUp, true);
+      document.addEventListener("selectstart", onSelectStart, true);
+      wrap.addEventListener("mouseover", onMouseOver, true);
+      wrap.addEventListener("mousemove", onMouseOver, true);
+      removeDragListeners = () => {
+        document.removeEventListener("mousemove", onMouseMove, true);
+        document.removeEventListener("mouseup", onMouseUp, true);
+        document.removeEventListener("selectstart", onSelectStart, true);
+        wrap.removeEventListener("mouseover", onMouseOver, true);
+        wrap.removeEventListener("mousemove", onMouseOver, true);
+      };
+    };
 
     const commitTableEdit = () => {
       const nextSource = serializeTable({
         header: draftHeader,
-        alignments: this.table.alignments,
+        alignments: draftAlignments,
         rows: draftRows,
       });
       if (committedSource === nextSource) return;
@@ -715,15 +860,55 @@ class MarkdownTableWidget extends WidgetType {
       committedSource = nextSource;
     };
 
+    const replaceTableSource = (nextSource: string) => {
+      view.dispatch({
+        changes: { from: tableFrom, to: tableTo, insert: nextSource },
+        selection: EditorSelection.cursor(tableFrom),
+        scrollIntoView: true,
+      });
+      tableTo = tableFrom + nextSource.length;
+      committedSource = nextSource;
+      view.focus();
+    };
+
+    const selectedColumnIndexes = () => {
+      if (selectedRange) {
+        const indexes: number[] = [];
+        for (let col = selectedRange.startCol; col <= selectedRange.endCol; col += 1) indexes.push(col);
+        return indexes;
+      }
+      if (lastClickedCell) return [lastClickedCell.col];
+      return draftHeader.length > 0 ? [draftHeader.length - 1] : [];
+    };
+
+    const selectedDataRowIndexes = () => {
+      if (selectedRange) {
+        const indexes: number[] = [];
+        for (let row = Math.max(1, selectedRange.startRow); row <= selectedRange.endRow; row += 1) indexes.push(row - 1);
+        return indexes;
+      }
+      if (lastClickedCell && lastClickedCell.row > 0) return [lastClickedCell.row - 1];
+      return draftRows.length > 0 ? [draftRows.length - 1] : [];
+    };
+
+    const nextTableSource = (header: string[], alignments: MarkdownTable["alignments"], rows: string[][]) => (
+      serializeTable({ header, alignments, rows })
+    );
+
     const makeEditableCell = (
       cell: HTMLTableCellElement,
       value: string,
+      rowIndex: number,
+      colIndex: number,
       onChange: (nextValue: string) => void,
     ) => {
       cell.contentEditable = "true";
       cell.setAttribute("contenteditable", "true");
       cell.spellcheck = true;
+      cell.dataset.row = `${rowIndex}`;
+      cell.dataset.col = `${colIndex}`;
       cell.textContent = value;
+      renderedCells.set(cellKey(rowIndex, colIndex), cell);
 
       const updateValue = () => {
         onChange((cell.textContent ?? "").replace(/\s*\n+\s*/g, " "));
@@ -731,6 +916,31 @@ class MarkdownTableWidget extends WidgetType {
 
       cell.addEventListener("mousedown", (event) => {
         event.stopPropagation();
+        if (event.button !== 0) return;
+
+        if (event.shiftKey && (selectedRange || lastClickedCell)) {
+          event.preventDefault();
+          const rangeAnchor = selectedRange
+            ? { row: selectedRange.startRow, col: selectedRange.startCol }
+            : lastClickedCell;
+          if (!rangeAnchor) return;
+          selectionAnchor = rangeAnchor;
+          applyTableSelection(selectionAnchor, { row: rowIndex, col: colIndex });
+          wrap.focus();
+          selectionAnchor = null;
+          return;
+        }
+
+        selectionAnchor = { row: rowIndex, col: colIndex };
+        draggingTableSelection = false;
+        trackCellSelectionDrag();
+      });
+      cell.addEventListener("mouseup", (event) => {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        if (!draggingTableSelection) {
+          lastClickedCell = { row: rowIndex, col: colIndex };
+        }
       });
       cell.addEventListener("input", updateValue);
       cell.addEventListener("blur", () => {
@@ -766,6 +976,34 @@ class MarkdownTableWidget extends WidgetType {
       });
     };
 
+    const finishTableSelection = () => {
+      endDragTracking();
+    };
+    document.addEventListener("mouseup", finishTableSelection);
+    this.cleanup = () => {
+      endDragTracking();
+      document.removeEventListener("mouseup", finishTableSelection);
+    };
+
+    wrap.addEventListener("copy", (event) => {
+      if (!selectedRange) return;
+      const activeElement = document.activeElement as HTMLElement | null;
+      const domSelection = window.getSelection();
+      if (activeElement?.closest("[contenteditable='true']") && domSelection && !domSelection.isCollapsed) return;
+
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", selectedTableText());
+    });
+
+    wrap.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !selectedRange) return;
+      selectedRange = null;
+      for (const cell of renderedCells.values()) {
+        cell.classList.remove("is-selected", "is-selection-anchor");
+        cell.removeAttribute("aria-selected");
+      }
+    });
+
     const actions = document.createElement("div");
     actions.className = "cm-md-table-actions";
 
@@ -790,12 +1028,11 @@ class MarkdownTableWidget extends WidgetType {
     rowBtn.addEventListener("mousedown", (event) => event.preventDefault());
     rowBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      view.dispatch({
-        changes: { from: this.table.from, to: this.table.to, insert: insertRowIntoTable(this.table) },
-        selection: EditorSelection.cursor(this.table.from),
-        scrollIntoView: true,
-      });
-      view.focus();
+      replaceTableSource(nextTableSource(
+        draftHeader,
+        draftAlignments,
+        [...draftRows, draftHeader.map(() => "")],
+      ));
     });
     actions.appendChild(rowBtn);
 
@@ -805,14 +1042,60 @@ class MarkdownTableWidget extends WidgetType {
     colBtn.addEventListener("mousedown", (event) => event.preventDefault());
     colBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      view.dispatch({
-        changes: { from: this.table.from, to: this.table.to, insert: insertColumnIntoTable(this.table) },
-        selection: EditorSelection.cursor(this.table.from),
-        scrollIntoView: true,
-      });
-      view.focus();
+      const nextColumn = `Column ${draftHeader.length + 1}`;
+      replaceTableSource(nextTableSource(
+        [...draftHeader, nextColumn],
+        [...draftAlignments, null],
+        draftRows.map((row) => [...row, ""]),
+      ));
     });
     actions.appendChild(colBtn);
+
+    const deleteRowBtn = document.createElement("button");
+    deleteRowBtn.type = "button";
+    deleteRowBtn.textContent = "- Row";
+    deleteRowBtn.addEventListener("mousedown", (event) => event.preventDefault());
+    deleteRowBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      const rowsToDelete = new Set(selectedDataRowIndexes());
+      if (rowsToDelete.size === 0) return;
+      replaceTableSource(nextTableSource(
+        draftHeader,
+        draftAlignments,
+        draftRows.filter((_, index) => !rowsToDelete.has(index)),
+      ));
+    });
+    actions.appendChild(deleteRowBtn);
+
+    const deleteColBtn = document.createElement("button");
+    deleteColBtn.type = "button";
+    deleteColBtn.textContent = "- Column";
+    deleteColBtn.addEventListener("mousedown", (event) => event.preventDefault());
+    deleteColBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      const columnsToDelete = new Set(selectedColumnIndexes());
+      if (columnsToDelete.size === 0) return;
+      if (columnsToDelete.size >= draftHeader.length) {
+        replaceTableSource("");
+        return;
+      }
+      replaceTableSource(nextTableSource(
+        draftHeader.filter((_, index) => !columnsToDelete.has(index)),
+        draftAlignments.filter((_, index) => !columnsToDelete.has(index)),
+        draftRows.map((row) => row.filter((_, index) => !columnsToDelete.has(index))),
+      ));
+    });
+    actions.appendChild(deleteColBtn);
+
+    const deleteTableBtn = document.createElement("button");
+    deleteTableBtn.type = "button";
+    deleteTableBtn.textContent = "Delete table";
+    deleteTableBtn.addEventListener("mousedown", (event) => event.preventDefault());
+    deleteTableBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      replaceTableSource("");
+    });
+    actions.appendChild(deleteTableBtn);
 
     wrap.appendChild(actions);
 
@@ -827,7 +1110,7 @@ class MarkdownTableWidget extends WidgetType {
     const headRow = document.createElement("tr");
     for (const [index, cell] of this.table.header.entries()) {
       const th = document.createElement("th");
-      makeEditableCell(th, cell, (nextValue) => {
+      makeEditableCell(th, cell, 0, index, (nextValue) => {
         draftHeader[index] = nextValue;
       });
       if (this.table.alignments[index]) th.style.textAlign = this.table.alignments[index]!;
@@ -841,7 +1124,7 @@ class MarkdownTableWidget extends WidgetType {
       const tr = document.createElement("tr");
       for (let index = 0; index < this.table.header.length; index += 1) {
         const td = document.createElement("td");
-        makeEditableCell(td, row[index] ?? "", (nextValue) => {
+        makeEditableCell(td, row[index] ?? "", rowIndex + 1, index, (nextValue) => {
           draftRows[rowIndex][index] = nextValue;
         });
         if (this.table.alignments[index]) td.style.textAlign = this.table.alignments[index]!;
@@ -858,6 +1141,11 @@ class MarkdownTableWidget extends WidgetType {
   ignoreEvent(event: Event) {
     const target = event.target as HTMLElement | null;
     return !!target?.closest("button, [contenteditable='true']");
+  }
+
+  destroy() {
+    this.cleanup?.();
+    this.cleanup = null;
   }
 }
 
@@ -927,7 +1215,7 @@ class FrontmatterWidget extends WidgetType {
     edit.addEventListener("click", (event) => {
       event.preventDefault();
       view.dispatch({
-        selection: EditorSelection.cursor(this.frontmatter.from + 4),
+        selection: EditorSelection.cursor(this.frontmatter.to),
         scrollIntoView: true,
       });
       view.focus();
@@ -1118,7 +1406,7 @@ class HorizontalRuleWidget extends WidgetType {
     hr.addEventListener("mousedown", (event) => {
       event.preventDefault();
       view.dispatch({
-        selection: EditorSelection.range(this.from, this.to),
+        selection: EditorSelection.cursor(this.to),
         scrollIntoView: true,
       });
       view.focus();
@@ -1448,6 +1736,7 @@ function buildMarkdownDecorations(state: EditorState) {
   const cursorFrom = selection.from;
   const cursorTo = selection.to;
   const doc = state.doc;
+  const enableCodeSyntaxHighlighting = doc.length <= codeSyntaxHighlightMaxDocLength;
   const frontmatter = frontmatterAtTop(state);
   const tableSourceEditRange = state.field(tableSourceEditRangeField, false);
 
@@ -1533,7 +1822,7 @@ function buildMarkdownDecorations(state: EditorState) {
             widget: new CodeBlockActionsWidget(codeBlock, activeCodeBlock),
           });
         }
-        if (!isFenceLine) {
+        if (!isFenceLine && enableCodeSyntaxHighlighting) {
           addSyntaxTokenDecorations(ranges, codeLine.text, codeLine.from, codeBlock.language);
         }
       }
@@ -1596,7 +1885,7 @@ function buildMarkdownDecorations(state: EditorState) {
       ranges.push({ from: line.from + heading[0].length, to: line.to, className: `cm-md-heading cm-md-h${level}` });
       addInlineDecorations(ranges, text, line.from, heading[0].length, cursorFrom, cursorTo);
     } else if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(text)) {
-      if (!selection.empty) {
+      if (activeLine) {
         ranges.push({ from: line.from, to: line.to, className: "cm-md-rule-source" });
       } else {
         ranges.push({
@@ -1659,28 +1948,25 @@ function buildMarkdownDecorations(state: EditorState) {
     }
   }
 
-  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
-  const builder = new RangeSetBuilder<Decoration>();
+  const decorations: CodeMirrorRange<Decoration>[] = [];
   for (const range of ranges) {
     if (range.point && range.widget) {
-      builder.add(
-        range.from,
-        range.from,
-        Decoration.widget({ widget: range.widget, block: range.block, side: range.side }),
+      decorations.push(
+        Decoration.widget({ widget: range.widget, block: range.block, side: range.side })
+          .range(range.from),
       );
     } else if (range.line && range.className) {
-      builder.add(range.from, range.from, Decoration.line({ class: range.className }));
+      decorations.push(Decoration.line({ class: range.className }).range(range.from));
     } else if (range.from < range.to) {
-      builder.add(
-        range.from,
-        range.to,
-        range.replace
+      decorations.push(
+        (range.replace
           ? Decoration.replace({ widget: range.widget, block: range.block })
-          : Decoration.mark({ class: range.className }),
+          : Decoration.mark({ class: range.className }))
+          .range(range.from, range.to),
       );
     }
   }
-  return builder.finish();
+  return Decoration.set(decorations, true);
 }
 
 const markdownWysiwygDecorationField = StateField.define<DecorationSet>({
@@ -1770,6 +2056,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
   const onSnapshotRef = useRef(onSnapshot);
   const onPreviewRef = useRef(onPreviewTrigger);
@@ -1810,7 +2097,11 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     const value = view.state.doc.toString();
     updateTabContent(path, value);
     setLastEditTime(Date.now());
-    onPreviewRef.current?.(path, value);
+
+    if (previewUpdateTimer.current) clearTimeout(previewUpdateTimer.current);
+    previewUpdateTimer.current = setTimeout(() => {
+      onPreviewRef.current?.(path, value);
+    }, previewUpdateDebounceMs);
 
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
@@ -1891,7 +2182,6 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     markdown(),
     syntaxHighlighting(HighlightStyle.define([
       { tag: tags.meta, color: "#404740" },
-      { tag: tags.link, textDecoration: "underline" },
       { tag: tags.heading, fontWeight: "bold" },
       { tag: tags.emphasis, fontStyle: "italic" },
       { tag: tags.strong, fontWeight: "bold" },
@@ -2079,6 +2369,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      if (previewUpdateTimer.current) clearTimeout(previewUpdateTimer.current);
     };
   }, []);
 

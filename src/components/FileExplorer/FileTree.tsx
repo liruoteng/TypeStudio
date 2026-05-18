@@ -333,6 +333,10 @@ function FileNode({ path, name, depth, onRefreshParent, highlighted, onClearDirS
     try {
       const content = await invoke<string>("read_file", { path });
       openTab(path, name, content);
+      const store = useEditorStore.getState();
+      if (!store.activePanels.includes("editor")) {
+        store.setActivePanels([...store.activePanels, "editor"]);
+      }
     } catch (e) {
       console.error("read_file error", e);
     }

@@ -305,10 +305,11 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         }
 
         // ── Unordered list ────────────────────────────────────────────────────
-        if let Some(rest) = line
+        let list_line = line.trim_start();
+        if let Some(rest) = list_line
             .strip_prefix("- ")
-            .or_else(|| line.strip_prefix("* "))
-            .or_else(|| line.strip_prefix("+ "))
+            .or_else(|| list_line.strip_prefix("* "))
+            .or_else(|| list_line.strip_prefix("+ "))
         {
             if prev_blank { }
             if let Some(content) = rest.strip_prefix("[ ] ") {
@@ -324,7 +325,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         }
 
         // ── Ordered list ──────────────────────────────────────────────────────
-        if let Some(rest) = strip_ordered_list(line) {
+        if let Some(rest) = strip_ordered_list(line.trim_start()) {
             out.push_str(&format!("+ {}\n", inline(rest)));
             prev_blank = false;
             i += 1;
@@ -885,10 +886,20 @@ mod tests {
     }
 
     #[test]
+    fn indented_unordered_list_marker() {
+        assert!(convert("  * nested item\n").contains("- nested item"));
+    }
+
+    #[test]
     fn ordered_list() {
         assert!(convert("1. first\n").contains("+ first"));
         assert!(convert("2. second\n").contains("+ second"));
         assert!(convert("10. tenth\n").contains("+ tenth"));
+    }
+
+    #[test]
+    fn indented_ordered_list_marker() {
+        assert!(convert("   1. nested\n").contains("+ nested"));
     }
 
     #[test]

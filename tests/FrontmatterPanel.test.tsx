@@ -4,19 +4,22 @@ import userEvent from "@testing-library/user-event";
 import { FrontmatterPanel } from "../src/components/Editor/FrontmatterPanel";
 
 describe("FrontmatterPanel", () => {
+  const multiRow = "title: Hello\ndraft: true";
+  const tripleRow = "a: 1\nb: 2\nc: 3";
+
   it("renders null when rows are empty", () => {
     const { container } = render(<FrontmatterPanel raw="" onChange={vi.fn()} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders collapsed header with property count", () => {
-    render(<FrontmatterPanel raw="title: Hello\ndraft: true" onChange={vi.fn()} />);
+    render(<FrontmatterPanel raw={multiRow} onChange={vi.fn()} />);
     expect(screen.getByText("Properties")).toBeInTheDocument();
     expect(screen.getByText("▶")).toBeInTheDocument();
   });
 
   it("expands to show rows when header is clicked", async () => {
-    render(<FrontmatterPanel raw="title: Hello\ndraft: true" onChange={vi.fn()} />);
+    render(<FrontmatterPanel raw={multiRow} onChange={vi.fn()} />);
     await userEvent.click(screen.getByText("Properties"));
     expect(screen.getByDisplayValue("Hello")).toBeInTheDocument();
     expect(screen.getByDisplayValue("true")).toBeInTheDocument();
@@ -51,7 +54,7 @@ describe("FrontmatterPanel", () => {
   });
 
   it("renders multiple rows when expanded", async () => {
-    render(<FrontmatterPanel raw="a: 1\nb: 2\nc: 3" onChange={vi.fn()} />);
+    render(<FrontmatterPanel raw={tripleRow} onChange={vi.fn()} />);
     await userEvent.click(screen.getByText("Properties"));
     expect(screen.getByDisplayValue("1")).toBeInTheDocument();
     expect(screen.getByDisplayValue("2")).toBeInTheDocument();

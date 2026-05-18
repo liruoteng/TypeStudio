@@ -93,7 +93,7 @@ export const SidecarPreviewPanel = memo(function SidecarPreviewPanel() {
       {previewError && (
         <div className="preview-error-banner" title={previewError}>
           <span className="preview-error-banner-icon"><AlertTriangle size={13} /></span>
-          <span>Syntax error — showing last successful preview</span>
+          <span>Syntax error - showing recovered preview</span>
         </div>
       )}
       <iframe

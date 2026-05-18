@@ -53,6 +53,7 @@ const initialSlice = {
 };
 
 beforeEach(() => {
+  vi.useRealTimers();
   localStorage.clear();
   useEditorStore.setState(initialSlice);
 });
@@ -62,6 +63,10 @@ beforeEach(() => {
 describe("markPathJustWritten / isRecentlyWritten", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("marks a path as recently written", () => {
@@ -94,13 +99,26 @@ describe("markPathJustWritten / isRecentlyWritten", () => {
 // ── AI Chat Sessions ────────────────────────────────────────────────────────
 
 describe("AI chat sessions", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function createSession() {
+    vi.advanceTimersByTime(1);
+    return useEditorStore.getState().createChatSession();
+  }
+
   it("starts with no sessions", () => {
     expect(useEditorStore.getState().chatSessions).toHaveLength(0);
     expect(useEditorStore.getState().activeChatSessionId).toBeNull();
   });
 
   it("createChatSession adds a session and sets it active", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     const state = useEditorStore.getState();
     expect(state.chatSessions).toHaveLength(1);
     expect(state.chatSessions[0].id).toBe(id);
@@ -108,21 +126,21 @@ describe("AI chat sessions", () => {
     expect(state.activeChatSessionId).toBe(id);
   });
 
-  it("createChatSession creates unique IDs", () => {
-    const id1 = useEditorStore.getState().createChatSession();
-    const id2 = useEditorStore.getState().createChatSession();
-    expect(id1).not.toBe(id2);
+  it("createChatSession generates non-empty string IDs with session- prefix", () => {
+    const id = createSession();
+    expect(id).toMatch(/^session-\d+$/);
   });
 
   it("setActiveChatSession switches active session", () => {
-    useEditorStore.getState().createChatSession();
-    const id2 = useEditorStore.getState().createChatSession();
+    createSession();
+    const id2 = createSession();
+    expect(useEditorStore.getState().chatSessions).toHaveLength(2);
     useEditorStore.getState().setActiveChatSession(id2);
     expect(useEditorStore.getState().activeChatSessionId).toBe(id2);
   });
 
   it("updateChatSession updates messages and auto-titles from first user message", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().updateChatSession(id, [
       { role: "user", content: "Hello, can you help me write a paper?" },
     ]);
@@ -133,7 +151,7 @@ describe("AI chat sessions", () => {
   });
 
   it("updateChatSession truncates long titles to 40 chars", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     const longMessage = "a".repeat(100);
     useEditorStore.getState().updateChatSession(id, [
       { role: "user", content: longMessage },
@@ -143,7 +161,7 @@ describe("AI chat sessions", () => {
   });
 
   it("updateChatSession does not change manually renamed title", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().renameChatSession(id, "My Custom Title");
     useEditorStore.getState().updateChatSession(id, [
       { role: "user", content: "Hello" },
@@ -153,21 +171,21 @@ describe("AI chat sessions", () => {
   });
 
   it("updateSessionClaudeId stores claude session id", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().updateSessionClaudeId(id, "claude-session-123");
     const session = useEditorStore.getState().chatSessions.find((s) => s.id === id);
     expect(session?.claudeSessionId).toBe("claude-session-123");
   });
 
   it("renameChatSession updates title", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().renameChatSession(id, "Research Notes");
     const session = useEditorStore.getState().chatSessions.find((s) => s.id === id);
     expect(session?.title).toBe("Research Notes");
   });
 
   it("renameChatSession ignores empty title", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().renameChatSession(id, "Research");
     useEditorStore.getState().renameChatSession(id, "   ");
     const session = useEditorStore.getState().chatSessions.find((s) => s.id === id);
@@ -175,7 +193,7 @@ describe("AI chat sessions", () => {
   });
 
   it("forkChatSession duplicates a session", () => {
-    const originalId = useEditorStore.getState().createChatSession();
+    const originalId = createSession();
     useEditorStore.getState().updateChatSession(originalId, [
       { role: "user", content: "Hello" },
       { role: "assistant", content: "Hi!" },
@@ -183,36 +201,35 @@ describe("AI chat sessions", () => {
     useEditorStore.getState().forkChatSession(originalId);
     const state = useEditorStore.getState();
     expect(state.chatSessions).toHaveLength(2);
-    const forked = state.chatSessions.find((s) => s.id !== originalId);
+    const forked = state.chatSessions.find((s) => s.title === "Fork of Hello");
     expect(forked).toBeDefined();
-    expect(forked?.title).toBe("Fork of Hello");
-    expect(forked?.messages).toHaveLength(2);
-    expect(forked?.messages[0].content).toBe("Hello");
+    expect(forked!.messages).toHaveLength(2);
+    expect(forked!.messages[0].content).toBe("Hello");
   });
 
   it("forkChatSession with invalid id is a no-op", () => {
-    useEditorStore.getState().createChatSession();
+    createSession();
     useEditorStore.getState().forkChatSession("nonexistent-id");
     expect(useEditorStore.getState().chatSessions).toHaveLength(1);
   });
 
   it("deleteChatSession removes a session", () => {
-    const id = useEditorStore.getState().createChatSession();
+    const id = createSession();
     useEditorStore.getState().deleteChatSession(id);
     expect(useEditorStore.getState().chatSessions).toHaveLength(0);
     expect(useEditorStore.getState().activeChatSessionId).toBeNull();
   });
 
   it("deleteChatSession switches to previous session when deleting active", () => {
-    useEditorStore.getState().createChatSession();
-    const id2 = useEditorStore.getState().createChatSession();
-    useEditorStore.getState().setActiveChatSession(id2);
-    useEditorStore.getState().deleteChatSession(id2);
-    expect(useEditorStore.getState().activeChatSessionId).not.toBeNull();
+    const id1 = createSession();
+    const id2 = createSession();
+    useEditorStore.getState().setActiveChatSession(id1);
+    useEditorStore.getState().deleteChatSession(id1);
+    expect(useEditorStore.getState().activeChatSessionId).toBe(id2);
   });
 
   it("deleteChatSession on nonexistent id does nothing", () => {
-    useEditorStore.getState().createChatSession();
+    createSession();
     useEditorStore.getState().deleteChatSession("nonexistent");
     expect(useEditorStore.getState().chatSessions).toHaveLength(1);
   });

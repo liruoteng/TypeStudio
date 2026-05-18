@@ -559,11 +559,268 @@ fn validate_typst_source(path: &Path, content: &str) -> Result<(), String> {
     let warned = typst::compile::<typst::layout::PagedDocument>(&world);
     match warned.output {
         Ok(_) => Ok(()),
+        Err(errors) => {
+            eprintln!("[markdown-preview] Typst validation failed for {}", path.display());
+            for (index, error) in errors.iter().enumerate() {
+                eprintln!("[markdown-preview] error {}: {}", index + 1, error.message);
+                eprintln!("[markdown-preview] diagnostic {index}: {error:?}");
+            }
+            Err(errors
+                .iter()
+                .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
+    }
+}
+
+fn validate_typst_source_quiet(path: &Path, content: &str) -> Result<(), String> {
+    let mut world = typst_world::TypstWorld::new(path)?;
+    world.set_source(path, content)?;
+    let warned = typst::compile::<typst::layout::PagedDocument>(&world);
+    match warned.output {
+        Ok(_) => Ok(()),
         Err(errors) => Err(errors
             .iter()
             .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
             .collect::<Vec<_>>()
             .join("\n")),
+    }
+}
+
+fn quote_typst_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn split_typst_chunks(source: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for line in source.lines() {
+        current.push_str(line);
+        current.push('\n');
+        if line.trim().is_empty() && !current.trim().is_empty() {
+            chunks.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.trim().is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
+fn recover_typst_source(path: &Path, typst_content: &str) -> Result<String, String> {
+    let chunks = split_typst_chunks(typst_content);
+    let mut skipped = Vec::new();
+    let recovered = recover_typst_chunks(path, "", &chunks, &mut skipped);
+
+    if recovered.trim().is_empty() {
+        Err(skipped.join("\n"))
+    } else {
+        Ok(recovered)
+    }
+}
+
+fn extract_missing_labels(diagnostics: &str) -> Vec<String> {
+    let mut labels = Vec::new();
+    let mut rest = diagnostics;
+    while let Some(start) = rest.find("label `<") {
+        let after_start = &rest[start + "label `<".len()..];
+        let Some(end) = after_start.find(">` does not exist") else {
+            break;
+        };
+        let label = &after_start[..end];
+        if !label.is_empty() && !labels.iter().any(|existing| existing == label) {
+            labels.push(label.to_string());
+        }
+        rest = &after_start[end + 1..];
+    }
+    labels
+}
+
+fn escape_missing_label_refs(source: &str, diagnostics: &str) -> Option<String> {
+    let labels = extract_missing_labels(diagnostics);
+    if labels.is_empty() {
+        return None;
+    }
+
+    let mut out = String::with_capacity(source.len() + labels.len());
+    let mut i = 0;
+    while i < source.len() {
+        let rest = &source[i..];
+        if rest.starts_with('@') && (i == 0 || !source[..i].ends_with('\\')) {
+            if let Some(label) = labels.iter().find(|label| rest[1..].starts_with(label.as_str())) {
+                out.push_str("\\@");
+                out.push_str(label);
+                i += 1 + label.len();
+                continue;
+            }
+        }
+
+        let ch = rest.chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+
+    eprintln!(
+        "[markdown-preview] escaped unresolved Typst label refs for preview: {}",
+        labels.join(", ")
+    );
+    Some(out)
+}
+
+fn recover_typst_chunks(
+    path: &Path,
+    prefix: &str,
+    chunks: &[String],
+    skipped: &mut Vec<String>,
+) -> String {
+    if chunks.is_empty() {
+        return String::new();
+    }
+
+    let joined = chunks.concat();
+    let candidate = format!("{prefix}{joined}");
+    if validate_typst_source_quiet(path, &candidate).is_ok() {
+        return joined;
+    }
+
+    if chunks.len() == 1 {
+        let msg = validate_typst_source_quiet(path, &candidate).unwrap_err();
+        skipped.push(msg);
+        eprintln!("[markdown-preview] skipped invalid generated Typst chunk:");
+        eprintln!("{}", chunks[0]);
+        eprintln!("[markdown-preview] skipped chunk error: {}", skipped.last().unwrap());
+        return String::new();
+    }
+
+    let mid = chunks.len() / 2;
+    let left = recover_typst_chunks(path, prefix, &chunks[..mid], skipped);
+    let next_prefix = format!("{prefix}{left}");
+    let right = recover_typst_chunks(path, &next_prefix, &chunks[mid..], skipped);
+    format!("{left}{right}")
+}
+
+fn markdown_preview_fallback_source(md_path: &Path, md_content: &str, diagnostics: &str) -> String {
+    let name = md_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Markdown file".to_string());
+
+    format!(
+        "#set page(margin: 2cm)\n\
+         #set text(size: 10pt)\n\n\
+         #text(fill: red, weight: \"bold\")[Markdown preview could not compile]\n\n\
+         #block(stroke: (left: 2pt + red), inset: 8pt)[\n\
+         Source: {}\n\n\
+         #raw({}, block: true)\n\
+         ]\n\n\
+         #raw({}, block: true, lang: \"markdown\")\n",
+        quote_typst_string(&name),
+        quote_typst_string(diagnostics),
+        quote_typst_string(md_content),
+    )
+}
+
+fn write_markdown_preview_source(md_path: &str, md_content: &str) -> Result<(), String> {
+    let path = Path::new(md_path);
+    let (typst_content, _warnings) = compose_markdown_source(path, md_content);
+    let temp_path = md_preview_typ_path(md_path);
+
+    match validate_typst_source(&temp_path, &typst_content) {
+        Ok(()) => fs::write(&temp_path, &typst_content).map_err(|e| e.to_string()),
+        Err(msg) => {
+            if let Some(recovered) = escape_missing_label_refs(&typst_content, &msg)
+                .filter(|candidate| validate_typst_source_quiet(&temp_path, candidate).is_ok())
+            {
+                fs::write(&temp_path, recovered).map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+
+            let recovered = recover_typst_source(&temp_path, &typst_content)
+                .unwrap_or_else(|_| markdown_preview_fallback_source(path, md_content, &msg));
+            fs::write(&temp_path, recovered).map_err(|e| e.to_string())?;
+            Err(msg)
+        }
+    }
+}
+
+#[cfg(test)]
+mod markdown_preview_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("type-studio-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn markdown_preview_writes_compilable_fallback_for_broken_typst() {
+        let dir = temp_test_dir("markdown-preview-fallback");
+        let md_path = dir.join("broken.md");
+        let md = "# Broken\n\n```typst\n#let x =\n```\n\nStill show \"this\" \\ text.\n";
+
+        let result = write_markdown_preview_source(&md_path.to_string_lossy(), md);
+        assert!(result.is_err());
+
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let recovered = fs::read_to_string(&preview_path).unwrap();
+        assert!(recovered.contains("= Broken"));
+        assert!(recovered.contains("Still show"));
+        assert!(!recovered.contains("#let x ="));
+        validate_typst_source(&preview_path, &recovered).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn markdown_preview_recovers_repository_sample() {
+        let sample_path = Path::new("../examples/markdown/sample.md");
+        if !sample_path.exists() {
+            return;
+        }
+
+        let dir = temp_test_dir("markdown-preview-sample");
+        let md_path = dir.join("sample.md");
+        let md = fs::read_to_string(sample_path).unwrap();
+
+        let result = write_markdown_preview_source(&md_path.to_string_lossy(), &md);
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let recovered = fs::read_to_string(&preview_path).unwrap();
+
+        assert!(result.is_ok());
+        assert!(recovered.contains("= Heading 1"));
+        assert!(recovered.contains("\\@lecun2015deep"));
+        assert!(recovered.contains("Deep learning has revolutionized"));
+        validate_typst_source(&preview_path, &recovered).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_label_refs_are_escaped_without_dropping_paragraph() {
+        let source = "Text @missing and \\@already escaped.\n";
+        let diagnostics = "label `<missing>` does not exist in the document";
+        let recovered = escape_missing_label_refs(source, diagnostics).unwrap();
+        assert_eq!(recovered, "Text \\@missing and \\@already escaped.\n");
     }
 }
 
@@ -681,11 +938,18 @@ async fn compile_actor(
 
             match warned.output {
                 Ok(doc) => Ok(doc.pages.iter().map(|p| typst_svg::svg(p)).collect::<Vec<_>>()),
-                Err(errors) => Err(errors
-                    .iter()
-                    .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n")),
+                Err(errors) => {
+                    eprintln!("[preview] Typst compile failed for {}", main_path.display());
+                    for (index, error) in errors.iter().enumerate() {
+                        eprintln!("[preview] error {}: {}", index + 1, error.message);
+                        eprintln!("[preview] diagnostic {index}: {error:?}");
+                    }
+                    Err(errors
+                        .iter()
+                        .map(|e: &typst::diag::SourceDiagnostic| e.message.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n"))
+                },
             }
         })
         .await;
@@ -762,6 +1026,7 @@ fn trigger_preview_compile(path: String, state: tauri::State<AppState>) -> Resul
 async fn start_sidecar_preview(
     path: String,
     invert_colors: String,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let tinymist = state.tinymist_path.lock().unwrap().clone();
@@ -769,10 +1034,15 @@ async fn start_sidecar_preview(
 
     let input_path = if is_markdown_path(Path::new(&path)) {
         let md_content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let (typst_content, _) = compose_markdown_source(Path::new(&path), &md_content);
         let temp = md_preview_typ_path(&path);
-        validate_typst_source(&temp, &typst_content)?;
-        fs::write(&temp, &typst_content).map_err(|e| e.to_string())?;
+        match write_markdown_preview_source(&path, &md_content) {
+            Ok(()) => {
+                let _ = app_handle.emit("preview-error", PreviewError { message: String::new() });
+            }
+            Err(msg) => {
+                let _ = app_handle.emit("preview-error", PreviewError { message: msg });
+            }
+        }
         temp.to_string_lossy().to_string()
     } else {
         path
@@ -795,10 +1065,7 @@ async fn stop_sidecar_preview(state: tauri::State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 fn write_preview_sidecar_content(path: String, content: String) -> Result<(), String> {
     if is_markdown_path(Path::new(&path)) {
-        let (typst_content, _warnings) = compose_markdown_source(Path::new(&path), &content);
-        let temp_path = md_preview_typ_path(&path);
-        validate_typst_source(&temp_path, &typst_content)?;
-        fs::write(&temp_path, &typst_content).map_err(|e| e.to_string())?;
+        write_markdown_preview_source(&path, &content)?;
     }
     Ok(())
 }
