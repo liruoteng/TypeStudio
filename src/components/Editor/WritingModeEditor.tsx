@@ -18,7 +18,8 @@ import { mathBlockViewPlugin } from "./mathBlockView";
 import { mathInlineViewPlugin } from "./mathInlineView";
 import { mathAutoSelectPlugin } from "./mathAutoSelect";
 import { editorViewCtx } from "@milkdown/core";
-import { toggleMark } from "@milkdown/prose/commands";
+import { toggleMark, setBlockType } from "@milkdown/prose/commands";
+import { wrapInList } from "@milkdown/prose/schema-list";
 import { TextSelection } from "@milkdown/prose/state";
 import { useEditorStore } from "../../stores/editorStore";
 import type { Reference } from "../../stores/editorStore";
@@ -695,30 +696,11 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
         return () => window.removeEventListener("keydown", handler);
     }, [onSnapshot]);
 
-    // ── Formatting shortcuts (Cmd+B, Cmd+I, Cmd+Shift+S) ─────────────────────
+    // ── Formatting shortcuts ──────────────────────────────────────────────────
     useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if (!(e.metaKey || e.ctrlKey)) return;
-
-            let markName: string | null = null;
-            const key = e.key.toLowerCase();
-
-            if (key === "b") {
-                markName = "strong";
-            } else if (key === "i") {
-                markName = "emphasis";
-            } else if (key === "s" && e.shiftKey) {
-                markName = "strike_through";
-            }
-
-            if (!markName) return;
-
-            e.preventDefault();
-            e.stopPropagation();
-
+        const applyMark = (markName: string) => {
             const editor = getEditor();
             if (!editor) return;
-
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             editor.action((ctx: any) => {
                 const view = ctx.get(editorViewCtx);
@@ -728,6 +710,62 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
                 if (!markType) return;
                 toggleMark(markType)(state, dispatch);
             });
+        };
+
+        const applyBlock = (nodeName: string, attrs?: Record<string, unknown>) => {
+            const editor = getEditor();
+            if (!editor) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            editor.action((ctx: any) => {
+                const view = ctx.get(editorViewCtx);
+                const { state, dispatch } = view;
+                const nodeType = state.schema.nodes[nodeName];
+                if (!nodeType) return;
+                setBlockType(nodeType, attrs)(state, dispatch);
+            });
+        };
+
+        const wrapList = (nodeName: string, attrs?: Record<string, unknown>) => {
+            const editor = getEditor();
+            if (!editor) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            editor.action((ctx: any) => {
+                const view = ctx.get(editorViewCtx);
+                const { state, dispatch } = view;
+                const nodeType = state.schema.nodes[nodeName];
+                if (!nodeType) return;
+                wrapInList(nodeType, attrs)(state, dispatch);
+            });
+        };
+
+        const handler = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey)) return;
+
+            const key = e.key.toLowerCase();
+
+            if (key === "b" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); applyMark("strong"); return; }
+            if (key === "i" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); applyMark("emphasis"); return; }
+            if (key === "s" && e.shiftKey)  { e.preventDefault(); e.stopPropagation(); applyMark("strike_through"); return; }
+            if (key === "e" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); applyMark("inlineCode"); return; }
+
+            if (e.shiftKey && e.code.startsWith("Digit")) {
+                const digit = Number(e.code.slice(5));
+                if (digit >= 1 && digit <= 3) {
+                    e.preventDefault(); e.stopPropagation();
+                    applyBlock("heading", { level: digit });
+                    return;
+                }
+                if (digit === 7) {
+                    e.preventDefault(); e.stopPropagation();
+                    wrapList("ordered_list", { order: 1 });
+                    return;
+                }
+                if (digit === 8) {
+                    e.preventDefault(); e.stopPropagation();
+                    wrapList("bullet_list");
+                    return;
+                }
+            }
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);

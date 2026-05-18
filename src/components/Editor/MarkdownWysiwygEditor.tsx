@@ -10,7 +10,7 @@ import katex from "katex";
 import { refractor } from "refractor/all";
 import type { Element as HastElement, Nodes as HastNode, Root as HastRoot, Text as HastText } from "hast";
 import { EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
-import type { Extension, Range as CodeMirrorRange } from "@codemirror/state";
+import type { Extension, Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -318,6 +318,23 @@ function serializeTable(table: Pick<MarkdownTable, "header" | "alignments" | "ro
     formatTableRow(separator),
     ...table.rows.map(formatTableRow),
   ].join("\n");
+}
+
+function insertRowIntoTable(table: MarkdownTable) {
+  return serializeTable({
+    header: table.header,
+    alignments: table.alignments,
+    rows: [...table.rows, table.header.map(() => "")],
+  });
+}
+
+function insertColumnIntoTable(table: MarkdownTable) {
+  const nextColumn = `Column ${table.header.length + 1}`;
+  return serializeTable({
+    header: [...table.header, nextColumn],
+    alignments: [...table.alignments, null],
+    rows: table.rows.map((row) => [...row, ""]),
+  });
 }
 
 function parseTableAlignment(separator: string) {
@@ -667,71 +684,6 @@ function addSyntaxTokenDecorations(
   }
 }
 
-function addLatexSyntaxTokenDecorations(
-  ranges: DecorationRange[],
-  lineText: string,
-  lineFrom: number,
-) {
-  let index = 0;
-
-  const pushToken = (from: number, to: number, className: string) => {
-    if (from >= to) return;
-    ranges.push({
-      from: lineFrom + from,
-      to: lineFrom + to,
-      className: `cm-md-token cm-md-latex-token ${className}`,
-    });
-  };
-
-  while (index < lineText.length) {
-    const char = lineText[index];
-
-    if (char === "%") {
-      pushToken(index, lineText.length, "cm-md-token-comment");
-      break;
-    }
-
-    if (char === "\\") {
-      const command = lineText.slice(index).match(/^\\(?:[a-zA-Z]+[*]?|.)/);
-      if (command) {
-        pushToken(index, index + command[0].length, "cm-md-token-function");
-        index += command[0].length;
-        continue;
-      }
-    }
-
-    if (/[A-Za-z]/.test(char)) {
-      const variable = lineText.slice(index).match(/^[A-Za-z]+/);
-      if (variable) {
-        pushToken(index, index + variable[0].length, "cm-md-token-variable");
-        index += variable[0].length;
-        continue;
-      }
-    }
-
-    if (/\d/.test(char)) {
-      const number = lineText.slice(index).match(/^\d+(?:\.\d+)?/);
-      if (number) {
-        pushToken(index, index + number[0].length, "cm-md-token-number");
-        index += number[0].length;
-        continue;
-      }
-    }
-
-    if (/[\[\]{}()]/.test(char)) {
-      pushToken(index, index + 1, "cm-md-token-punctuation");
-      index += 1;
-      continue;
-    }
-
-    if (/[+\-*/=<>^_&|!,:;]/.test(char)) {
-      pushToken(index, index + 1, "cm-md-token-operator");
-    }
-
-    index += 1;
-  }
-}
-
 class MarkdownTableWidget extends WidgetType {
   private cleanup: (() => void) | null = null;
 
@@ -749,36 +701,16 @@ class MarkdownTableWidget extends WidgetType {
     wrap.className = "cm-md-table-render";
     wrap.tabIndex = -1;
     const draftHeader = [...this.table.header];
-    const draftAlignments = [...this.table.alignments];
     const draftRows = this.table.rows.map((row) => [...row]);
     const tableFrom = this.table.from;
     let tableTo = this.table.to;
     let committedSource = view.state.sliceDoc(tableFrom, tableTo);
     const renderedCells = new Map<string, HTMLTableCellElement>();
     let selectionAnchor: { row: number; col: number } | null = null;
-    let lastClickedCell: { row: number; col: number } | null = null;
     let selectedRange: { startRow: number; endRow: number; startCol: number; endCol: number } | null = null;
     let draggingTableSelection = false;
-    let removeDragListeners: (() => void) | null = null;
-    let originalBodyUserSelect = "";
 
     const cellKey = (row: number, col: number) => `${row}:${col}`;
-    const cellPosition = (cell: HTMLTableCellElement | null) => {
-      if (!cell || !wrap.contains(cell)) return null;
-      const row = Number(cell.dataset.row);
-      const col = Number(cell.dataset.col);
-      if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
-      return { row, col };
-    };
-    const cellFromTarget = (target: EventTarget | null) => {
-      const element = target instanceof HTMLElement ? target : null;
-      return cellPosition(element?.closest<HTMLTableCellElement>(".cm-md-table-render th, .cm-md-table-render td") ?? null);
-    };
-    const cellFromEvent = (event: MouseEvent) => {
-      if (typeof document.elementFromPoint !== "function") return null;
-      const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
-      return cellFromTarget(target);
-    };
     const normalizeRange = (from: { row: number; col: number }, to: { row: number; col: number }) => ({
       startRow: Math.min(from.row, to.row),
       endRow: Math.max(from.row, to.row),
@@ -788,40 +720,6 @@ class MarkdownTableWidget extends WidgetType {
 
     const clearBrowserSelection = () => {
       window.getSelection()?.removeAllRanges();
-    };
-
-    const beginTableSelectionDrag = () => {
-      if (draggingTableSelection) return;
-      draggingTableSelection = true;
-      wrap.classList.add("is-selecting-cells");
-      originalBodyUserSelect = document.body.style.userSelect;
-      document.body.style.userSelect = "none";
-      if (wrap.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-      for (const cell of renderedCells.values()) {
-        cell.contentEditable = "false";
-        cell.setAttribute("contenteditable", "false");
-      }
-      clearBrowserSelection();
-      requestAnimationFrame(clearBrowserSelection);
-    };
-
-    const finishTableSelectionDrag = () => {
-      if (!draggingTableSelection) return;
-      document.body.style.userSelect = originalBodyUserSelect;
-      for (const cell of renderedCells.values()) {
-        cell.contentEditable = "true";
-        cell.setAttribute("contenteditable", "true");
-      }
-      clearBrowserSelection();
-    };
-
-    const endDragTracking = () => {
-      removeDragListeners?.();
-      removeDragListeners = null;
-      finishTableSelectionDrag();
-      wrap.classList.remove("is-selecting-cells");
-      selectionAnchor = null;
-      draggingTableSelection = false;
     };
 
     const tableValueAt = (row: number, col: number) => {
@@ -860,60 +758,10 @@ class MarkdownTableWidget extends WidgetType {
       }
     };
 
-    const updateDragSelection = (nextCell: { row: number; col: number } | null, event: MouseEvent) => {
-      if (!selectionAnchor || !nextCell) return;
-      if (nextCell.row === selectionAnchor.row && nextCell.col === selectionAnchor.col && !draggingTableSelection) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      beginTableSelectionDrag();
-      clearBrowserSelection();
-      applyTableSelection(selectionAnchor, nextCell);
-    };
-
-    const trackCellSelectionDrag = () => {
-      removeDragListeners?.();
-
-      const onMouseMove = (event: MouseEvent) => {
-        updateDragSelection(cellFromEvent(event) ?? cellFromTarget(event.target), event);
-      };
-
-      const onMouseOver = (event: MouseEvent) => {
-        updateDragSelection(cellFromTarget(event.target), event);
-      };
-
-      const onSelectStart = (event: Event) => {
-        if (!draggingTableSelection) return;
-        event.preventDefault();
-      };
-
-      const onMouseUp = (event: MouseEvent) => {
-        if (draggingTableSelection) {
-          event.preventDefault();
-          clearBrowserSelection();
-          wrap.focus();
-        }
-        endDragTracking();
-      };
-
-      document.addEventListener("mousemove", onMouseMove, true);
-      document.addEventListener("mouseup", onMouseUp, true);
-      document.addEventListener("selectstart", onSelectStart, true);
-      wrap.addEventListener("mouseover", onMouseOver, true);
-      wrap.addEventListener("mousemove", onMouseOver, true);
-      removeDragListeners = () => {
-        document.removeEventListener("mousemove", onMouseMove, true);
-        document.removeEventListener("mouseup", onMouseUp, true);
-        document.removeEventListener("selectstart", onSelectStart, true);
-        wrap.removeEventListener("mouseover", onMouseOver, true);
-        wrap.removeEventListener("mousemove", onMouseOver, true);
-      };
-    };
-
     const commitTableEdit = () => {
       const nextSource = serializeTable({
         header: draftHeader,
-        alignments: draftAlignments,
+        alignments: this.table.alignments,
         rows: draftRows,
       });
       if (committedSource === nextSource) return;
@@ -924,44 +772,6 @@ class MarkdownTableWidget extends WidgetType {
       tableTo = tableFrom + nextSource.length;
       committedSource = nextSource;
     };
-
-    const replaceTableSource = (nextSource: string) => {
-      const replaceTo = nextSource === "" && view.state.sliceDoc(tableTo, tableTo + 1) === "\n"
-        ? tableTo + 1
-        : tableTo;
-      view.dispatch({
-        changes: { from: tableFrom, to: replaceTo, insert: nextSource },
-        selection: EditorSelection.cursor(tableFrom),
-        scrollIntoView: true,
-      });
-      tableTo = tableFrom + nextSource.length;
-      committedSource = nextSource;
-      view.focus();
-    };
-
-    const selectedColumnIndexes = () => {
-      if (selectedRange) {
-        const indexes: number[] = [];
-        for (let col = selectedRange.startCol; col <= selectedRange.endCol; col += 1) indexes.push(col);
-        return indexes;
-      }
-      if (lastClickedCell) return [lastClickedCell.col];
-      return draftHeader.length > 0 ? [draftHeader.length - 1] : [];
-    };
-
-    const selectedDataRowIndexes = () => {
-      if (selectedRange) {
-        const indexes: number[] = [];
-        for (let row = Math.max(1, selectedRange.startRow); row <= selectedRange.endRow; row += 1) indexes.push(row - 1);
-        return indexes;
-      }
-      if (lastClickedCell && lastClickedCell.row > 0) return [lastClickedCell.row - 1];
-      return draftRows.length > 0 ? [draftRows.length - 1] : [];
-    };
-
-    const nextTableSource = (header: string[], alignments: MarkdownTable["alignments"], rows: string[][]) => (
-      serializeTable({ header, alignments, rows })
-    );
 
     const makeEditableCell = (
       cell: HTMLTableCellElement,
@@ -985,30 +795,28 @@ class MarkdownTableWidget extends WidgetType {
       cell.addEventListener("mousedown", (event) => {
         event.stopPropagation();
         if (event.button !== 0) return;
-
-        if (event.shiftKey && (selectedRange || lastClickedCell)) {
-          event.preventDefault();
-          const rangeAnchor = selectedRange
-            ? { row: selectedRange.startRow, col: selectedRange.startCol }
-            : lastClickedCell;
-          if (!rangeAnchor) return;
-          selectionAnchor = rangeAnchor;
-          applyTableSelection(selectionAnchor, { row: rowIndex, col: colIndex });
-          wrap.focus();
-          selectionAnchor = null;
-          return;
-        }
-
         selectionAnchor = { row: rowIndex, col: colIndex };
         draggingTableSelection = false;
-        trackCellSelectionDrag();
+        applyTableSelection(selectionAnchor, selectionAnchor);
+      });
+      cell.addEventListener("mouseenter", (event) => {
+        if (!selectionAnchor || event.buttons !== 1) return;
+        event.preventDefault();
+        draggingTableSelection = true;
+        if (wrap.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+        clearBrowserSelection();
+        applyTableSelection(selectionAnchor, { row: rowIndex, col: colIndex });
       });
       cell.addEventListener("mouseup", (event) => {
-        if (event.button !== 0) return;
-        event.stopPropagation();
-        if (!draggingTableSelection) {
-          lastClickedCell = { row: rowIndex, col: colIndex };
+        if (!selectionAnchor) return;
+        if (draggingTableSelection) {
+          event.preventDefault();
+          event.stopPropagation();
+          clearBrowserSelection();
+          wrap.focus();
         }
+        selectionAnchor = null;
+        draggingTableSelection = false;
       });
       cell.addEventListener("input", updateValue);
       cell.addEventListener("blur", () => {
@@ -1045,13 +853,11 @@ class MarkdownTableWidget extends WidgetType {
     };
 
     const finishTableSelection = () => {
-      endDragTracking();
+      selectionAnchor = null;
+      draggingTableSelection = false;
     };
     document.addEventListener("mouseup", finishTableSelection);
-    this.cleanup = () => {
-      endDragTracking();
-      document.removeEventListener("mouseup", finishTableSelection);
-    };
+    this.cleanup = () => document.removeEventListener("mouseup", finishTableSelection);
 
     wrap.addEventListener("copy", (event) => {
       if (!selectedRange) return;
@@ -1096,11 +902,12 @@ class MarkdownTableWidget extends WidgetType {
     rowBtn.addEventListener("mousedown", (event) => event.preventDefault());
     rowBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      replaceTableSource(nextTableSource(
-        draftHeader,
-        draftAlignments,
-        [...draftRows, draftHeader.map(() => "")],
-      ));
+      view.dispatch({
+        changes: { from: this.table.from, to: this.table.to, insert: insertRowIntoTable(this.table) },
+        selection: EditorSelection.cursor(this.table.from),
+        scrollIntoView: true,
+      });
+      view.focus();
     });
     actions.appendChild(rowBtn);
 
@@ -1110,60 +917,14 @@ class MarkdownTableWidget extends WidgetType {
     colBtn.addEventListener("mousedown", (event) => event.preventDefault());
     colBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      const nextColumn = `Column ${draftHeader.length + 1}`;
-      replaceTableSource(nextTableSource(
-        [...draftHeader, nextColumn],
-        [...draftAlignments, null],
-        draftRows.map((row) => [...row, ""]),
-      ));
+      view.dispatch({
+        changes: { from: this.table.from, to: this.table.to, insert: insertColumnIntoTable(this.table) },
+        selection: EditorSelection.cursor(this.table.from),
+        scrollIntoView: true,
+      });
+      view.focus();
     });
     actions.appendChild(colBtn);
-
-    const deleteRowBtn = document.createElement("button");
-    deleteRowBtn.type = "button";
-    deleteRowBtn.textContent = "- Row";
-    deleteRowBtn.addEventListener("mousedown", (event) => event.preventDefault());
-    deleteRowBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      const rowsToDelete = new Set(selectedDataRowIndexes());
-      if (rowsToDelete.size === 0) return;
-      replaceTableSource(nextTableSource(
-        draftHeader,
-        draftAlignments,
-        draftRows.filter((_, index) => !rowsToDelete.has(index)),
-      ));
-    });
-    actions.appendChild(deleteRowBtn);
-
-    const deleteColBtn = document.createElement("button");
-    deleteColBtn.type = "button";
-    deleteColBtn.textContent = "- Column";
-    deleteColBtn.addEventListener("mousedown", (event) => event.preventDefault());
-    deleteColBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      const columnsToDelete = new Set(selectedColumnIndexes());
-      if (columnsToDelete.size === 0) return;
-      if (columnsToDelete.size >= draftHeader.length) {
-        replaceTableSource("");
-        return;
-      }
-      replaceTableSource(nextTableSource(
-        draftHeader.filter((_, index) => !columnsToDelete.has(index)),
-        draftAlignments.filter((_, index) => !columnsToDelete.has(index)),
-        draftRows.map((row) => row.filter((_, index) => !columnsToDelete.has(index))),
-      ));
-    });
-    actions.appendChild(deleteColBtn);
-
-    const deleteTableBtn = document.createElement("button");
-    deleteTableBtn.type = "button";
-    deleteTableBtn.textContent = "Delete table";
-    deleteTableBtn.addEventListener("mousedown", (event) => event.preventDefault());
-    deleteTableBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      replaceTableSource("");
-    });
-    actions.appendChild(deleteTableBtn);
 
     wrap.appendChild(actions);
 
@@ -1747,31 +1508,7 @@ function addInlineDecorations(
 
     const active = inlineMarkerActive([{ from: math.from, to: math.to }], cursorFrom, cursorTo);
     if (active) {
-      const source = lineText.slice(math.from - lineFrom, math.to - lineFrom);
-      const contentStart = source.startsWith("\\(") ? 2 : 1;
-      const contentEnd = source.endsWith("\\)") ? source.length - 2 : source.length - 1;
-      ranges.push({
-        from: math.from,
-        to: math.from + contentStart,
-        className: "cm-md-marker cm-md-marker--active cm-md-math-delimiter",
-      });
-      if (contentEnd > contentStart) {
-        ranges.push({
-          from: math.from + contentStart,
-          to: math.from + contentEnd,
-          className: "cm-md-math-source",
-        });
-        addLatexSyntaxTokenDecorations(
-          ranges,
-          source.slice(contentStart, contentEnd),
-          math.from + contentStart,
-        );
-      }
-      ranges.push({
-        from: math.from + contentEnd,
-        to: math.to,
-        className: "cm-md-marker cm-md-marker--active cm-md-math-delimiter",
-      });
+      ranges.push(markerRange(math.from, math.to, true));
     } else {
       ranges.push({
         from: math.from,
@@ -1831,7 +1568,6 @@ function buildMarkdownDecorations(state: EditorState) {
   const enableCodeSyntaxHighlighting = doc.length <= codeSyntaxHighlightMaxDocLength;
   const frontmatter = frontmatterAtTop(state);
   const tableSourceEditRange = state.field(tableSourceEditRangeField, false);
-  const isFocused = state.field(wysiwygFocusField);
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -1867,7 +1603,6 @@ function buildMarkdownDecorations(state: EditorState) {
         for (let mathLineNumber = line.number; mathLineNumber <= lastMathLineNumber; mathLineNumber += 1) {
           const mathLine = doc.line(mathLineNumber);
           ranges.push({ from: mathLine.from, to: mathLine.to, className: "cm-md-math-source" });
-          addLatexSyntaxTokenDecorations(ranges, mathLine.text, mathLine.from);
         }
       } else {
         ranges.push({
@@ -1965,7 +1700,7 @@ function buildMarkdownDecorations(state: EditorState) {
       continue;
     }
 
-    const activeLine = isFocused && cursorTo >= line.from && cursorFrom <= line.to;
+    const activeLine = cursorTo >= line.from && cursorFrom <= line.to;
     const heading = text.match(/^(#{1,6})\s+/);
     const blockquote = text.match(/^(>+\s?)/);
     const task = text.match(/^(\s*)([-*+])\s+\[([ xX])\]\s+/);
@@ -1979,7 +1714,7 @@ function buildMarkdownDecorations(state: EditorState) {
       ranges.push({ from: line.from + heading[0].length, to: line.to, className: `cm-md-heading cm-md-h${level}` });
       addInlineDecorations(ranges, text, line.from, heading[0].length, cursorFrom, cursorTo);
     } else if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(text)) {
-      if (activeLine) {
+      if (!selection.empty) {
         ranges.push({ from: line.from, to: line.to, className: "cm-md-rule-source" });
       } else {
         ranges.push({
@@ -2042,7 +1777,7 @@ function buildMarkdownDecorations(state: EditorState) {
     }
   }
 
-  const decorations: CodeMirrorRange<Decoration>[] = [];
+  const decorations: Range<Decoration>[] = [];
   for (const range of ranges) {
     if (range.point && range.widget) {
       decorations.push(
@@ -2063,28 +1798,11 @@ function buildMarkdownDecorations(state: EditorState) {
   return Decoration.set(decorations, true);
 }
 
-const setWysiwygFocus = StateEffect.define<boolean>();
-
-const wysiwygFocusField = StateField.define<boolean>({
-  create: () => false,
-  update: (value, tr) => {
-    for (const e of tr.effects) {
-      if (e.is(setWysiwygFocus)) return e.value;
-    }
-    return value;
-  },
-});
-
 const markdownWysiwygDecorationField = StateField.define<DecorationSet>({
   create: buildMarkdownDecorations,
   update(value, transaction) {
     if (transaction.docChanged || transaction.selection) {
       return buildMarkdownDecorations(transaction.state);
-    }
-    for (const e of transaction.effects) {
-      if (e.is(setWysiwygFocus)) {
-        return buildMarkdownDecorations(transaction.state);
-      }
     }
     return value;
   },
@@ -2282,7 +2000,6 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
   }, []);
 
   const extensions = useMemo<Extension[]>(() => [
-    wysiwygFocusField,
     highlightSpecialChars(),
     history(),
     drawSelection(),
@@ -2294,6 +2011,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     markdown(),
     syntaxHighlighting(HighlightStyle.define([
       { tag: tags.meta, color: "#404740" },
+      { tag: tags.link, textDecoration: "underline" },
       { tag: tags.heading, fontWeight: "bold" },
       { tag: tags.emphasis, fontStyle: "italic" },
       { tag: tags.strong, fontWeight: "bold" },
@@ -2444,21 +2162,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     viewRef.current = view;
     pathRef.current = editorFile.path;
 
-    const raf = requestAnimationFrame(() => {
-      if (viewRef.current?.hasFocus) {
-        viewRef.current.contentDOM.blur();
-      }
-    });
-
-    const onFocus = () => view.dispatch({ effects: setWysiwygFocus.of(true) });
-    const onBlur = () => view.dispatch({ effects: setWysiwygFocus.of(false) });
-    view.contentDOM.addEventListener("focus", onFocus);
-    view.contentDOM.addEventListener("blur", onBlur);
-
     return () => {
-      cancelAnimationFrame(raf);
-      view.contentDOM.removeEventListener("focus", onFocus);
-      view.contentDOM.removeEventListener("blur", onBlur);
       view.destroy();
       viewRef.current = null;
     };

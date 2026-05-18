@@ -170,6 +170,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
     markdown_to_typst_with_options(content, MarkdownOptions {
         raw_typst_passthrough: true,
         typst_citations: true,
+        preview_safe: false,
     })
 }
 
@@ -180,12 +181,14 @@ pub fn markdown_to_typst_preview(content: &str) -> (String, Vec<String>) {
     markdown_to_typst_with_options(content, MarkdownOptions {
         raw_typst_passthrough: false,
         typst_citations: false,
+        preview_safe: true,
     })
 }
 
 struct MarkdownOptions {
     raw_typst_passthrough: bool,
     typst_citations: bool,
+    preview_safe: bool,
 }
 
 fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (String, Vec<String>) {
@@ -239,16 +242,63 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             }
             if i < lines.len() { i += 1; } // skip closing $$
             let expr = math_lines.join("\n");
-            out.push_str(&format!("$ {} $\n\n", expr.trim()));
+            if options.preview_safe {
+                out.push_str(&preview_math(&expr, true));
+            } else {
+                out.push_str(&format!("$ {} $\n\n", expr.trim()));
+            }
             prev_blank = true;
             continue;
         }
         // Single-line $$expr$$
         if let Some(rest) = line.trim().strip_prefix("$$").and_then(|s| s.strip_suffix("$$")) {
             if !in_code_block {
-                out.push_str(&format!("$ {} $\n\n", rest.trim()));
+                if options.preview_safe {
+                    out.push_str(&preview_math(rest.trim(), true));
+                } else {
+                    out.push_str(&format!("$ {} $\n\n", rest.trim()));
+                }
                 prev_blank = true;
                 i += 1;
+                continue;
+            }
+        }
+
+        if options.preview_safe && line.trim() == "\\[" && !in_code_block {
+            let mut math_lines: Vec<&str> = Vec::new();
+            i += 1;
+            while i < lines.len() && lines[i].trim() != "\\]" {
+                math_lines.push(lines[i]);
+                i += 1;
+            }
+            if i < lines.len() { i += 1; }
+            let expr = math_lines.join("\n");
+            out.push_str(&preview_math(&expr, true));
+            prev_blank = true;
+            continue;
+        }
+
+        if options.preview_safe && line.trim().starts_with("\\begin{") && !in_code_block {
+            let begin = line.trim();
+            let env = begin
+                .strip_prefix("\\begin{")
+                .and_then(|s| s.split('}').next())
+                .unwrap_or("");
+            if matches!(env, "equation" | "align" | "aligned" | "gather" | "multline") {
+                let end_marker = format!("\\end{{{env}}}");
+                let mut math_lines = vec![line];
+                i += 1;
+                while i < lines.len() {
+                    math_lines.push(lines[i]);
+                    if lines[i].trim() == end_marker {
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                let expr = math_lines.join("\n");
+                out.push_str(&preview_math(&expr, true));
+                prev_blank = true;
                 continue;
             }
         }
@@ -262,6 +312,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
                     out.push_str(&body);
                     out.push_str("\n\n");
                     typst_block_count += 1;
+                } else if options.preview_safe {
+                    let lang = if code_lang.is_empty() { None } else { Some(code_lang.as_str()) };
+                    out.push_str(&typst_raw(&body, lang, true));
+                    out.push('\n');
                 } else if code_lang.is_empty() {
                     out.push_str(&format!("```\n{body}\n```\n"));
                 } else {
@@ -400,6 +454,10 @@ fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (S
             out.push_str(&code_buf.join("\n"));
             out.push_str("\n\n");
             typst_block_count += 1;
+        } else if options.preview_safe {
+            let lang = if code_lang.is_empty() { None } else { Some(code_lang.as_str()) };
+            out.push_str(&typst_raw(&body, lang, true));
+            out.push('\n');
         } else {
             out.push_str(&format!("```{}\n{body}\n```\n", code_lang));
         }
@@ -468,11 +526,100 @@ fn render_table_with_options(rows: &[Vec<&str>], options: &MarkdownOptions) -> S
     out.push_str(",\n");
     for row in rows {
         for cell in row {
-            out.push_str(&format!("  [{}],\n", inline_with_options(cell, options)));
+            if options.preview_safe {
+                out.push_str(&format!("  [{}],\n", typst_raw(cell, None, false)));
+            } else {
+                out.push_str(&format!("  [{}],\n", inline_with_options(cell, options)));
+            }
         }
     }
     out.push_str(")\n\n");
     out
+}
+
+fn typst_string_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn typst_raw(text: &str, lang: Option<&str>, block: bool) -> String {
+    let mut out = format!("#raw({}", typst_string_literal(text));
+    if let Some(lang) = lang.filter(|s| !s.is_empty()) {
+        out.push_str(&format!(", lang: {}", typst_string_literal(lang)));
+    }
+    if block {
+        out.push_str(", block: true");
+    }
+    out.push(')');
+    out
+}
+
+fn is_preview_typst_math_safe(expr: &str) -> bool {
+    !expr.contains('\\')
+        && !expr.contains('&')
+        && !expr.contains('#')
+        && !expr.contains('[')
+        && !expr.contains(']')
+}
+
+fn normalize_preview_typst_math(expr: &str) -> String {
+    let mut out = String::with_capacity(expr.len());
+    let mut word = String::new();
+
+    let flush_word = |out: &mut String, word: &mut String| {
+        if word.len() > 1 {
+            for (index, ch) in word.chars().enumerate() {
+                if index > 0 {
+                    out.push(' ');
+                }
+                out.push(ch);
+            }
+        } else {
+            out.push_str(word);
+        }
+        word.clear();
+    };
+
+    for ch in expr.chars() {
+        if ch.is_ascii_alphabetic() {
+            word.push(ch);
+        } else {
+            flush_word(&mut out, &mut word);
+            out.push(ch);
+        }
+    }
+    flush_word(&mut out, &mut word);
+    out
+}
+
+fn preview_math(expr: &str, block: bool) -> String {
+    let trimmed = expr.trim();
+    if is_preview_typst_math_safe(trimmed) {
+        let normalized = normalize_preview_typst_math(trimmed);
+        if block {
+            format!("$ {normalized} $\n\n")
+        } else {
+            format!("${normalized}$")
+        }
+    } else {
+        let mut raw = typst_raw(trimmed, Some("latex"), block);
+        if block {
+            raw.push_str("\n\n");
+        }
+        raw
+    }
 }
 
 fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
@@ -487,9 +634,14 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
         // Inline code: `...`
         if chars[i] == '`' {
             if let Some(end) = find_closing_char(&chars, i + 1, '`') {
-                result.push('`');
-                for c in &chars[i + 1..end] { result.push(*c); }
-                result.push('`');
+                let code: String = chars[i + 1..end].iter().collect();
+                if options.preview_safe {
+                    result.push_str(&typst_raw(&code, None, false));
+                } else {
+                    result.push('`');
+                    result.push_str(&code);
+                    result.push('`');
+                }
                 i = end + 1;
                 continue;
             }
@@ -501,12 +653,35 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
             if let Some(end) = find_closing_char(&chars, start, '$') {
                 if end > start {
                     let math: String = chars[start..end].iter().collect();
-                    result.push('$');
-                    result.push_str(&math);
-                    result.push('$');
+                    if options.preview_safe {
+                        result.push_str(&preview_math(&math, false));
+                    } else {
+                        result.push('$');
+                        result.push_str(&math);
+                        result.push('$');
+                    }
                     i = end + 1;
                     continue;
                 }
+            }
+        }
+
+        if options.preview_safe && chars[i] == '\\' && i + 1 < chars.len() && chars[i + 1] == '(' {
+            let start = i + 2;
+            let mut j = start;
+            let mut end = None;
+            while j + 1 < chars.len() {
+                if chars[j] == '\\' && chars[j + 1] == ')' {
+                    end = Some(j);
+                    break;
+                }
+                j += 1;
+            }
+            if let Some(end) = end {
+                let math: String = chars[start..end].iter().collect();
+                result.push_str(&preview_math(&math, false));
+                i = end + 2;
+                continue;
             }
         }
 
@@ -515,7 +690,7 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
             if let Some(close) = find_closing_char(&chars, i + 1, ']') {
                 let inside: String = chars[i + 1..close].iter().collect();
                 let keys: Vec<String> = inside
-                    .split(';')
+                    .split(|c: char| c == ';' || c.is_whitespace())
                     .map(|k| k.trim().trim_start_matches('@').trim().to_string())
                     .filter(|k| !k.is_empty())
                     .collect();
@@ -532,7 +707,9 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
         // Image: ![alt](url)
         if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
             if let Some((alt, url, end)) = parse_link(&chars, i + 1) {
-                if url.starts_with("http://") || url.starts_with("https://") {
+                if options.preview_safe {
+                    result.push_str(&format!("#link(\"{url}\")[{}]", inline_with_options(&alt, options)));
+                } else if url.starts_with("http://") || url.starts_with("https://") {
                     // Typst image() only accepts local paths; render as a link instead
                     result.push_str(&format!("#link(\"{url}\")[{alt}]"));
                 } else {
@@ -549,6 +726,31 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
                 let inner_text = inline_with_options(&text_inner, options);
                 result.push_str(&format!("#link(\"{url}\")[{inner_text}]"));
                 i = end;
+                continue;
+            }
+        }
+
+        // Bold italic: ***text*** or ___text___. Typst does not use doubled
+        // markers, so render this as bold in preview/export rather than
+        // emitting `**...**`, which leaves unmatched markup delimiters.
+        let triple_marker = if i + 2 < chars.len()
+            && (chars[i] == '*' || chars[i] == '_')
+            && chars[i + 1] == chars[i]
+            && chars[i + 2] == chars[i]
+        {
+            Some(chars[i])
+        } else {
+            None
+        };
+
+        if let Some(m) = triple_marker {
+            let start = i + 3;
+            if let Some(end) = find_triple_closing(&chars, start, m) {
+                let inner: String = chars[start..end].iter().collect();
+                result.push('*');
+                result.push_str(&inline_with_options(&inner, options));
+                result.push('*');
+                i = end + 3;
                 continue;
             }
         }
@@ -621,6 +823,14 @@ fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
 
         // Typst special chars that need escaping in plain text
         match chars[i] {
+            '\\' | '<' | '>' | '[' | ']' | '{' | '}' if options.preview_safe => {
+                result.push('\\');
+                result.push(chars[i]);
+            }
+            '@' | '#' if options.preview_safe => {
+                result.push('\\');
+                result.push(chars[i]);
+            }
             '@' | '#' if result.ends_with(|c: char| !c.is_alphanumeric()) => {
                 result.push('\\');
                 result.push(chars[i]);
@@ -645,6 +855,18 @@ fn find_double_closing(chars: &[char], start: usize, delim: char) -> Option<usiz
     let mut i = start;
     while i + 1 < chars.len() {
         if chars[i] == delim && chars[i + 1] == delim { return Some(i); }
+        if chars[i] == '\n' { return None; }
+        i += 1;
+    }
+    None
+}
+
+fn find_triple_closing(chars: &[char], start: usize, delim: char) -> Option<usize> {
+    let mut i = start;
+    while i + 2 < chars.len() {
+        if chars[i] == delim && chars[i + 1] == delim && chars[i + 2] == delim {
+            return Some(i);
+        }
         if chars[i] == '\n' { return None; }
         i += 1;
     }
@@ -1093,7 +1315,8 @@ mod tests {
     #[test]
     fn preview_renders_typst_fence_as_code() {
         let out = markdown_to_typst_preview("```typst\n#let x =\n```\n").0;
-        assert!(out.contains("```typst"), "got: {out}");
+        assert!(out.contains("#raw("), "got: {out}");
+        assert!(out.contains("lang: \"typst\""), "got: {out}");
         assert!(out.contains("#let x ="), "got: {out}");
     }
 
@@ -1110,6 +1333,26 @@ mod tests {
     fn inline_math_passthrough() {
         let out = convert("We use $E = mc^2$ here.\n");
         assert!(out.contains("$E = mc^2$"), "got: {out}");
+    }
+
+    #[test]
+    fn preview_renders_simple_inline_math_as_typst_math() {
+        let out = markdown_to_typst_preview("We use $E = mc^2$ here.\n").0;
+        assert!(out.contains("$E = m c^2$"), "got: {out}");
+        assert!(!out.contains("#raw(\"E = mc^2\""), "got: {out}");
+    }
+
+    #[test]
+    fn preview_renders_simple_block_math_as_typst_math() {
+        let out = markdown_to_typst_preview("$$\nE = m c^2\n$$\n").0;
+        assert!(out.contains("$ E = m c^2 $"), "got: {out}");
+        assert!(!out.contains("#raw(\"E = m c^2\""), "got: {out}");
+    }
+
+    #[test]
+    fn preview_quotes_latex_command_math() {
+        let out = markdown_to_typst_preview("We use $\\frac{1}{2}$ here.\n").0;
+        assert!(out.contains("#raw(\"\\\\frac{1}{2}\""), "got: {out}");
     }
 
     #[test]

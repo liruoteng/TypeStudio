@@ -896,9 +896,30 @@ mod markdown_preview_tests {
         let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
         let source = fs::read_to_string(&preview_path).unwrap();
 
-        assert!(source.contains("```typst"));
+        assert!(source.contains("#raw("));
+        assert!(source.contains("lang: \"typst\""));
         assert!(source.contains("#let x ="));
         assert!(source.contains("Afterward."));
+        validate_typst_source(&preview_path, &source).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn fast_markdown_preview_compiles_stress_test() {
+        let stress_path = Path::new("../examples/markdown/stress-test.md");
+        if !stress_path.exists() {
+            return;
+        }
+
+        let dir = temp_test_dir("markdown-preview-fast-stress");
+        let md_path = dir.join("stress-test.md");
+        let md = fs::read_to_string(stress_path).unwrap();
+
+        write_markdown_preview_source_fast(&md_path.to_string_lossy(), &md).unwrap();
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let source = fs::read_to_string(&preview_path).unwrap();
+
         validate_typst_source(&preview_path, &source).unwrap();
 
         let _ = fs::remove_dir_all(dir);
