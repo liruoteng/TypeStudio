@@ -167,6 +167,28 @@ fn build_neurips_preamble(fm: &FrontMatter) -> String {
 /// Handles: headings, bold, italic, code, links, images, lists, blockquotes, HR, tables,
 ///          `[@cite]` citations, inline math `$...$`, and block math `$$...$$`.
 pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
+    markdown_to_typst_with_options(content, MarkdownOptions {
+        raw_typst_passthrough: true,
+        typst_citations: true,
+    })
+}
+
+/// Markdown → Typst for live preview. This avoids constructs that commonly
+/// make partial drafts fail to compile, leaving tinymist as the only compiler
+/// in the hot path.
+pub fn markdown_to_typst_preview(content: &str) -> (String, Vec<String>) {
+    markdown_to_typst_with_options(content, MarkdownOptions {
+        raw_typst_passthrough: false,
+        typst_citations: false,
+    })
+}
+
+struct MarkdownOptions {
+    raw_typst_passthrough: bool,
+    typst_citations: bool,
+}
+
+fn markdown_to_typst_with_options(content: &str, options: MarkdownOptions) -> (String, Vec<String>) {
     let (body, _) = strip_front_matter(content);
     let expanded = expand_references(body);
     let content = expanded.as_str();
@@ -235,7 +257,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         if let Some(rest) = line.strip_prefix("```").or_else(|| line.strip_prefix("~~~")) {
             if in_code_block {
                 let body = code_buf.join("\n");
-                if code_lang == "typst" {
+                if code_lang == "typst" && options.raw_typst_passthrough {
                     // Raw Typst passthrough — emit verbatim
                     out.push_str(&body);
                     out.push_str("\n\n");
@@ -273,7 +295,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         let heading = parse_heading(line);
         if let Some((level, text)) = heading {
             let marks: String = "=".repeat(level);
-            out.push_str(&format!("{marks} {}\n", inline(text)));
+            out.push_str(&format!("{marks} {}\n", inline_with_options(text, &options)));
             prev_blank = false;
             i += 1;
             continue;
@@ -285,7 +307,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
             if !line.trim().is_empty() && (next.starts_with("===") || next.starts_with("---")) {
                 let level = if next.starts_with("===") { 1 } else { 2 };
                 let marks: String = "=".repeat(level);
-                out.push_str(&format!("{marks} {}\n", inline(line)));
+                out.push_str(&format!("{marks} {}\n", inline_with_options(line, &options)));
                 prev_blank = false;
                 i += 2;
                 continue;
@@ -313,11 +335,11 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         {
             if prev_blank { }
             if let Some(content) = rest.strip_prefix("[ ] ") {
-                out.push_str(&format!("- ☐ {}\n", inline(content)));
+                out.push_str(&format!("- ☐ {}\n", inline_with_options(content, &options)));
             } else if let Some(content) = rest.strip_prefix("[x] ").or_else(|| rest.strip_prefix("[X] ")) {
-                out.push_str(&format!("- ☑ {}\n", inline(content)));
+                out.push_str(&format!("- ☑ {}\n", inline_with_options(content, &options)));
             } else {
-                out.push_str(&format!("- {}\n", inline(rest)));
+                out.push_str(&format!("- {}\n", inline_with_options(rest, &options)));
             }
             prev_blank = false;
             i += 1;
@@ -326,7 +348,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
 
         // ── Ordered list ──────────────────────────────────────────────────────
         if let Some(rest) = strip_ordered_list(line.trim_start()) {
-            out.push_str(&format!("+ {}\n", inline(rest)));
+            out.push_str(&format!("+ {}\n", inline_with_options(rest, &options)));
             prev_blank = false;
             i += 1;
             continue;
@@ -334,7 +356,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
 
         // ── Blockquote ────────────────────────────────────────────────────────
         if let Some(rest) = line.strip_prefix("> ").or_else(|| line.strip_prefix(">")) {
-            out.push_str(&format!("#quote[{}]\n\n", inline(rest.trim())));
+            out.push_str(&format!("#quote[{}]\n\n", inline_with_options(rest.trim(), &options)));
             prev_blank = true;
             i += 1;
             continue;
@@ -343,7 +365,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         // ── Markdown table ────────────────────────────────────────────────────
         if line.contains('|') && i + 1 < lines.len() && lines[i + 1].contains("---") {
             let (rows, consumed) = collect_table(&lines, i);
-            out.push_str(&render_table(&rows));
+            out.push_str(&render_table_with_options(&rows, &options));
             i += consumed;
             prev_blank = false;
             continue;
@@ -365,7 +387,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
         }
 
         // ── Regular paragraph line ────────────────────────────────────────────
-        out.push_str(&inline(line));
+        out.push_str(&inline_with_options(line, &options));
         out.push('\n');
         prev_blank = false;
         i += 1;
@@ -374,7 +396,7 @@ pub fn markdown_to_typst(content: &str) -> (String, Vec<String>) {
     // Flush unclosed code block
     if in_code_block && !code_buf.is_empty() {
         let body = code_buf.join("\n");
-        if code_lang == "typst" {
+        if code_lang == "typst" && options.raw_typst_passthrough {
             out.push_str(&code_buf.join("\n"));
             out.push_str("\n\n");
             typst_block_count += 1;
@@ -438,7 +460,7 @@ fn collect_table<'a>(lines: &[&'a str], start: usize) -> (Vec<Vec<&'a str>>, usi
     (rows, i - start)
 }
 
-fn render_table(rows: &[Vec<&str>]) -> String {
+fn render_table_with_options(rows: &[Vec<&str>], options: &MarkdownOptions) -> String {
     if rows.is_empty() { return String::new(); }
     let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
     let mut out = String::from("#table(\n  columns: ");
@@ -446,15 +468,14 @@ fn render_table(rows: &[Vec<&str>]) -> String {
     out.push_str(",\n");
     for row in rows {
         for cell in row {
-            out.push_str(&format!("  [{}],\n", inline(cell)));
+            out.push_str(&format!("  [{}],\n", inline_with_options(cell, options)));
         }
     }
     out.push_str(")\n\n");
     out
 }
 
-/// Convert inline Markdown markup to Typst equivalents.
-fn inline(text: &str) -> String {
+fn inline_with_options(text: &str, options: &MarkdownOptions) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut result = String::with_capacity(text.len());
     let mut i = 0;
@@ -499,7 +520,8 @@ fn inline(text: &str) -> String {
                     .filter(|k| !k.is_empty())
                     .collect();
                 if !keys.is_empty() {
-                    let cites = keys.iter().map(|k| format!("@{k}")).collect::<Vec<_>>().join(" ");
+                    let marker = if options.typst_citations { "@" } else { "\\@" };
+                    let cites = keys.iter().map(|k| format!("{marker}{k}")).collect::<Vec<_>>().join(" ");
                     result.push_str(&cites);
                     i = close + 1;
                     continue;
@@ -524,7 +546,7 @@ fn inline(text: &str) -> String {
         // Link: [text](url)
         if chars[i] == '[' {
             if let Some((text_inner, url, end)) = parse_link(&chars, i) {
-                let inner_text = inline(&text_inner);
+                let inner_text = inline_with_options(&text_inner, options);
                 result.push_str(&format!("#link(\"{url}\")[{inner_text}]"));
                 i = end;
                 continue;
@@ -543,7 +565,7 @@ fn inline(text: &str) -> String {
             if let Some(end) = find_double_closing(&chars, start, m) {
                 let inner: String = chars[start..end].iter().collect();
                 result.push('*');
-                result.push_str(&inline(&inner));
+                result.push_str(&inline_with_options(&inner, options));
                 result.push('*');
                 i = end + 2;
                 continue;
@@ -557,7 +579,7 @@ fn inline(text: &str) -> String {
                 if end > start {
                     let inner: String = chars[start..end].iter().collect();
                     result.push('_');
-                    result.push_str(&inline(&inner));
+                    result.push_str(&inline_with_options(&inner, options));
                     result.push('_');
                     i = end + 1;
                     continue;
@@ -572,7 +594,7 @@ fn inline(text: &str) -> String {
                 if end > start {
                     let inner: String = chars[start..end].iter().collect();
                     result.push('_');
-                    result.push_str(&inline(&inner));
+                    result.push_str(&inline_with_options(&inner, options));
                     result.push('_');
                     i = end + 1;
                     continue;
@@ -1060,6 +1082,19 @@ mod tests {
         let out = convert("See [@vaswani2017] for details.\n");
         assert!(out.contains("@vaswani2017"), "got: {out}");
         assert!(!out.contains("[@vaswani2017]"), "should not contain raw citation: {out}");
+    }
+
+    #[test]
+    fn preview_escapes_citation_refs() {
+        let out = markdown_to_typst_preview("See [@vaswani2017] for details.\n").0;
+        assert!(out.contains("\\@vaswani2017"), "got: {out}");
+    }
+
+    #[test]
+    fn preview_renders_typst_fence_as_code() {
+        let out = markdown_to_typst_preview("```typst\n#let x =\n```\n").0;
+        assert!(out.contains("```typst"), "got: {out}");
+        assert!(out.contains("#let x ="), "got: {out}");
     }
 
     #[test]

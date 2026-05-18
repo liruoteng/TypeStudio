@@ -667,6 +667,71 @@ function addSyntaxTokenDecorations(
   }
 }
 
+function addLatexSyntaxTokenDecorations(
+  ranges: DecorationRange[],
+  lineText: string,
+  lineFrom: number,
+) {
+  let index = 0;
+
+  const pushToken = (from: number, to: number, className: string) => {
+    if (from >= to) return;
+    ranges.push({
+      from: lineFrom + from,
+      to: lineFrom + to,
+      className: `cm-md-token cm-md-latex-token ${className}`,
+    });
+  };
+
+  while (index < lineText.length) {
+    const char = lineText[index];
+
+    if (char === "%") {
+      pushToken(index, lineText.length, "cm-md-token-comment");
+      break;
+    }
+
+    if (char === "\\") {
+      const command = lineText.slice(index).match(/^\\(?:[a-zA-Z]+[*]?|.)/);
+      if (command) {
+        pushToken(index, index + command[0].length, "cm-md-token-function");
+        index += command[0].length;
+        continue;
+      }
+    }
+
+    if (/[A-Za-z]/.test(char)) {
+      const variable = lineText.slice(index).match(/^[A-Za-z]+/);
+      if (variable) {
+        pushToken(index, index + variable[0].length, "cm-md-token-variable");
+        index += variable[0].length;
+        continue;
+      }
+    }
+
+    if (/\d/.test(char)) {
+      const number = lineText.slice(index).match(/^\d+(?:\.\d+)?/);
+      if (number) {
+        pushToken(index, index + number[0].length, "cm-md-token-number");
+        index += number[0].length;
+        continue;
+      }
+    }
+
+    if (/[\[\]{}()]/.test(char)) {
+      pushToken(index, index + 1, "cm-md-token-punctuation");
+      index += 1;
+      continue;
+    }
+
+    if (/[+\-*/=<>^_&|!,:;]/.test(char)) {
+      pushToken(index, index + 1, "cm-md-token-operator");
+    }
+
+    index += 1;
+  }
+}
+
 class MarkdownTableWidget extends WidgetType {
   private cleanup: (() => void) | null = null;
 
@@ -861,8 +926,11 @@ class MarkdownTableWidget extends WidgetType {
     };
 
     const replaceTableSource = (nextSource: string) => {
+      const replaceTo = nextSource === "" && view.state.sliceDoc(tableTo, tableTo + 1) === "\n"
+        ? tableTo + 1
+        : tableTo;
       view.dispatch({
-        changes: { from: tableFrom, to: tableTo, insert: nextSource },
+        changes: { from: tableFrom, to: replaceTo, insert: nextSource },
         selection: EditorSelection.cursor(tableFrom),
         scrollIntoView: true,
       });
@@ -1679,7 +1747,31 @@ function addInlineDecorations(
 
     const active = inlineMarkerActive([{ from: math.from, to: math.to }], cursorFrom, cursorTo);
     if (active) {
-      ranges.push(markerRange(math.from, math.to, true));
+      const source = lineText.slice(math.from - lineFrom, math.to - lineFrom);
+      const contentStart = source.startsWith("\\(") ? 2 : 1;
+      const contentEnd = source.endsWith("\\)") ? source.length - 2 : source.length - 1;
+      ranges.push({
+        from: math.from,
+        to: math.from + contentStart,
+        className: "cm-md-marker cm-md-marker--active cm-md-math-delimiter",
+      });
+      if (contentEnd > contentStart) {
+        ranges.push({
+          from: math.from + contentStart,
+          to: math.from + contentEnd,
+          className: "cm-md-math-source",
+        });
+        addLatexSyntaxTokenDecorations(
+          ranges,
+          source.slice(contentStart, contentEnd),
+          math.from + contentStart,
+        );
+      }
+      ranges.push({
+        from: math.from + contentEnd,
+        to: math.to,
+        className: "cm-md-marker cm-md-marker--active cm-md-math-delimiter",
+      });
     } else {
       ranges.push({
         from: math.from,
@@ -1739,6 +1831,7 @@ function buildMarkdownDecorations(state: EditorState) {
   const enableCodeSyntaxHighlighting = doc.length <= codeSyntaxHighlightMaxDocLength;
   const frontmatter = frontmatterAtTop(state);
   const tableSourceEditRange = state.field(tableSourceEditRangeField, false);
+  const isFocused = state.field(wysiwygFocusField);
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -1774,6 +1867,7 @@ function buildMarkdownDecorations(state: EditorState) {
         for (let mathLineNumber = line.number; mathLineNumber <= lastMathLineNumber; mathLineNumber += 1) {
           const mathLine = doc.line(mathLineNumber);
           ranges.push({ from: mathLine.from, to: mathLine.to, className: "cm-md-math-source" });
+          addLatexSyntaxTokenDecorations(ranges, mathLine.text, mathLine.from);
         }
       } else {
         ranges.push({
@@ -1871,7 +1965,7 @@ function buildMarkdownDecorations(state: EditorState) {
       continue;
     }
 
-    const activeLine = cursorTo >= line.from && cursorFrom <= line.to;
+    const activeLine = isFocused && cursorTo >= line.from && cursorFrom <= line.to;
     const heading = text.match(/^(#{1,6})\s+/);
     const blockquote = text.match(/^(>+\s?)/);
     const task = text.match(/^(\s*)([-*+])\s+\[([ xX])\]\s+/);
@@ -1969,11 +2063,28 @@ function buildMarkdownDecorations(state: EditorState) {
   return Decoration.set(decorations, true);
 }
 
+const setWysiwygFocus = StateEffect.define<boolean>();
+
+const wysiwygFocusField = StateField.define<boolean>({
+  create: () => false,
+  update: (value, tr) => {
+    for (const e of tr.effects) {
+      if (e.is(setWysiwygFocus)) return e.value;
+    }
+    return value;
+  },
+});
+
 const markdownWysiwygDecorationField = StateField.define<DecorationSet>({
   create: buildMarkdownDecorations,
   update(value, transaction) {
     if (transaction.docChanged || transaction.selection) {
       return buildMarkdownDecorations(transaction.state);
+    }
+    for (const e of transaction.effects) {
+      if (e.is(setWysiwygFocus)) {
+        return buildMarkdownDecorations(transaction.state);
+      }
     }
     return value;
   },
@@ -2171,6 +2282,7 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
   }, []);
 
   const extensions = useMemo<Extension[]>(() => [
+    wysiwygFocusField,
     highlightSpecialChars(),
     history(),
     drawSelection(),
@@ -2332,7 +2444,21 @@ export function MarkdownWysiwygEditor({ onSave, onSnapshot, onPreviewTrigger, ex
     viewRef.current = view;
     pathRef.current = editorFile.path;
 
+    const raf = requestAnimationFrame(() => {
+      if (viewRef.current?.hasFocus) {
+        viewRef.current.contentDOM.blur();
+      }
+    });
+
+    const onFocus = () => view.dispatch({ effects: setWysiwygFocus.of(true) });
+    const onBlur = () => view.dispatch({ effects: setWysiwygFocus.of(false) });
+    view.contentDOM.addEventListener("focus", onFocus);
+    view.contentDOM.addEventListener("blur", onBlur);
+
     return () => {
+      cancelAnimationFrame(raf);
+      view.contentDOM.removeEventListener("focus", onFocus);
+      view.contentDOM.removeEventListener("blur", onBlur);
       view.destroy();
       viewRef.current = null;
     };

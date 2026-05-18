@@ -18,6 +18,7 @@ import { mathBlockViewPlugin } from "./mathBlockView";
 import { mathInlineViewPlugin } from "./mathInlineView";
 import { mathAutoSelectPlugin } from "./mathAutoSelect";
 import { editorViewCtx } from "@milkdown/core";
+import { toggleMark } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
 import { useEditorStore } from "../../stores/editorStore";
 import type { Reference } from "../../stores/editorStore";
@@ -693,6 +694,44 @@ function WritingModeEditorInner({ path, initialContent, externalContent, onSave,
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
     }, [onSnapshot]);
+
+    // ── Formatting shortcuts (Cmd+B, Cmd+I, Cmd+Shift+S) ─────────────────────
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey)) return;
+
+            let markName: string | null = null;
+            const key = e.key.toLowerCase();
+
+            if (key === "b") {
+                markName = "strong";
+            } else if (key === "i") {
+                markName = "emphasis";
+            } else if (key === "s" && e.shiftKey) {
+                markName = "strike_through";
+            }
+
+            if (!markName) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const editor = getEditor();
+            if (!editor) return;
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            editor.action((ctx: any) => {
+                const view = ctx.get(editorViewCtx);
+                const { state, dispatch } = view;
+                if (state.selection.empty) return;
+                const markType = state.schema.marks[markName];
+                if (!markType) return;
+                toggleMark(markType)(state, dispatch);
+            });
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [getEditor]);
 
     const handleCiteSelect = useCallback((ref: Reference) => {
         const editor = getEditor();

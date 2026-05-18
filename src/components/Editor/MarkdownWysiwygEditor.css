@@ -477,6 +477,26 @@
   color: #d699b6;
 }
 
+.markdown-wysiwyg .cm-md-latex-token.cm-md-token-function {
+  color: #7fbbb3;
+}
+
+.markdown-wysiwyg .cm-md-latex-token.cm-md-token-variable {
+  color: #d699b6;
+}
+
+.markdown-wysiwyg .cm-md-latex-token.cm-md-token-number {
+  color: #e69875;
+}
+
+.markdown-wysiwyg .cm-md-latex-token.cm-md-token-operator {
+  color: #83c092;
+}
+
+.markdown-wysiwyg .cm-md-latex-token.cm-md-token-punctuation {
+  color: #9aa79d;
+}
+
 [data-theme="claude"] .markdown-wysiwyg .cm-md-token-comment,
 [data-theme="claude"] .markdown-wysiwyg .cm-md-token-prolog,
 [data-theme="claude"] .markdown-wysiwyg .cm-md-token-doctype,
@@ -528,6 +548,26 @@
 [data-theme="claude"] .markdown-wysiwyg .cm-md-token-important,
 [data-theme="claude"] .markdown-wysiwyg .cm-md-token-variable {
   color: #b87b9d;
+}
+
+[data-theme="claude"] .markdown-wysiwyg .cm-md-latex-token.cm-md-token-function {
+  color: #5a93a2;
+}
+
+[data-theme="claude"] .markdown-wysiwyg .cm-md-latex-token.cm-md-token-variable {
+  color: #b87b9d;
+}
+
+[data-theme="claude"] .markdown-wysiwyg .cm-md-latex-token.cm-md-token-number {
+  color: #f57d26;
+}
+
+[data-theme="claude"] .markdown-wysiwyg .cm-md-latex-token.cm-md-token-operator {
+  color: #569d79;
+}
+
+[data-theme="claude"] .markdown-wysiwyg .cm-md-latex-token.cm-md-token-punctuation {
+  color: #879686;
 }
 
 .markdown-wysiwyg .cm-line.cm-md-code-block-line {

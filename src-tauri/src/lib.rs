@@ -553,6 +553,32 @@ fn compose_markdown_source(md_path: &Path, md_content: &str) -> (String, Vec<Str
     (typst, warnings)
 }
 
+fn compose_markdown_preview_source(md_path: &Path, md_content: &str) -> (String, Vec<String>) {
+    let (body_md, fm_yaml) = converter::strip_front_matter(md_content);
+    let fm = fm_yaml.map(converter::parse_front_matter).unwrap_or_default();
+    let (body, warnings) = converter::markdown_to_typst_preview(body_md);
+
+    let explicit_template = md_path
+        .parent()
+        .map(|p| p.join("template.typ"))
+        .filter(|p| p.exists())
+        .and_then(|p| fs::read_to_string(&p).ok());
+
+    let typst = match explicit_template {
+        Some(t) => format!("{t}\n\n{body}"),
+        None => {
+            let preamble = converter::build_preamble(&fm);
+            if preamble.is_empty() {
+                body
+            } else {
+                format!("{preamble}\n{body}")
+            }
+        }
+    };
+    (typst, warnings)
+}
+
+#[cfg(test)]
 fn validate_typst_source(path: &Path, content: &str) -> Result<(), String> {
     let mut world = typst_world::TypstWorld::new(path)?;
     world.set_source(path, content)?;
@@ -574,6 +600,7 @@ fn validate_typst_source(path: &Path, content: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
 fn validate_typst_source_quiet(path: &Path, content: &str) -> Result<(), String> {
     let mut world = typst_world::TypstWorld::new(path)?;
     world.set_source(path, content)?;
@@ -588,6 +615,7 @@ fn validate_typst_source_quiet(path: &Path, content: &str) -> Result<(), String>
     }
 }
 
+#[cfg(test)]
 fn quote_typst_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -605,6 +633,7 @@ fn quote_typst_string(s: &str) -> String {
     out
 }
 
+#[cfg(test)]
 fn split_typst_chunks(source: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
@@ -621,6 +650,7 @@ fn split_typst_chunks(source: &str) -> Vec<String> {
     chunks
 }
 
+#[cfg(test)]
 fn recover_typst_source(path: &Path, typst_content: &str) -> Result<String, String> {
     let chunks = split_typst_chunks(typst_content);
     let mut skipped = Vec::new();
@@ -633,6 +663,7 @@ fn recover_typst_source(path: &Path, typst_content: &str) -> Result<String, Stri
     }
 }
 
+#[cfg(test)]
 fn extract_missing_labels(diagnostics: &str) -> Vec<String> {
     let mut labels = Vec::new();
     let mut rest = diagnostics;
@@ -650,6 +681,7 @@ fn extract_missing_labels(diagnostics: &str) -> Vec<String> {
     labels
 }
 
+#[cfg(test)]
 fn escape_missing_label_refs(source: &str, diagnostics: &str) -> Option<String> {
     let labels = extract_missing_labels(diagnostics);
     if labels.is_empty() {
@@ -681,6 +713,7 @@ fn escape_missing_label_refs(source: &str, diagnostics: &str) -> Option<String> 
     Some(out)
 }
 
+#[cfg(test)]
 fn recover_typst_chunks(
     path: &Path,
     prefix: &str,
@@ -713,6 +746,7 @@ fn recover_typst_chunks(
     format!("{left}{right}")
 }
 
+#[cfg(test)]
 fn markdown_preview_fallback_source(md_path: &Path, md_content: &str, diagnostics: &str) -> String {
     let name = md_path
         .file_name()
@@ -734,6 +768,7 @@ fn markdown_preview_fallback_source(md_path: &Path, md_content: &str, diagnostic
     )
 }
 
+#[cfg(test)]
 fn write_markdown_preview_source(md_path: &str, md_content: &str) -> Result<(), String> {
     let path = Path::new(md_path);
     let (typst_content, _warnings) = compose_markdown_source(path, md_content);
@@ -755,6 +790,12 @@ fn write_markdown_preview_source(md_path: &str, md_content: &str) -> Result<(), 
             Err(msg)
         }
     }
+}
+
+fn write_markdown_preview_source_fast(md_path: &str, md_content: &str) -> Result<(), String> {
+    let path = Path::new(md_path);
+    let (typst_content, _warnings) = compose_markdown_preview_source(path, md_content);
+    fs::write(md_preview_typ_path(md_path), typst_content).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -821,6 +862,46 @@ mod markdown_preview_tests {
         let diagnostics = "label `<missing>` does not exist in the document";
         let recovered = escape_missing_label_refs(source, diagnostics).unwrap();
         assert_eq!(recovered, "Text \\@missing and \\@already escaped.\n");
+    }
+
+    #[test]
+    fn fast_markdown_preview_writes_compilable_sample_without_preflight_recovery() {
+        let sample_path = Path::new("../examples/markdown/sample.md");
+        if !sample_path.exists() {
+            return;
+        }
+
+        let dir = temp_test_dir("markdown-preview-fast-sample");
+        let md_path = dir.join("sample.md");
+        let md = fs::read_to_string(sample_path).unwrap();
+
+        write_markdown_preview_source_fast(&md_path.to_string_lossy(), &md).unwrap();
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let source = fs::read_to_string(&preview_path).unwrap();
+
+        assert!(source.contains("= Heading 1"));
+        assert!(source.contains("\\@lecun2015deep"));
+        validate_typst_source(&preview_path, &source).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn fast_markdown_preview_quotes_broken_typst_fences() {
+        let dir = temp_test_dir("markdown-preview-fast-broken-typst");
+        let md_path = dir.join("broken.md");
+        let md = "# Broken\n\n```typst\n#let x =\n```\n\nAfterward.\n";
+
+        write_markdown_preview_source_fast(&md_path.to_string_lossy(), md).unwrap();
+        let preview_path = md_preview_typ_path(&md_path.to_string_lossy());
+        let source = fs::read_to_string(&preview_path).unwrap();
+
+        assert!(source.contains("```typst"));
+        assert!(source.contains("#let x ="));
+        assert!(source.contains("Afterward."));
+        validate_typst_source(&preview_path, &source).unwrap();
+
+        let _ = fs::remove_dir_all(dir);
     }
 }
 
@@ -1035,14 +1116,8 @@ async fn start_sidecar_preview(
     let input_path = if is_markdown_path(Path::new(&path)) {
         let md_content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let temp = md_preview_typ_path(&path);
-        match write_markdown_preview_source(&path, &md_content) {
-            Ok(()) => {
-                let _ = app_handle.emit("preview-error", PreviewError { message: String::new() });
-            }
-            Err(msg) => {
-                let _ = app_handle.emit("preview-error", PreviewError { message: msg });
-            }
-        }
+        write_markdown_preview_source_fast(&path, &md_content)?;
+        let _ = app_handle.emit("preview-error", PreviewError { message: String::new() });
         temp.to_string_lossy().to_string()
     } else {
         path
@@ -1065,7 +1140,7 @@ async fn stop_sidecar_preview(state: tauri::State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 fn write_preview_sidecar_content(path: String, content: String) -> Result<(), String> {
     if is_markdown_path(Path::new(&path)) {
-        write_markdown_preview_source(&path, &content)?;
+        write_markdown_preview_source_fast(&path, &content)?;
     }
     Ok(())
 }

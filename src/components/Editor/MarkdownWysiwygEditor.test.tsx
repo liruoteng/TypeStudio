@@ -51,6 +51,20 @@ describe("MarkdownWysiwygEditor", () => {
     });
   });
 
+  it("syntax highlights active LaTeX math source", async () => {
+    const path = "/workspace/examples/markdown/math.md";
+    useEditorStore.getState().openTab(path, "math.md", "$\\frac{a}{b} + \\alpha$\n");
+
+    const { container } = render(<MarkdownWysiwygEditor />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".cm-md-math-source")).toBeInTheDocument();
+      expect(container.querySelector(".cm-md-token-function")).toBeInTheDocument();
+      expect(container.querySelector(".cm-md-token-variable")).toBeInTheDocument();
+      expect(container.querySelector(".cm-md-token-operator")).toBeInTheDocument();
+    });
+  });
+
   it("lets rendered table cells update the markdown source", async () => {
     const path = "/workspace/examples/markdown/table.md";
     useEditorStore.getState().openTab(path, "table.md", "| A | B |\n| --- | --- |\n| 1 | 2 |\n");
@@ -190,7 +204,7 @@ describe("MarkdownWysiwygEditor", () => {
     fireEvent.click(deleteRow!);
 
     await waitFor(() => {
-      expect(useEditorStore.getState().activeTab()?.content).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |");
+      expect(useEditorStore.getState().activeTab()?.content).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |\n");
     });
   });
 
@@ -212,7 +226,7 @@ describe("MarkdownWysiwygEditor", () => {
     fireEvent.click(deleteColumn!);
 
     await waitFor(() => {
-      expect(useEditorStore.getState().activeTab()?.content).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |");
+      expect(useEditorStore.getState().activeTab()?.content).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |\n");
     });
   });
 
